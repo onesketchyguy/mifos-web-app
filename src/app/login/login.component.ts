@@ -119,6 +119,11 @@ export class LoginComponent implements OnInit, OnDestroy {
    * Subscribes to alert event of alert service and theme changes.
    */
   ngOnInit() {
+    localStorage.setItem('mifosXServerURL', environment.baseApiUrl);
+    localStorage.setItem('mifosXServers', JSON.stringify(environment.baseApiUrls.split(',')));
+    localStorage.setItem('mifosXTenantIdentifier', environment.fineractPlatformTenantId || 'default');
+    localStorage.setItem('mifosXTenantIdentifiers', JSON.stringify(environment.fineractPlatformTenantIds.split(',')));
+
     this.showTenantSelector = this.calculateTenantSelectorVisibility();
     this.updateLogo();
     this.themeDarkEnabled = this.settingsService.themeDarkEnabled;
