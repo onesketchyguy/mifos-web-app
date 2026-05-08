@@ -12,6 +12,7 @@ export interface SearchData {
   entityNumber?: string | number;
   entityExternalId: string;
   entityName: string;
+  loanOfficer?: string;
   entityType: string;
   parentId: number;
   parentName: string;

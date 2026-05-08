@@ -24,10 +24,6 @@ import {
 } from '@angular/material/table';
 import { Router, ActivatedRoute } from '@angular/router';
 import { SearchData } from '../search.model';
-import { ExternalIdentifierComponent } from '../../shared/external-identifier/external-identifier.component';
-import { MatIconButton } from '@angular/material/button';
-import { MatTooltip } from '@angular/material/tooltip';
-import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { ClientsService } from 'app/clients/clients.service';
 import { forkJoin, Observable, of } from 'rxjs';
@@ -48,10 +44,6 @@ import { catchError, map } from 'rxjs/operators';
     MatHeaderCell,
     MatCellDef,
     MatCell,
-    ExternalIdentifierComponent,
-    MatIconButton,
-    MatTooltip,
-    FaIconComponent,
     MatHeaderRowDef,
     MatHeaderRow,
     MatRowDef,
@@ -68,6 +60,11 @@ export class SearchPageComponent {
     'Entity Id',
     'entity_id'
   ];
+  private readonly clientBackedEntityTypes = [
+    'CLIENT',
+    'CLIENTIDENTIFIER',
+    'LOAN'
+  ];
 
   /** Flags if number of search results exceed 200 */
   overload: boolean;
@@ -75,13 +72,9 @@ export class SearchPageComponent {
   dataSource: MatTableDataSource<SearchData>;
   /** Displayed Columns for serach results */
   displayedColumns: string[] = [
-    'entityType',
-    'entityName',
-    'entityAccount',
-    'externalId',
-    'parentType',
-    'parentName',
-    'details'
+    'displayName',
+    'entityIdNumber',
+    'loanOfficer'
   ];
   /** Paginator for the table */
   @ViewChild(MatPaginator, { static: true }) paginator: MatPaginator;
@@ -106,23 +99,24 @@ export class SearchPageComponent {
       this.dataSource = new MatTableDataSource(visibleResults);
       this.dataSource.paginator = this.paginator;
       this.hasResults = visibleResults.length > 0;
-      this.loadClientEntityIds(visibleResults);
+      this.loadSearchResultDetails(visibleResults);
     });
   }
 
   getSearchEntityId(entity: SearchData): string | number {
-    if (entity.entityType === 'CLIENT' || entity.entityType === 'CLIENTIDENTIFIER') {
-      return entity.entityNumber ?? '';
-    }
-    return entity.entityNumber ?? entity.entityAccountNo;
+    return entity.entityNumber ?? '';
   }
 
-  private loadClientEntityIds(searchResults: SearchData[]): void {
-    const clientEntityTypes = [
-      'CLIENT',
-      'CLIENTIDENTIFIER'
-    ];
-    const clientResults = searchResults.filter((result: SearchData) => clientEntityTypes.includes(result.entityType));
+  getSearchDisplayName(entity: SearchData): string {
+    return entity.entityName;
+  }
+
+  getSearchLoanOfficer(entity: SearchData): string {
+    return entity.loanOfficer || '';
+  }
+
+  private loadSearchResultDetails(searchResults: SearchData[]): void {
+    const clientResults = searchResults.filter((result: SearchData) => !!this.getClientIdForSearchResult(result));
 
     if (clientResults.length === 0) {
       return;
@@ -136,27 +130,42 @@ export class SearchPageComponent {
           .map((datatable: any) => datatable.registeredTableName)
           .filter((datatableName: string) => !!datatableName);
 
-        if (datatableNames.length === 0) {
-          return;
-        }
-
-        const entityIdRequests = clientResults.map((result: SearchData) =>
-          this.getClientEntityId(this.getClientIdForSearchResult(result), datatableNames)
+        const searchResultDetailRequests = clientResults.map((result: SearchData) =>
+          this.getSearchResultDetails(result, datatableNames)
         );
 
-        forkJoin(entityIdRequests).subscribe((entityIds: Array<string | number | null>) => {
-          entityIds.forEach((entityId: string | number | null, index: number) => {
-            if (entityId !== null) {
-              clientResults[index].entityNumber = entityId;
-            }
-          });
-          this.dataSource.data = [...this.dataSource.data];
-        });
+        forkJoin(searchResultDetailRequests).subscribe(
+          (searchResultDetails: Array<{ entityIdNumber: string | number | null; loanOfficer: string }>) => {
+            searchResultDetails.forEach(
+              (searchResultDetail: { entityIdNumber: string | number | null; loanOfficer: string }, index: number) => {
+                if (searchResultDetail.entityIdNumber !== null) {
+                  clientResults[index].entityNumber = searchResultDetail.entityIdNumber;
+                }
+                clientResults[index].loanOfficer = searchResultDetail.loanOfficer;
+              }
+            );
+            this.dataSource.data = [...this.dataSource.data];
+          }
+        );
       });
   }
 
-  private getClientEntityId(clientId: string, datatableNames: string[]): Observable<string | number | null> {
-    if (!clientId) {
+  private getSearchResultDetails(
+    result: SearchData,
+    datatableNames: string[]
+  ): Observable<{ entityIdNumber: string | number | null; loanOfficer: string }> {
+    const clientId = this.getClientIdForSearchResult(result);
+    return forkJoin({
+      entityIdNumber: this.getClientEntityId(clientId, datatableNames),
+      loanOfficer: this.getSearchResultLoanOfficer(result, clientId)
+    });
+  }
+
+  private getClientEntityId(
+    clientId: string | null | undefined,
+    datatableNames: string[]
+  ): Observable<string | number | null> {
+    if (!clientId || datatableNames.length === 0) {
       return of(null);
     }
 
@@ -167,6 +176,37 @@ export class SearchPageComponent {
     return forkJoin(datatableRequests).pipe(
       map((datatables: any[]) => this.getFirstDatatableColumnValue(datatables, this.entityIdColumnNames)),
       catchError(() => of(null))
+    );
+  }
+
+  private getSearchResultLoanOfficer(result: SearchData, clientId: string | null): Observable<string> {
+    const existingLoanOfficer = this.getLoanOfficerValue(result);
+    if (existingLoanOfficer || !clientId) {
+      return of(existingLoanOfficer);
+    }
+
+    return this.clientsService.getClientData(clientId).pipe(
+      map((clientData: any) => this.getLoanOfficerValue(clientData)),
+      catchError(() => of(''))
+    );
+  }
+
+  private getLoanOfficerValue(value: any): string {
+    const loanOfficer = value?.loanOfficer;
+    const staff = value?.staff;
+    if (typeof loanOfficer === 'string') {
+      return loanOfficer;
+    }
+    if (typeof staff === 'string') {
+      return staff;
+    }
+    return (
+      value?.loanOfficerName ||
+      value?.staffName ||
+      value?.staffDisplayName ||
+      loanOfficer?.displayName ||
+      staff?.displayName ||
+      ''
     );
   }
 
@@ -200,8 +240,12 @@ export class SearchPageComponent {
     return value === undefined || value === null || value === '' ? null : value;
   }
 
-  private getClientIdForSearchResult(result: SearchData): string {
-    return (result.entityType === 'CLIENTIDENTIFIER' ? result.parentId : result.entityId)?.toString();
+  private getClientIdForSearchResult(result: SearchData): string | null {
+    if (!this.clientBackedEntityTypes.includes(result.entityType)) {
+      return null;
+    }
+
+    return (result.entityType === 'CLIENT' ? result.entityId : result.parentId)?.toString() || null;
   }
 
   private normalizeColumnName(columnName: string): string {

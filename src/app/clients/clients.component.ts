@@ -28,18 +28,14 @@ import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 
 /** rxjs Imports */
-import { Subject, Subscription } from 'rxjs';
-import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
+import { forkJoin, Observable, of, Subject, Subscription } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, switchMap, takeUntil } from 'rxjs/operators';
 
 /** Custom Services */
 import { environment } from '../../environments/environment';
 import { ClientsService } from './clients.service';
-import { NgClass } from '@angular/common';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatProgressBar } from '@angular/material/progress-bar';
-import { AccountNumberComponent } from '../shared/account-number/account-number.component';
-import { ExternalIdentifierComponent } from '../shared/external-identifier/external-identifier.component';
-import { StatusLookupPipe } from '../pipes/status-lookup.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 
 export const DEBOUNCE_MS = 500;
@@ -61,15 +57,11 @@ export const DEBOUNCE_MS = 500;
     MatSortHeader,
     MatCellDef,
     MatCell,
-    AccountNumberComponent,
-    ExternalIdentifierComponent,
-    NgClass,
     MatHeaderRowDef,
     MatHeaderRow,
     MatRowDef,
     MatRow,
     MatPaginator,
-    StatusLookupPipe,
     MatIconButton,
     MatIcon
   ]
@@ -80,7 +72,13 @@ export class ClientsComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private searchInput$ = new Subject<string>();
   private clientsRequestSub: Subscription | null = null;
+  private entityIdsRequestSub: Subscription | null = null;
   private isComposing = false;
+  private readonly entityIdColumnNames = [
+    'EntityID',
+    'Entity Id',
+    'entity_id'
+  ];
 
   /** Returns true if client data masking is enabled */
   get hideClientData(): boolean {
@@ -100,10 +98,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   displayedColumns = [
     'displayName',
-    'accountNumber',
-    'externalId',
-    'status',
-    'officeName'
+    'entityIdNumber',
+    'loanOfficer'
   ];
   dataSource: MatTableDataSource<any> = new MatTableDataSource();
 
@@ -139,6 +135,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.clientsRequestSub?.unsubscribe();
+    this.entityIdsRequestSub?.unsubscribe();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -171,23 +168,153 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   private getClients() {
     this.clientsRequestSub?.unsubscribe();
+    this.entityIdsRequestSub?.unsubscribe();
     this.isLoading = true;
     this.clientsRequestSub = this.clientService
       .searchByText(this.filterText, this.currentPage, this.pageSize, this.sortAttribute, this.sortDirection)
       .subscribe(
         (data: any) => {
-          this.dataSource.data = data.content;
+          const clients = data.content || [];
+          this.dataSource.data = clients;
 
           this.totalRows = data.totalElements;
 
           this.existsClientsToFilter = data.numberOfElements > 0;
           this.notExistsClientsToFilter = !this.existsClientsToFilter;
           this.isLoading = false;
+          this.loadClientRowDetails(clients);
         },
         (error: any) => {
           this.isLoading = false;
         }
       );
+  }
+
+  getLoanOfficer(client: any): string {
+    return this.getLoanOfficerValue(client);
+  }
+
+  private loadClientRowDetails(clients: any[]): void {
+    this.entityIdsRequestSub?.unsubscribe();
+
+    if (clients.length === 0) {
+      return;
+    }
+
+    this.entityIdsRequestSub = this.clientService
+      .getClientDatatables()
+      .pipe(
+        catchError(() => of([])),
+        switchMap((clientDatatables: any[]) => {
+          const datatableNames = (clientDatatables || [])
+            .map((datatable: any) => datatable.registeredTableName)
+            .filter((datatableName: string) => !!datatableName);
+
+          const clientDetailsRequests = clients.map((client: any) => this.getClientRowDetails(client, datatableNames));
+          return forkJoin(clientDetailsRequests);
+        }),
+        takeUntil(this.destroy$)
+      )
+      .subscribe((clientDetails: Array<{ entityIdNumber: string | number | null; loanOfficer: string }>) => {
+        this.dataSource.data = clients.map((client: any, index: number) => ({
+          ...client,
+          entityIdNumber: clientDetails[index].entityIdNumber,
+          loanOfficer: clientDetails[index].loanOfficer
+        }));
+      });
+  }
+
+  private getClientRowDetails(
+    client: any,
+    datatableNames: string[]
+  ): Observable<{ entityIdNumber: string | number | null; loanOfficer: string }> {
+    return forkJoin({
+      entityIdNumber: this.getClientEntityId(client.id?.toString(), datatableNames),
+      loanOfficer: this.getClientLoanOfficer(client)
+    });
+  }
+
+  private getClientEntityId(
+    clientId: string | null | undefined,
+    datatableNames: string[]
+  ): Observable<string | number | null> {
+    if (!clientId || datatableNames.length === 0) {
+      return of(null);
+    }
+
+    const datatableRequests = datatableNames.map((datatableName: string) =>
+      this.clientService.getClientDatatable(clientId, datatableName).pipe(catchError(() => of(null)))
+    );
+
+    return forkJoin(datatableRequests).pipe(
+      map((datatables: any[]) => this.getFirstDatatableColumnValue(datatables, this.entityIdColumnNames)),
+      catchError(() => of(null))
+    );
+  }
+
+  private getClientLoanOfficer(client: any): Observable<string> {
+    const existingLoanOfficer = this.getLoanOfficerValue(client);
+    if (existingLoanOfficer || !client?.id) {
+      return of(existingLoanOfficer);
+    }
+
+    return this.clientService.getClientData(client.id.toString()).pipe(
+      map((clientData: any) => this.getLoanOfficerValue(clientData)),
+      catchError(() => of(''))
+    );
+  }
+
+  private getLoanOfficerValue(client: any): string {
+    const loanOfficer = client?.loanOfficer;
+    const staff = client?.staff;
+    if (typeof loanOfficer === 'string') {
+      return loanOfficer;
+    }
+    if (typeof staff === 'string') {
+      return staff;
+    }
+    return (
+      client?.loanOfficerName ||
+      client?.staffName ||
+      client?.staffDisplayName ||
+      loanOfficer?.displayName ||
+      staff?.displayName ||
+      ''
+    );
+  }
+
+  private getFirstDatatableColumnValue(datatables: any[], columnNames: string[]): string | number | null {
+    for (const datatable of datatables) {
+      const columnValue = this.getDatatableColumnValue(datatable, columnNames);
+      if (columnValue !== null) {
+        return columnValue;
+      }
+    }
+    return null;
+  }
+
+  private getDatatableColumnValue(datatable: any, columnNames: string[]): string | number | null {
+    const row = datatable?.data?.[0]?.row;
+    const columnHeaders = datatable?.columnHeaders || [];
+    if (!row || columnHeaders.length === 0) {
+      return null;
+    }
+
+    const normalizedColumnNames = columnNames.map((columnName: string) => this.normalizeColumnName(columnName));
+    const columnIndex = columnHeaders.findIndex((columnHeader: any) =>
+      normalizedColumnNames.includes(this.normalizeColumnName(columnHeader?.columnName))
+    );
+
+    if (columnIndex === -1) {
+      return null;
+    }
+
+    const value = row[columnIndex];
+    return value === undefined || value === null || value === '' ? null : value;
+  }
+
+  private normalizeColumnName(columnName: string): string {
+    return (columnName || '').replace(/[_\s-]/g, '').toLowerCase();
   }
 
   pageChanged(event: PageEvent) {

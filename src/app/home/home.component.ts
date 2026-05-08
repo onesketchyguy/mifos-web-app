@@ -64,6 +64,7 @@ export class HomeComponent implements OnInit, AfterViewInit {
 
   /** Username of authenticated user. */
   username: string;
+  displayName: string;
   /** Tenant name */
   tenant: string;
   /** Activity Form. */
@@ -94,6 +95,17 @@ export class HomeComponent implements OnInit, AfterViewInit {
   ngOnInit() {
     const credentials = this.authenticationService.getCredentials();
     this.username = credentials.username;
+
+    let rawDisplayName = credentials.staffDisplayName || '';
+
+    if (rawDisplayName.includes(',')) {
+      rawDisplayName = rawDisplayName.split(',')[1].trim();
+    }
+    if (rawDisplayName.includes(' ')) {
+      rawDisplayName = rawDisplayName.split(' ')[0].trim();
+    }
+
+    this.displayName = rawDisplayName || credentials.username;
     this.tenant = this.tenantIdentifier();
     this.setFilteredActivities();
     if (!this.authenticationService.hasDialogBeenShown()) {
