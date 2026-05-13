@@ -79,6 +79,7 @@ import { LoanOriginatorsTabComponent } from './loans-view/loan-originators-tab/l
 import { LoanOriginatorsResolver } from './common-resolvers/loan-originators.resolver';
 import { LoanProductsResolver } from './common-resolvers/loan-products.resolver';
 import { LoanDelinquencyRangeScheduleResolver } from './common-resolvers/working-capital/loan-delinquency-actions.resolver';
+import { savingsAccountFeatureCanActivateGuard } from 'app/shared/account-features/account-feature.guard';
 
 /** Loans Route. */
 const routes: Routes = [
@@ -254,6 +255,7 @@ const routes: Routes = [
           },
           {
             path: 'standing-instruction',
+            canActivate: [savingsAccountFeatureCanActivateGuard],
             component: StandingInstructionsTabComponent,
             data: { title: 'Standing Instructions', breadcrumb: 'Standing Instructions', routeParamBreadcrumb: false }
           },

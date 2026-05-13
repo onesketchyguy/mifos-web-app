@@ -18,6 +18,7 @@ import { MatIcon } from '@angular/material/icon';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatLine } from '@angular/material/grid-list';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Organization component.
@@ -42,6 +43,7 @@ export class OrganizationComponent implements AfterViewInit {
   private popoverService = inject(PopoverService);
 
   shouldShowFundMapping = false;
+  accountFeatures = accountFeatures;
   /* Reference of manage offices */
   @ViewChild('office') office: ElementRef<any>;
   /* Template for popover on manage offices */
@@ -222,8 +224,13 @@ export class OrganizationComponent implements AfterViewInit {
    */
   previousStepManageFunds() {
     this.configurationWizardService.showManageFunds = false;
-    this.configurationWizardService.showRecurringDepositProductsList = true;
-    this.router.navigate(['/products/recurring-deposit-products']);
+    if (this.accountFeatures.recurringDeposits) {
+      this.configurationWizardService.showRecurringDepositProductsList = true;
+      this.router.navigate(['/products/recurring-deposit-products']);
+    } else {
+      this.configurationWizardService.showLoanProductsList = true;
+      this.router.navigate(['/products/loan-products']);
+    }
   }
 
   arrowBooleansToggle(arrowNumber: number) {

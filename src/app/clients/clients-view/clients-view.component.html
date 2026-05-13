@@ -333,14 +333,16 @@
         <button mat-menu-item (click)="doAction('Client Screen Reports')">
           {{ 'labels.buttons.Client Screen Reports' | translate }}
         </button>
-        <button
-          mat-menu-item
-          (click)="doAction('Create Standing Instructions')"
-          *mifosxHasPermission="'CREATE_STANDINGINSTRUCTION'"
-        >
-          {{ 'labels.buttons.Create Standing Instructions' | translate }}
-        </button>
-        @if (clientViewData.status.value !== 'Transfer on hold') {
+        @if (accountFeatures.savings) {
+          <button
+            mat-menu-item
+            (click)="doAction('Create Standing Instructions')"
+            *mifosxHasPermission="'CREATE_STANDINGINSTRUCTION'"
+          >
+            {{ 'labels.buttons.Create Standing Instructions' | translate }}
+          </button>
+        }
+        @if (accountFeatures.savings && clientViewData.status.value !== 'Transfer on hold') {
           <span>
             <button
               mat-menu-item

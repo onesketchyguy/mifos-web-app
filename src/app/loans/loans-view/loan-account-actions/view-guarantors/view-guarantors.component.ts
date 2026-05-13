@@ -32,6 +32,7 @@ import { AccountsFilterPipe } from '../../../../pipes/accounts-filter.pipe';
 import { FormatNumberPipe } from '../../../../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanAccountActionsBaseComponent } from '../loan-account-actions-base.component';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * View Guarantors Action
@@ -60,6 +61,7 @@ import { LoanAccountActionsBaseComponent } from '../loan-account-actions-base.co
 })
 export class ViewGuarantorsComponent extends LoanAccountActionsBaseComponent implements OnInit {
   dialog = inject(MatDialog);
+  accountFeatures = accountFeatures;
 
   loanData: any;
   guarantorDetails: any;
@@ -68,7 +70,7 @@ export class ViewGuarantorsComponent extends LoanAccountActionsBaseComponent imp
     'fullname',
     'relationship',
     'guarantortype',
-    'depositAccount',
+    ...(this.accountFeatures.savings ? ['depositAccount'] : []),
     'amount',
     'remainingAmount',
     'status',

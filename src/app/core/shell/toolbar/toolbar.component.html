@@ -185,9 +185,11 @@
   <button mat-menu-item [routerLink]="['/reports', 'Loan']" tabindex="0" *mifosxHasPermission="'READ_REPORT'">
     {{ 'labels.menus.Loans' | translate }}
   </button>
-  <button mat-menu-item [routerLink]="['/reports', 'Savings']" tabindex="0" *mifosxHasPermission="'READ_REPORT'">
-    {{ 'labels.menus.Savings' | translate }}
-  </button>
+  @if (accountFeatures.savings) {
+    <button mat-menu-item [routerLink]="['/reports', 'Savings']" tabindex="0" *mifosxHasPermission="'READ_REPORT'">
+      {{ 'labels.menus.Savings' | translate }}
+    </button>
+  }
   <button mat-menu-item [routerLink]="['/reports', 'Fund']" tabindex="0" *mifosxHasPermission="'READ_REPORT'">
     {{ 'labels.menus.Funds' | translate }}
   </button>

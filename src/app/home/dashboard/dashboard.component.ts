@@ -18,6 +18,7 @@ import { AsyncPipe } from '@angular/common';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { DashboardEngineComponent } from 'app/analytics/dashboard-engine/dashboard-engine.component';
 import { GLOBAL_ANALYTICS_DASHBOARD } from 'app/analytics/global-dashboard.config';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Dashboard component.
@@ -43,7 +44,15 @@ export class DashboardComponent implements OnInit {
   /** Filtered Activities. */
   filteredActivities!: Observable<any[]>;
   /** All User Activities. */
-  allActivities: any[] = activities;
+  allActivities: any[] = activities.filter((activity) => {
+    const path = activity.path || '';
+    return (
+      (!path.includes('/products/saving-products') || isAccountFeatureEnabled('savings')) &&
+      (!path.includes('/products/share-products') || isAccountFeatureEnabled('shares')) &&
+      (!path.includes('/products/fixed-deposit-products') || isAccountFeatureEnabled('fixedDeposits')) &&
+      (!path.includes('/products/recurring-deposit-products') || isAccountFeatureEnabled('recurringDeposits'))
+    );
+  });
   /** Dashboard definition */
   dashboardDefinition = GLOBAL_ANALYTICS_DASHBOARD;
   /** Office options from resolver */

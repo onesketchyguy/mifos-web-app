@@ -134,7 +134,7 @@
           </mat-error>
         }
       </mat-form-field>
-      @if (loanProductService.isLoanProduct) {
+      @if (loanProductService.isLoanProduct && accountFeatures.savings) {
         <mat-divider class="flex-98"></mat-divider>
         <h3 class="mat-h3 flex-fill">{{ 'labels.heading.Savings Linkage' | translate }}</h3>
         <mat-form-field class="flex-48">

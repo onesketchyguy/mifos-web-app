@@ -47,6 +47,7 @@ import { Dates } from 'app/core/utils/dates';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { OrganizationService } from 'app/organization/organization.service';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Individual Collection Sheet
@@ -88,6 +89,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
   loanOfficerData: any = [];
   loansData: any = [];
   savingsData: any = [];
+  accountFeatures = accountFeatures;
   minDate = new Date(2000, 0, 1);
   maxDate = new Date();
   collectionSheetForm: UntypedFormGroup;
@@ -133,7 +135,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
   /** Data source for loans table. */
   loansDataSource: MatTableDataSource<any>;
   /** Data source for savings table. */
-  savingsDataSource: MatTableDataSource<any>;
+  savingsDataSource: MatTableDataSource<any> | null;
 
   /** Paginator for table. */
   @ViewChild(MatPaginator, { read: true }) paginator: MatPaginator;
@@ -237,7 +239,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
           this.loansData.push(loanData);
         });
       }
-      if (client.savings) {
+      if (this.accountFeatures.savings && client.savings) {
         client.savings.forEach((saving: any) => {
           const savingData = {
             ...saving,
@@ -253,7 +255,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
       this.loansDataSource.paginator = this.paginator;
       this.loansDataSource.sort = this.sort;
     }
-    if (this.savingsData.length > 0) {
+    if (this.accountFeatures.savings && this.savingsData.length > 0) {
       this.savingsDataSource = new MatTableDataSource(this.savingsData);
       this.savingsDataSource.paginator = this.paginator;
       this.savingsDataSource.sort = this.sort;
@@ -349,7 +351,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
             loanTransaction['bankNumber'] = response.data.value.bankNumber;
           }
           this.bulkRepaymentTransactions.push(loanTransaction);
-        } else {
+        } else if (this.accountFeatures.savings) {
           let dueAmount = selectedData.dueAmount;
           if (isNaN(dueAmount)) {
             dueAmount = 0;
@@ -426,7 +428,9 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
     const locale = this.settingsService.language.code;
     const dateFormat = this.settingsService.dateFormat;
     this.bulkDisbursementTransactionsData['bulkRepaymentTransactions'] = this.bulkRepaymentTransactions;
-    this.bulkDisbursementTransactionsData['bulkSavingsDueTransactions'] = this.bulkSavingsDueTransactions;
+    if (this.accountFeatures.savings) {
+      this.bulkDisbursementTransactionsData['bulkSavingsDueTransactions'] = this.bulkSavingsDueTransactions;
+    }
     const finalSubmitData = {
       dateFormat,
       locale,
@@ -463,6 +467,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
     // Clear table data arrays
     this.loansData = [];
     this.savingsData = [];
+    this.savingsDataSource = null;
 
     this.createCollectionSheetForm();
     this.buildDependencies();

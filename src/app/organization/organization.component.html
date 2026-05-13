@@ -95,33 +95,35 @@
             </mat-list-item>
           </div>
 
-          <div #standinginstructions>
-            <mat-list-item *mifosxHasPermission="'READ_STANDINGINSTRUCTION'">
-              <div class="menu-list-item-content">
-                <div class="menu-left-section" [routerLink]="['standing-instructions-history']">
-                  <mat-icon matListIcon>
-                    <fa-icon icon="book" size="sm"></fa-icon>
-                  </mat-icon>
-                  <div matLine>
-                    {{ 'labels.heading.Standing Instructions History' | translate }}
+          @if (accountFeatures.savings) {
+            <div #standinginstructions>
+              <mat-list-item *mifosxHasPermission="'READ_STANDINGINSTRUCTION'">
+                <div class="menu-list-item-content">
+                  <div class="menu-left-section" [routerLink]="['standing-instructions-history']">
+                    <mat-icon matListIcon>
+                      <fa-icon icon="book" size="sm"></fa-icon>
+                    </mat-icon>
+                    <div matLine>
+                      {{ 'labels.heading.Standing Instructions History' | translate }}
+                      @if (arrowBooleans[3]) {
+                        <p matLine [routerLink]="['standing-instructions-history']" class="menu-explanation">
+                          {{ 'labels.text.View logged history' | translate }}
+                        </p>
+                      }
+                    </div>
+                  </div>
+                  <div class="menu-right-section">
+                    @if (!arrowBooleans[3]) {
+                      <fa-icon (click)="arrowBooleansToggle(3)" icon="arrow-down" size="md"></fa-icon>
+                    }
                     @if (arrowBooleans[3]) {
-                      <p matLine [routerLink]="['standing-instructions-history']" class="menu-explanation">
-                        {{ 'labels.text.View logged history' | translate }}
-                      </p>
+                      <fa-icon (click)="arrowBooleansToggle(3)" icon="arrow-up" size="md"></fa-icon>
                     }
                   </div>
                 </div>
-                <div class="menu-right-section">
-                  @if (!arrowBooleans[3]) {
-                    <fa-icon (click)="arrowBooleansToggle(3)" icon="arrow-down" size="md"></fa-icon>
-                  }
-                  @if (arrowBooleans[3]) {
-                    <fa-icon (click)="arrowBooleansToggle(3)" icon="arrow-up" size="md"></fa-icon>
-                  }
-                </div>
-              </div>
-            </mat-list-item>
-          </div>
+              </mat-list-item>
+            </div>
+          }
 
           <div #investor>
             <mat-list-item *mifosxHasPermission="'READ_OFFICE'">

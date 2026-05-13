@@ -28,6 +28,7 @@ import { AccountsFilterPipe } from '../../../pipes/accounts-filter.pipe';
 import { DateFormatPipe } from '../../../pipes/date-format.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { GroupsService } from '../../groups.service';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Groups View General Tab Component.
@@ -133,7 +134,7 @@ export class GeneralTabComponent {
   /** Boolean for toggling loan accounts table */
   showClosedLoanAccounts = false;
   /** Show hidden savings account sections when the full account interface is needed again. */
-  showNonLoanAccounts = false;
+  showNonLoanAccounts = isAccountFeatureEnabled('savings');
   /** Boolean for toggling savings accounts table */
   showClosedSavingAccounts = false;
 

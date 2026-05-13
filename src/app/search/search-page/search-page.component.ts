@@ -28,6 +28,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { ClientsService } from 'app/clients/clients.service';
 import { forkJoin, Observable, of } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Search Page Component
@@ -55,6 +56,7 @@ export class SearchPageComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private clientsService = inject(ClientsService);
+  accountFeatures = accountFeatures;
   private readonly entityIdColumnNames = [
     'EntityID',
     'Entity Id',
@@ -87,13 +89,7 @@ export class SearchPageComponent {
    */
   constructor() {
     this.route.data.subscribe((data: { searchResults: any }) => {
-      const hiddenEntityTypes = [
-        'SAVING',
-        'SHARE'
-      ];
-      const searchResults = data.searchResults.filter(
-        (result: SearchData) => !hiddenEntityTypes.includes(result.entityType)
-      );
+      const searchResults = data.searchResults.filter((result: SearchData) => this.isSearchResultVisible(result));
       this.overload = searchResults.length > 200 ? true : false;
       const visibleResults = this.overload ? searchResults.slice(0, 200) : searchResults;
       this.dataSource = new MatTableDataSource(visibleResults);
@@ -252,6 +248,24 @@ export class SearchPageComponent {
     return (columnName || '').replace(/[_\s-]/g, '').toLowerCase();
   }
 
+  private isSearchResultVisible(result: SearchData): boolean {
+    if (result.entityType === 'SHARE') {
+      return this.accountFeatures.shares;
+    }
+
+    if (result.entityType === 'SAVING') {
+      if (result.subEntityType === 'depositAccountType.recurringDeposit') {
+        return this.accountFeatures.recurringDeposits;
+      }
+      if (result.subEntityType === 'depositAccountType.fixedDeposit') {
+        return this.accountFeatures.fixedDeposits;
+      }
+      return this.accountFeatures.savings;
+    }
+
+    return true;
+  }
+
   /**
    * Returns link to entity view page.
    * @param {any} entity Entity
@@ -285,6 +299,9 @@ export class SearchPageComponent {
         ]);
         break;
       case 'SHARE':
+        if (!this.accountFeatures.shares) {
+          break;
+        }
         this.router.navigate([
           'clients',
           entity.parentId,
@@ -294,6 +311,9 @@ export class SearchPageComponent {
         break;
       case 'SAVING':
         if (entity.subEntityType === 'depositAccountType.recurringDeposit') {
+          if (!this.accountFeatures.recurringDeposits) {
+            break;
+          }
           this.router.navigate([
             'clients',
             entity.parentId,
@@ -302,6 +322,9 @@ export class SearchPageComponent {
             'transactions'
           ]);
         } else if (entity.subEntityType === 'depositAccountType.fixedDeposit') {
+          if (!this.accountFeatures.fixedDeposits) {
+            break;
+          }
           this.router.navigate([
             'clients',
             entity.parentId,
@@ -310,6 +333,9 @@ export class SearchPageComponent {
             'transactions'
           ]);
         } else if (entity.subEntityType === 'depositAccountType.savingsDeposit') {
+          if (!this.accountFeatures.savings) {
+            break;
+          }
           this.router.navigate([
             'clients',
             entity.parentId,

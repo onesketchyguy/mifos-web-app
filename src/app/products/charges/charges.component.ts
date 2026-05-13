@@ -137,7 +137,7 @@ export class ChargesComponent implements OnInit, AfterViewInit {
    * Initializes the data source, paginator and sorter for charges table.
    */
   setCharges() {
-    this.dataSource = new MatTableDataSource(this.chargeData);
+    this.dataSource = new MatTableDataSource(this.visibleChargeData());
     this.dataSource.paginator = this.paginator;
     this.dataSource.sortingDataAccessor = (charge: any, property: any) => {
       switch (property) {
@@ -204,9 +204,13 @@ export class ChargesComponent implements OnInit, AfterViewInit {
   }
 
   filterByAppliesTo(chargeAppliesTo: number) {
-    const filteredCharges: Charge[] = this.chargeData.filter((charge: Charge) => {
+    const filteredCharges: Charge[] = this.visibleChargeData().filter((charge: Charge) => {
       return charge.chargeAppliesTo.id === chargeAppliesTo;
     });
     this.dataSource = new MatTableDataSource(filteredCharges);
+  }
+
+  private visibleChargeData(): Charge[] {
+    return this.chargeData.filter((charge: Charge) => this.charges.isChargeAppliesToVisible(charge.chargeAppliesTo));
   }
 }

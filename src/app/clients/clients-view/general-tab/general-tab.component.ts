@@ -46,6 +46,7 @@ import { takeUntil, catchError } from 'rxjs/operators';
 import { AlertService } from 'app/core/alert/alert.service';
 import { EMPTY } from 'rxjs';
 import { LoanProductService } from 'app/products/loan-products/services/loan-product.service';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * General Tab component.
@@ -255,8 +256,9 @@ export class GeneralTabComponent implements OnDestroy {
 
   /** Show Closed Loan Accounts */
   showClosedLoanAccounts = false;
+  accountFeatures = accountFeatures;
   /** Show hidden deposit/share account sections when the full account interface is needed again. */
-  showNonLoanAccounts = false;
+  showNonLoanAccounts = Object.values(accountFeatures).some(Boolean);
   /** Show Closed Saving Accounts */
   showClosedSavingAccounts = false;
   /** Show Closed Share Accounts */

@@ -17,6 +17,7 @@ import { MatCheckbox } from '@angular/material/checkbox';
 import { MatAutocompleteTrigger, MatAutocomplete } from '@angular/material/autocomplete';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanAccountActionsBaseComponent } from '../loan-account-actions-base.component';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Create Guarantor Action
@@ -51,6 +52,7 @@ export class CreateGuarantorComponent extends LoanAccountActionsBaseComponent im
   clientsData: any = [];
   /** Account Options */
   accountOptions: any = [];
+  accountFeatures = accountFeatures;
 
   /**
    * @param {FormBuilder} formBuilder Form Builder.
@@ -79,8 +81,12 @@ export class CreateGuarantorComponent extends LoanAccountActionsBaseComponent im
         Validators.required
       ],
       clientRelationshipTypeId: [''],
-      savingsId: [''],
-      amount: ['']
+      ...(this.accountFeatures.savings
+        ? {
+            savingsId: [''],
+            amount: ['']
+          }
+        : {})
     });
   }
 
@@ -109,12 +115,18 @@ export class CreateGuarantorComponent extends LoanAccountActionsBaseComponent im
         this.newGuarantorForm.addControl('mobileNumber', new UntypedFormControl(''));
         this.newGuarantorForm.addControl('housePhoneNumber', new UntypedFormControl(''));
         this.newGuarantorForm.removeControl('name');
-        this.newGuarantorForm.removeControl('savingsId');
-        this.newGuarantorForm.removeControl('amount');
+        if (this.newGuarantorForm.contains('savingsId')) {
+          this.newGuarantorForm.removeControl('savingsId');
+        }
+        if (this.newGuarantorForm.contains('amount')) {
+          this.newGuarantorForm.removeControl('amount');
+        }
       } else {
         this.newGuarantorForm.addControl('name', new UntypedFormControl(''));
-        this.newGuarantorForm.addControl('savingsId', new UntypedFormControl(''));
-        this.newGuarantorForm.addControl('amount', new UntypedFormControl(''));
+        if (this.accountFeatures.savings) {
+          this.newGuarantorForm.addControl('savingsId', new UntypedFormControl(''));
+          this.newGuarantorForm.addControl('amount', new UntypedFormControl(''));
+        }
         this.newGuarantorForm.removeControl('firstname');
         this.newGuarantorForm.removeControl('lastname');
         this.newGuarantorForm.removeControl('dob');
@@ -145,6 +157,9 @@ export class CreateGuarantorComponent extends LoanAccountActionsBaseComponent im
 
   clientSelected(clientDetails: any) {
     this.accountOptions = [];
+    if (!this.accountFeatures.savings) {
+      return;
+    }
     this.loanService.guarantorAccountResource(this.loanId, clientDetails.id).subscribe((response: any) => {
       this.accountOptions = response.accountLinkingOptions;
     });

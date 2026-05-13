@@ -50,6 +50,7 @@ import { NotificationsTrayComponent as NotificationsTrayComponent_1 } from '../.
 import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.component';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { DocumentationLinksService } from 'app/shared/services/documentation-links.service';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Toolbar component.
@@ -83,6 +84,7 @@ export class ToolbarComponent implements OnInit, AfterViewInit, AfterContentChec
   private dialog = inject(MatDialog);
   private changeDetector = inject(ChangeDetectorRef);
   private documentationLinks = inject(DocumentationLinksService);
+  accountFeatures = accountFeatures;
 
   /* Reference of institution */
   @ViewChild('institution') institution: ElementRef<any>;

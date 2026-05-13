@@ -18,6 +18,7 @@ import { catchError } from 'rxjs/operators';
 import { LoansService } from '../loans.service';
 import { OrganizationService } from 'app/organization/organization.service';
 import { LoanProductService } from 'app/products/loan-products/services/loan-product.service';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Loans notes data resolver.
@@ -64,6 +65,9 @@ export class LoanActionButtonResolver {
     } else if (loanActionButton === 'Add Collateral') {
       return this.loansService.getLoanCollateralTemplate(loanId);
     } else if (loanActionButton === 'Disburse to Savings') {
+      if (!isAccountFeatureEnabled('savings')) {
+        return of({});
+      }
       return this.loansService.getLoanActionTemplate(loanId, 'disburseToSavings');
     } else if (loanActionButton === 'Recovery Payment') {
       return this.loansService.getLoanActionTemplate(loanId, 'recoverypayment');

@@ -34,6 +34,7 @@ import { DeleteDialogComponent } from '../../shared/delete-dialog/delete-dialog.
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatTooltip } from '@angular/material/tooltip';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Entity Data Table Checks component.
@@ -112,7 +113,10 @@ export class EntityDataTableChecksComponent implements OnInit {
    */
   constructor() {
     this.route.data.subscribe((data: { entityDataTableChecks: any }) => {
-      this.entityDataTableChecksData = data.entityDataTableChecks.pageItems;
+      this.entityDataTableChecksData = data.entityDataTableChecks.pageItems.filter(
+        (entityDataTableCheck: any) =>
+          entityDataTableCheck.entity !== 'm_savings_account' || isAccountFeatureEnabled('savings')
+      );
     });
   }
 

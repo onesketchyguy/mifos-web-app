@@ -44,6 +44,7 @@ import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanProducts } from 'app/products/loan-products/loan-products';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 @Component({
   selector: 'mifosx-loans-view',
@@ -104,6 +105,7 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
   buttonConfig: LoansAccountButtonConfiguration;
   /** Disburse Transaction number */
   disburseTransactionNo = 0;
+  accountFeatures = accountFeatures;
 
   loanDelinquencyClassificationStyle = '';
   loanStatus: LoanStatus;
@@ -405,6 +407,15 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
           taskPermissionName: 'CREATE_RESCHEDULELOAN'
         });
       }
+    }
+    this.hideDisabledAccountFeatureButtons();
+  }
+
+  private hideDisabledAccountFeatureButtons(): void {
+    if (!this.accountFeatures.savings) {
+      this.buttonConfig.buttonsArray = this.buttonConfig.buttonsArray.filter(
+        (button) => button.name !== 'Disburse to Savings'
+      );
     }
   }
 

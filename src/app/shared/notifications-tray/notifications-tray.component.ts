@@ -23,6 +23,7 @@ import { MatBadge } from '@angular/material/badge';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatIcon } from '@angular/material/icon';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Notifications Tray Component
@@ -58,6 +59,7 @@ export class NotificationsTrayComponent implements OnInit, OnDestroy {
   unreadNotifications: any[] = [];
   /** Timer to refetch notifications every 60 seconds */
   timer: any;
+  accountFeatures = accountFeatures;
 
   /** track if timer is paused */
   private timerPaused = false;
@@ -83,8 +85,8 @@ export class NotificationsTrayComponent implements OnInit, OnDestroy {
       this.notificationsService.getNotifications(true, 9),
       this.notificationsService.getNotifications(false, 9)
     ]).subscribe((response: any[]) => {
-      this.readNotifications = response[0].pageItems;
-      this.unreadNotifications = response[1].pageItems;
+      this.readNotifications = this.filterNotifications(response[0].pageItems);
+      this.unreadNotifications = this.filterNotifications(response[1].pageItems);
       this.setNotifications();
     });
   }
@@ -117,7 +119,7 @@ export class NotificationsTrayComponent implements OnInit, OnDestroy {
     }
 
     this.notificationsService.getNotifications(false, 9).subscribe((response: any) => {
-      this.unreadNotifications = response.pageItems; // Avoid concat duplication
+      this.unreadNotifications = this.filterNotifications(response.pageItems); // Avoid concat duplication
       this.setNotifications();
     });
 
@@ -155,9 +157,29 @@ export class NotificationsTrayComponent implements OnInit, OnDestroy {
    */
   mockNotifications() {
     this.notificationsService.getMockUnreadNotification().subscribe((response: any) => {
-      this.unreadNotifications = this.unreadNotifications.concat(response.pageItems);
+      this.unreadNotifications = this.unreadNotifications.concat(this.filterNotifications(response.pageItems));
       this.setNotifications();
     });
+  }
+
+  private filterNotifications(notifications: any[] = []): any[] {
+    return notifications.filter((notification: any) => this.isNotificationVisible(notification.objectType));
+  }
+
+  private isNotificationVisible(objectType: string): boolean {
+    switch (objectType) {
+      case 'savingsAccount':
+        return this.accountFeatures.savings;
+      case 'fixedDeposit':
+        return this.accountFeatures.fixedDeposits;
+      case 'recurringDepositAccount':
+        return this.accountFeatures.recurringDeposits;
+      case 'shareAccount':
+      case 'shareProduct':
+        return this.accountFeatures.shares;
+      default:
+        return true;
+    }
   }
 
   /**
@@ -171,6 +193,10 @@ export class NotificationsTrayComponent implements OnInit, OnDestroy {
 
     const objectType = notification.objectType;
     const objectId = notification.objectId;
+
+    if (!this.isNotificationVisible(objectType)) {
+      return;
+    }
 
     // For entities that don't require parent context (client, group, center, products)
     if ([

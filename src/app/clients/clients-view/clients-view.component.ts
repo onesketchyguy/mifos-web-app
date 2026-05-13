@@ -51,6 +51,7 @@ import { StatusLookupPipe } from '../../pipes/status-lookup.pipe';
 import { DateFormatPipe } from '../../pipes/date-format.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { formatTabLabel } from 'app/shared/utils/format-tab-label.util';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 @Component({
   selector: 'mifosx-clients-view',
@@ -85,6 +86,7 @@ import { formatTabLabel } from 'app/shared/utils/format-tab-label.util';
 })
 export class ClientsViewComponent implements OnInit {
   complianceHideClientData = environment.complianceHideClientData;
+  accountFeatures = accountFeatures;
   /**
    * Mask a string, keeping first and last letter, masking the rest with *
    */
@@ -299,6 +301,9 @@ export class ClientsViewComponent implements OnInit {
         this.deleteProfileImage();
         break;
       case 'Create Standing Instructions':
+        if (!this.accountFeatures.savings) {
+          break;
+        }
         const createStandingInstructionsQueryParams: any = {
           officeId: this.clientViewData.officeId,
           accountType: 'fromsavings'
@@ -309,6 +314,9 @@ export class ClientsViewComponent implements OnInit {
         });
         break;
       case 'View Standing Instructions':
+        if (!this.accountFeatures.savings) {
+          break;
+        }
         const viewStandingInstructionsQueryParams: any = {
           officeId: this.clientViewData.officeId,
           accountType: 'fromsavings'

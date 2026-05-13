@@ -48,7 +48,7 @@
                 }
               </mat-select>
             </mat-form-field>
-            @if (accountOptions?.length > 0) {
+            @if (accountFeatures.savings && accountOptions?.length > 0) {
               <mat-form-field>
                 <mat-label>{{ 'labels.inputs.Account' | translate }}</mat-label>
                 <mat-select formControlName="savingsId">

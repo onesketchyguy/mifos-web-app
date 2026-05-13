@@ -27,6 +27,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { NotificationsService } from '../notifications.service';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Notifications Page Component
@@ -57,6 +58,7 @@ export class NotificationsPageComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private notificationsService = inject(NotificationsService);
+  accountFeatures = accountFeatures;
 
   /** Notifications data. */
   notificationsData: any;
@@ -96,7 +98,7 @@ export class NotificationsPageComponent implements OnInit {
    */
   constructor() {
     this.route.data.subscribe((data: { notifications: any }) => {
-      this.notificationsData = data.notifications.pageItems;
+      this.notificationsData = this.filterNotifications(data.notifications.pageItems);
     });
   }
 
@@ -116,6 +118,26 @@ export class NotificationsPageComponent implements OnInit {
     this.dataSource.sort = this.sort;
   }
 
+  private filterNotifications(notifications: any[] = []): any[] {
+    return notifications.filter((notification: any) => this.isNotificationVisible(notification.objectType));
+  }
+
+  private isNotificationVisible(objectType: string): boolean {
+    switch (objectType) {
+      case 'savingsAccount':
+        return this.accountFeatures.savings;
+      case 'fixedDeposit':
+        return this.accountFeatures.fixedDeposits;
+      case 'recurringDepositAccount':
+        return this.accountFeatures.recurringDeposits;
+      case 'shareAccount':
+      case 'shareProduct':
+        return this.accountFeatures.shares;
+      default:
+        return true;
+    }
+  }
+
   /**
    * Navigate to notification object with proper entity context
    * @param {any} notification Notification object
@@ -123,6 +145,10 @@ export class NotificationsPageComponent implements OnInit {
   navigateToNotification(notification: any): void {
     const objectType = notification.objectType;
     const objectId = notification.objectId;
+
+    if (!this.isNotificationVisible(objectType)) {
+      return;
+    }
 
     // For entities that don't require parent context (client, group, center, products)
     if ([

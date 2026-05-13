@@ -80,13 +80,13 @@
               </div>
             }
 
-            @if (auditTrailData.savingsAccountNo) {
+            @if (accountFeatures.savings && auditTrailData.savingsAccountNo) {
               <div class="flex-50 mat-body-strong">
                 {{ 'labels.inputs.Savings Account No' | translate }}
               </div>
             }
 
-            @if (auditTrailData.savingsAccountNo) {
+            @if (accountFeatures.savings && auditTrailData.savingsAccountNo) {
               <div class="flex-50">
                 {{ auditTrailData.savingsAccountNo }}
               </div>

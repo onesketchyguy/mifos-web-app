@@ -33,6 +33,7 @@ import { MatCard, MatCardHeader, MatCardTitle, MatCardContent, MatCardImage } fr
 import { MatAutocompleteTrigger, MatAutocomplete, MatOption } from '@angular/material/autocomplete';
 import { AsyncPipe } from '@angular/common';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Home component.
@@ -74,7 +75,15 @@ export class HomeComponent implements OnInit, AfterViewInit {
   /** Filtered Activities. */
   filteredActivities: Observable<any[]>;
   /** All User Activities. */
-  allActivities: any[] = activities;
+  allActivities: any[] = activities.filter((activity) => {
+    const path = activity.path || '';
+    return (
+      (!path.includes('/products/saving-products') || isAccountFeatureEnabled('savings')) &&
+      (!path.includes('/products/share-products') || isAccountFeatureEnabled('shares')) &&
+      (!path.includes('/products/fixed-deposit-products') || isAccountFeatureEnabled('fixedDeposits')) &&
+      (!path.includes('/products/recurring-deposit-products') || isAccountFeatureEnabled('recurringDeposits'))
+    );
+  });
 
   /* Reference of dashboard button */
   @ViewChild('buttonDashboard', { static: false }) buttonDashboard: ElementRef<any>;

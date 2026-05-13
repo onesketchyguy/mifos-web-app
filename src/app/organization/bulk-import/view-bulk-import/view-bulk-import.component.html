@@ -96,6 +96,77 @@
     </mat-card>
   </div>
 
+  @if (bulkImport.name === 'Clients') {
+    <mat-card class="ivytek-import-card">
+      <h3>
+        <strong>{{ 'labels.heading.IvyTek Client Import' | translate }}</strong>
+      </h3>
+
+      <form [formGroup]="ivyTekImportForm">
+        <mat-card-content class="layout-row responsive-column gap-2percent">
+          <mat-form-field class="flex-fill">
+            <mat-label>{{ 'labels.inputs.Target Entity' | translate }}</mat-label>
+            <mat-select required formControlName="targetEntity">
+              <mat-option value="clients">{{ 'labels.heading.Clients' | translate }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field class="flex-fill">
+            <mat-label>{{ 'labels.inputs.Office' | translate }}</mat-label>
+            <mat-select required formControlName="officeId">
+              @for (office of officeData; track office) {
+                <mat-option [value]="office.id">
+                  {{ office.name }}
+                </mat-option>
+              }
+            </mat-select>
+            <mat-hint>{{ 'labels.text.Required when IvyTek import creates new clients.' | translate }}</mat-hint>
+          </mat-form-field>
+        </mat-card-content>
+      </form>
+
+      <h4>{{ 'labels.heading.Select CSV File' | translate }}</h4>
+
+      <mifosx-file-upload flex="75%" (change)="onIvyTekFileSelect($event)" acceptFilter=".csv"></mifosx-file-upload>
+
+      @if (ivyTekImporting) {
+        <mat-progress-bar
+          mode="determinate"
+          [value]="ivyTekTotalRecords ? (ivyTekProcessedRecords / ivyTekTotalRecords) * 100 : 0"
+        ></mat-progress-bar>
+        <mat-hint>
+          {{ 'labels.text.Processed IvyTek records' | translate }}
+          {{ ivyTekProcessedRecords }} / {{ ivyTekTotalRecords }}
+        </mat-hint>
+      }
+
+      <div class="flex-13">
+        <button
+          mat-raised-button
+          color="primary"
+          [disabled]="!ivyTekFile || ivyTekImporting || ivyTekImportForm.invalid"
+          (click)="uploadIvyTekData()"
+          *mifosxHasPermission="'CREATE_CLIENT'"
+        >
+          <i class="fa fa-upload"></i>&nbsp;&nbsp;{{ 'labels.buttons.Upload' | translate }}
+        </button>
+      </div>
+
+      @if (ivyTekImportResults.length) {
+        <div class="ivytek-results">
+          <h4>{{ 'labels.heading.Import Results' | translate }}</h4>
+          @for (result of ivyTekImportResults; track $index) {
+            <div class="ivytek-result-row">
+              <span>{{ result.name }}</span>
+              <span>{{ result.externalId }}</span>
+              <strong>{{ result.status | translate }}</strong>
+            </div>
+          }
+        </div>
+      }
+    </mat-card>
+  }
+
   <mat-card>
     <div>
       <h3 class="documents">

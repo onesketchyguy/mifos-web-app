@@ -74,7 +74,7 @@
           </div>
         }
 
-        @if (checkerInboxDetail.savingsAccountNo) {
+        @if (accountFeatures.savings && checkerInboxDetail.savingsAccountNo) {
           <div class="flex-fill">
             <span class="flex-40">{{ 'labels.inputs.Savings Account Number' | translate }}:</span>
             <span class="flex-60">{{ checkerInboxDetail.savingsAccountNo }}</span>

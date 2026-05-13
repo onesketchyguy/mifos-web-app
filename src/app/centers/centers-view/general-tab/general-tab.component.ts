@@ -27,6 +27,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { StatusLookupPipe } from '../../../pipes/status-lookup.pipe';
 import { DateFormatPipe } from '../../../pipes/date-format.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Create Center General Tab Component
@@ -58,7 +59,7 @@ export class GeneralTabComponent {
   private route = inject(ActivatedRoute);
 
   /** Show hidden savings account section when the full account interface is needed again. */
-  showNonLoanAccounts = false;
+  showNonLoanAccounts = isAccountFeatureEnabled('savings');
 
   /** Savings Account Table Columns */
   savingsAccountColumns: string[] = [

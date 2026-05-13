@@ -14,6 +14,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 /** Custom Services */
 import { ProductsService } from 'app/products/products.service';
 import { SettingsService } from 'app/settings/settings.service';
+import { Charges } from 'app/core/utils/charges';
 import { maxNumberValueValidator } from 'app/shared/validators/max-number-value.validator';
 import { minNumberValueValidator } from 'app/shared/validators/min-number-value.validator';
 import { ValidateOnFocusDirective } from '../../../directives/validate-on-focus.directive';
@@ -41,6 +42,7 @@ export class EditChargeComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private settingsService = inject(SettingsService);
+  private charges = inject(Charges);
 
   /** Selected Data. */
   chargeData: any;
@@ -80,6 +82,9 @@ export class EditChargeComponent implements OnInit {
   constructor() {
     this.route.data.subscribe((data: { chargesTemplate: any }) => {
       this.chargeData = data.chargesTemplate;
+      this.chargeData.chargeAppliesToOptions = this.charges.filterChargeAppliesToOptions(
+        data.chargesTemplate.chargeAppliesToOptions || []
+      );
     });
   }
 

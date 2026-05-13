@@ -33,6 +33,7 @@ import { PopoverService } from '../../configuration-wizard/popover/popover.servi
 import { ConfigurationWizardService } from '../../configuration-wizard/configuration-wizard.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Manage Data Tables component.
@@ -75,6 +76,7 @@ export class ManageDataTablesComponent implements OnInit, AfterViewInit {
   ];
   /** Data source for manage data tables table. */
   dataSource: MatTableDataSource<any>;
+  accountFeatures = accountFeatures;
 
   /** Paginator for manage data tables table. */
   @ViewChild(MatPaginator, { static: true }) paginator: MatPaginator;
@@ -122,9 +124,44 @@ export class ManageDataTablesComponent implements OnInit, AfterViewInit {
    * Initializes the data source, paginator and sorter for manage data tables table.
    */
   setDataTables() {
-    this.dataSource = new MatTableDataSource(this.dataTableData);
+    this.dataSource = new MatTableDataSource(
+      this.dataTableData.filter((dataTable: any) => this.isDataTableVisible(dataTable))
+    );
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
+  }
+
+  private isDataTableVisible(dataTable: any): boolean {
+    const applicationTableName = dataTable.applicationTableName;
+    const entitySubType = (dataTable.entitySubType || '').toLowerCase();
+
+    if (applicationTableName === 'm_share_product') {
+      return this.accountFeatures.shares;
+    }
+
+    if (
+      applicationTableName === 'm_savings_account' ||
+      applicationTableName === 'm_savings_account_transaction' ||
+      applicationTableName === 'm_savings_product'
+    ) {
+      if (entitySubType.includes('fixed deposit')) {
+        return this.accountFeatures.fixedDeposits;
+      }
+
+      if (entitySubType.includes('recurring deposit')) {
+        return this.accountFeatures.recurringDeposits;
+      }
+
+      if (entitySubType.includes('saving')) {
+        return this.accountFeatures.savings;
+      }
+
+      return (
+        this.accountFeatures.savings || this.accountFeatures.fixedDeposits || this.accountFeatures.recurringDeposits
+      );
+    }
+
+    return true;
   }
 
   /**

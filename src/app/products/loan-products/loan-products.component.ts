@@ -45,6 +45,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { UntypedFormControl } from '@angular/forms';
 import { LOAN_PRODUCT_TYPE, PRODUCT_TYPES } from './models/loan-product.model';
 import { LoanProductBaseComponent } from './common/loan-product-base.component';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 @Component({
   selector: 'mifosx-loan-products',
@@ -94,6 +95,7 @@ export class LoanProductsComponent extends LoanProductBaseComponent implements O
   ];
   dataSource: MatTableDataSource<any>;
   loanProductOptions: any = PRODUCT_TYPES;
+  accountFeatures = accountFeatures;
 
   @ViewChild(MatPaginator, { static: true }) paginator: MatPaginator;
   @ViewChild(MatSort, { static: true }) sort: MatSort;
@@ -180,8 +182,13 @@ export class LoanProductsComponent extends LoanProductBaseComponent implements O
   nextStep() {
     this.configurationWizardService.showLoanProductsPage = false;
     this.configurationWizardService.showLoanProductsList = false;
-    this.configurationWizardService.showSavingsProducts = true;
-    this.router.navigate(['/products']);
+    if (this.accountFeatures.savings) {
+      this.configurationWizardService.showSavingsProducts = true;
+      this.router.navigate(['/products']);
+    } else {
+      this.configurationWizardService.showManageFunds = true;
+      this.router.navigate(['/organization']);
+    }
   }
 
   /**

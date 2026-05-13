@@ -45,6 +45,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { DateFormatPipe } from '../../pipes/date-format.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Entity to Entity Mapping Component
@@ -141,7 +142,12 @@ export class EntityToEntityMappingComponent implements OnInit {
    */
   constructor() {
     this.route.data.subscribe((data: { entityMappings: any }) => {
-      this.entityMappings = data.entityMappings;
+      this.entityMappings = data.entityMappings.filter(
+        (mapping: any) => ![
+            'office_access_to_savings_products',
+            'role_access_to_savings_products'
+          ].includes(mapping.mappingTypes) || isAccountFeatureEnabled('savings')
+      );
     });
   }
 
@@ -177,6 +183,12 @@ export class EntityToEntityMappingComponent implements OnInit {
    * @param id Entity Mapping Id
    */
   showFilters(id: number) {
+    if (!isAccountFeatureEnabled('savings') && [
+        2,
+        5
+      ].includes(id)) {
+      return;
+    }
     this.selectedMappingType = id;
     this.hasClickedFilters = false;
     this.fetchRelatedData(this.selectedMappingType);

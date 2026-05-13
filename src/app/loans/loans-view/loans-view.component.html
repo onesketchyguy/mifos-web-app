@@ -493,7 +493,7 @@
         >
           {{ 'labels.inputs.Notes' | translate }}
         </a>
-        @if (loanProductService.isLoanProduct && loanDetailsData.clientId) {
+        @if (loanProductService.isLoanProduct && accountFeatures.savings && loanDetailsData.clientId) {
           <a
             mat-tab-link
             [routerLink]="['./standing-instruction']"

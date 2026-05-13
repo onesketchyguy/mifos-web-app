@@ -68,6 +68,10 @@ export class ClientsService {
     return this.http.get(`/clients/${clientId}`);
   }
 
+  getClientByExternalId(externalId: string) {
+    return this.http.get(`/clients/external-id/${encodeURIComponent(externalId)}`);
+  }
+
   createClient(client: any) {
     return this.http.post(`/clients`, client);
   }

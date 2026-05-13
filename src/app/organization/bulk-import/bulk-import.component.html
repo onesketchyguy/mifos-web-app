@@ -11,7 +11,7 @@
       <!-- Left Column -->
       <div class="flex-50">
         <mat-nav-list>
-          @for (option of bulkImportOptions.slice(0, 9); track option.index) {
+          @for (option of visibleBulkImportOptions.slice(0, 9); track option.index) {
             <div [attr.data-id]="option.routerLink">
               <mat-list-item *mifosxHasPermission="option.permission">
                 <div class="menu-list-item-content">
@@ -44,7 +44,7 @@
       <!-- Right Column -->
       <div class="flex-50">
         <mat-nav-list>
-          @for (option of bulkImportOptions.slice(9); track option.index) {
+          @for (option of visibleBulkImportOptions.slice(9); track option.index) {
             <div [attr.data-id]="option.routerLink">
               <mat-list-item *mifosxHasPermission="option.permission">
                 <div class="menu-list-item-content">

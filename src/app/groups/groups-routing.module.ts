@@ -37,6 +37,7 @@ import { GroupDataAndTemplateResolver } from './common-resolvers/group-data-and-
 import { GroupActionsResolver } from './common-resolvers/group-actions.resolver';
 import { GLIMAccountsResolver } from './common-resolvers/glim-account-resolver';
 import { GSIMAccountsResolver } from './common-resolvers/gsim-account-resolver';
+import { savingsAccountFeatureCanMatchGuard } from 'app/shared/account-features/account-feature.guard';
 
 /** Groups Routes */
 const routes: Routes = [
@@ -157,6 +158,7 @@ const routes: Routes = [
             },
             {
               path: 'savings-accounts',
+              canMatch: [savingsAccountFeatureCanMatchGuard],
               loadChildren: () => import('../savings/savings.module').then((m) => m.SavingsModule)
             }
           ]

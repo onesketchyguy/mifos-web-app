@@ -12,6 +12,7 @@ import { MatNavList, MatListItem } from '@angular/material/list';
 import { MatIcon } from '@angular/material/icon';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { AccountFeature, isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Bulk Import component.
@@ -29,8 +30,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
   ]
 })
 export class BulkImportComponent {
-  // Initialize an array of 17 boolean values, all set to false
-  arrowBooleans: boolean[] = new Array(17).fill(false);
+  // Initialize an array of boolean values, all set to false
+  arrowBooleans: boolean[] = new Array(18).fill(false);
 
   /** Bulk Import Options */
   bulkImportOptions = [
@@ -72,7 +73,8 @@ export class BulkImportComponent {
       icon: 'briefcase',
       title: 'labels.heading.Savings Accounts',
       explanation: 'labels.text.Download savings accounts template and upload savings account excel files',
-      index: 4
+      index: 4,
+      feature: 'savings'
     },
     {
       permission: 'READ_FIXEDDEPOSITACCOUNT',
@@ -80,7 +82,8 @@ export class BulkImportComponent {
       icon: 'briefcase',
       title: 'labels.heading.Fixed Deposit Accounts',
       explanation: 'labels.text.Download fixed deposit accounts template and upload fixed deposit account excel files',
-      index: 5
+      index: 5,
+      feature: 'fixedDeposits'
     },
     {
       permission: 'READ_GLACCOUNT',
@@ -96,7 +99,8 @@ export class BulkImportComponent {
       icon: 'briefcase',
       title: 'labels.heading.Share Accounts',
       explanation: 'labels.text.Download share accounts template and upload share account excel files',
-      index: 7
+      index: 7,
+      feature: 'shares'
     },
     {
       permission: 'READ_STAFF',
@@ -136,7 +140,8 @@ export class BulkImportComponent {
       icon: 'briefcase',
       title: 'labels.heading.Savings Transactions',
       explanation: 'labels.text.Download savings transactions template and upload savings transaction excel files',
-      index: 12
+      index: 12,
+      feature: 'savings'
     },
     {
       permission: 'READ_FIXEDDEPOSITACCOUNT',
@@ -145,7 +150,8 @@ export class BulkImportComponent {
       title: 'labels.heading.Fixed Deposit Transactions',
       explanation:
         'labels.text.Download fixed deposit transactions template and upload fixed deposit transaction excel files',
-      index: 13
+      index: 13,
+      feature: 'fixedDeposits'
     },
     {
       permission: 'READ_RECURRINGDEPOSITACCOUNT',
@@ -154,7 +160,8 @@ export class BulkImportComponent {
       title: 'labels.heading.Recurring Deposit Transactions',
       explanation:
         'labels.text.Download recurring deposit transactions template and upload recurring deposit transaction excel files',
-      index: 14
+      index: 14,
+      feature: 'recurringDeposits'
     },
     {
       permission: 'READ_JOURNALENTRY',
@@ -175,6 +182,12 @@ export class BulkImportComponent {
   ];
 
   constructor() {}
+
+  get visibleBulkImportOptions() {
+    return this.bulkImportOptions.filter(
+      (option) => !option.feature || isAccountFeatureEnabled(option.feature as AccountFeature)
+    );
+  }
 
   /**
    * Popover function

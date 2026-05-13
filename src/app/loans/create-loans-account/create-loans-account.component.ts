@@ -28,6 +28,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanProductBasicDetails } from '../models/loan-product.model';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { Dates } from 'app/core/utils/dates';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Create loans account
@@ -88,6 +89,7 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
 
   loanProductsBasicDetails: LoanProductBasicDetails[] | null = null;
   productType: string | null = null;
+  accountFeatures = accountFeatures;
 
   /**
    * Sets loans account create form.
@@ -184,7 +186,9 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
 
   get loansSavingsAccountLinked() {
     if (this.loanProductService.isLoanProduct) {
-      return this.loansAccountDetailsStep?.loansAccountDetailsForm.get('linkAccountId').value;
+      return this.accountFeatures.savings
+        ? this.loansAccountDetailsStep?.loansAccountDetailsForm.get('linkAccountId')?.value
+        : null;
     }
     return null;
   }

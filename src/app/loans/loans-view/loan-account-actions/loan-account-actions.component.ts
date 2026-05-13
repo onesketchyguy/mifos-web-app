@@ -43,6 +43,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { AttachOriginatorComponent } from './attach-originator/attach-originator.component';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { UpdateDiscountComponent } from './update-discount/update-discount.component';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Loan Account Actions component.
@@ -90,6 +91,7 @@ import { UpdateDiscountComponent } from './update-discount/update-discount.compo
 export class LoanAccountActionsComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  accountFeatures = accountFeatures;
 
   /** Loan Details Data */
   navigationData: any;

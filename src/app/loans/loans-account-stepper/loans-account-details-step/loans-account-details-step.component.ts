@@ -30,6 +30,7 @@ import { LoanProductBasicDetails } from 'app/loans/models/loan-product.model';
 import { LoanProductService } from 'app/products/loan-products/services/loan-product.service';
 import { MatSelectChange, MatSelectTrigger } from '@angular/material/select';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Loans Account Details Step
@@ -82,6 +83,7 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
   fundOptions: any;
   /** Account Linking Options */
   accountLinkingOptions: any;
+  accountFeatures = accountFeatures;
   /** For edit loan accounts form */
   isFieldOfficerPatched = false;
   /** Loans Account Details Form */
@@ -252,9 +254,13 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
             this.loanOfficerOptions = response.loanOfficerOptions;
             this.loanPurposeOptions = response.loanPurposeOptions;
             this.fundOptions = response.fundOptions;
-            this.accountLinkingOptions = response.accountLinkingOptions;
+            this.accountLinkingOptions = this.accountFeatures.savings ? response.accountLinkingOptions : [];
             this.loanProductSelected = true;
-            if (response.createStandingInstructionAtDisbursement) {
+            if (
+              this.accountFeatures.savings &&
+              response.createStandingInstructionAtDisbursement &&
+              this.loansAccountDetailsForm.contains('createStandingInstructionAtDisbursement')
+            ) {
               this.loansAccountDetailsForm
                 .get('createStandingInstructionAtDisbursement')
                 .patchValue(response.createStandingInstructionAtDisbursement);
@@ -285,13 +291,18 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
   addFormControlsBasedOnProductType(): void {
     const loanOnlyControls: Record<string, UntypedFormControl> = {
       loanOfficerId: new UntypedFormControl(''),
-      loanPurposeId: new UntypedFormControl(''),
+      loanPurposeId: new UntypedFormControl('')
+    };
+    const savingsControls: Record<string, UntypedFormControl> = {
       linkAccountId: new UntypedFormControl(''),
       createStandingInstructionAtDisbursement: new UntypedFormControl('')
     };
 
     if (this.loanProductService.isLoanProduct) {
-      Object.entries(loanOnlyControls).forEach(
+      Object.entries({
+        ...loanOnlyControls,
+        ...(this.accountFeatures.savings ? savingsControls : {})
+      }).forEach(
         ([
           name,
           control
@@ -301,10 +312,20 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
           }
         }
       );
+      if (!this.accountFeatures.savings) {
+        Object.keys(savingsControls).forEach((name) => {
+          if (this.loansAccountDetailsForm.contains(name)) {
+            this.loansAccountDetailsForm.removeControl(name);
+          }
+        });
+      }
       return;
     }
 
-    Object.keys(loanOnlyControls).forEach((name) => {
+    Object.keys({
+      ...loanOnlyControls,
+      ...savingsControls
+    }).forEach((name) => {
       if (this.loansAccountDetailsForm.contains(name)) {
         this.loansAccountDetailsForm.removeControl(name);
       }

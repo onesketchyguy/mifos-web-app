@@ -148,6 +148,12 @@ import { NearBreachTemplateResolver } from './loan-products/working-capital/near
 import { ViewNearBreachConfigurationComponent } from './loan-products/working-capital/near-breach-configuration/view-near-breach-configuration/view-near-breach-configuration.component';
 import { NearBreachResolver } from './loan-products/working-capital/near-breach-configuration/near-breach.resolver';
 import { EditNearBreachConfigurationComponent } from './loan-products/working-capital/near-breach-configuration/edit-near-breach-configuration/edit-near-breach-configuration.component';
+import {
+  fixedDepositAccountFeatureCanActivateGuard,
+  recurringDepositAccountFeatureCanActivateGuard,
+  savingsAccountFeatureCanActivateGuard,
+  sharesAccountFeatureCanActivateGuard
+} from 'app/shared/account-features/account-feature.guard';
 
 /** Products Routes */
 const routes: Routes = [
@@ -226,6 +232,7 @@ const routes: Routes = [
         },
         {
           path: 'saving-products',
+          canActivate: [savingsAccountFeatureCanActivateGuard],
           data: { title: 'Saving Products', breadcrumb: 'Saving Products' },
           children: [
             {
@@ -296,6 +303,7 @@ const routes: Routes = [
         },
         {
           path: 'share-products',
+          canActivate: [sharesAccountFeatureCanActivateGuard],
           data: { title: 'Share Products', breadcrumb: 'Share Products' },
           children: [
             {
@@ -596,6 +604,7 @@ const routes: Routes = [
         },
         {
           path: 'recurring-deposit-products',
+          canActivate: [recurringDepositAccountFeatureCanActivateGuard],
           data: { title: 'Recurring Deposit Products', breadcrumb: 'Recurring Deposit Products' },
           children: [
             {
@@ -664,6 +673,7 @@ const routes: Routes = [
         },
         {
           path: 'fixed-deposit-products',
+          canActivate: [fixedDepositAccountFeatureCanActivateGuard],
           data: { title: 'Fixed Deposit Products', breadcrumb: 'Fixed Deposit Products' },
           children: [
             {

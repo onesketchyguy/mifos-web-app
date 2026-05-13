@@ -48,6 +48,7 @@ import { MatButton, MatIconButton } from '@angular/material/button';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatTooltip } from '@angular/material/tooltip';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Create Data Table Component.
@@ -90,9 +91,10 @@ export class CreateDataTableComponent implements OnInit, AfterViewInit {
   /** Data Table Form */
   dataTableForm: UntypedFormGroup;
   /** Application Table Data */
-  appTableData = appTableData;
+  accountFeatures = accountFeatures;
+  appTableData = appTableData.filter((table) => this.isApplicationTableVisible(table.value));
   entitySubTypeData = entitySubTypeData;
-  savingsSubTypeData = savingsSubTypeData;
+  savingsSubTypeData = savingsSubTypeData.filter((subType) => this.isSavingsSubTypeVisible(subType.value));
   showEntitySubType: boolean;
   showSavingsSubType: boolean;
   /** Column Data */
@@ -159,6 +161,34 @@ export class CreateDataTableComponent implements OnInit, AfterViewInit {
       this.showEntitySubType = value === 'm_client';
       this.showSavingsSubType = value === 'm_savings_product';
     });
+  }
+
+  private isApplicationTableVisible(value: string): boolean {
+    switch (value) {
+      case 'm_savings_account':
+      case 'm_savings_account_transaction':
+      case 'm_savings_product':
+        return (
+          this.accountFeatures.savings || this.accountFeatures.fixedDeposits || this.accountFeatures.recurringDeposits
+        );
+      case 'm_share_product':
+        return this.accountFeatures.shares;
+      default:
+        return true;
+    }
+  }
+
+  private isSavingsSubTypeVisible(value: string): boolean {
+    switch (value) {
+      case 'Savings Product':
+        return this.accountFeatures.savings;
+      case 'Fixed Deposit':
+        return this.accountFeatures.fixedDeposits;
+      case 'Recurring Deposit':
+        return this.accountFeatures.recurringDeposits;
+      default:
+        return true;
+    }
   }
 
   /**

@@ -11,10 +11,11 @@ import { Injectable, inject } from '@angular/core';
 import { ActivatedRouteSnapshot } from '@angular/router';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
 /** Custom Services */
 import { CentersService } from '../centers.service';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Centers data resolver.
@@ -29,6 +30,9 @@ export class SavingsAccountResolver {
    */
   resolve(route: ActivatedRouteSnapshot): Observable<any> {
     const centerId = route.parent.paramMap.get('centerId');
+    if (!isAccountFeatureEnabled('savings')) {
+      return of({ savingsAccounts: [] });
+    }
     return this.centersService.getSavingsAccountDetails(centerId);
   }
 }

@@ -18,6 +18,7 @@ import { MatIcon } from '@angular/material/icon';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatLine } from '@angular/material/grid-list';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Products component.
@@ -66,6 +67,7 @@ export class ProductsComponent implements AfterViewInit {
   @ViewChild('templateRecurringDepositProducts') templateRecurringDepositProducts: TemplateRef<any>;
   // Initialize an array of 13 boolean values, all set to false
   arrowBooleans: boolean[] = new Array(13).fill(false);
+  accountFeatures = accountFeatures;
 
   /**
    * To show popover.
@@ -81,22 +83,22 @@ export class ProductsComponent implements AfterViewInit {
         this.showPopover(this.templateLoanProducts, this.loanProducts.nativeElement, 'bottom', true);
       });
     }
-    if (this.configurationWizardService.showSavingsProducts) {
+    if (this.accountFeatures.savings && this.configurationWizardService.showSavingsProducts) {
       setTimeout(() => {
         this.showPopover(this.templateSavingsProducts, this.savingsProducts.nativeElement, 'bottom', true);
       });
     }
-    if (this.configurationWizardService.showShareProducts) {
+    if (this.accountFeatures.shares && this.configurationWizardService.showShareProducts) {
       setTimeout(() => {
         this.showPopover(this.templateShareProducts, this.shareProducts.nativeElement, 'bottom', true);
       });
     }
-    if (this.configurationWizardService.showFixedDepositProducts) {
+    if (this.accountFeatures.fixedDeposits && this.configurationWizardService.showFixedDepositProducts) {
       setTimeout(() => {
         this.showPopover(this.templateFixedDepositProducts, this.fixedDepositProducts.nativeElement, 'bottom', true);
       });
     }
-    if (this.configurationWizardService.showRecurringDepositProducts) {
+    if (this.accountFeatures.recurringDeposits && this.configurationWizardService.showRecurringDepositProducts) {
       setTimeout(() => {
         this.showPopover(
           this.templateRecurringDepositProducts,
@@ -165,6 +167,10 @@ export class ProductsComponent implements AfterViewInit {
    * Next Step (Savings Products Page) Configuration Wizard.
    */
   nextStepSavingsProducts() {
+    if (!this.accountFeatures.savings) {
+      this.nextStepShareProducts();
+      return;
+    }
     this.configurationWizardService.showSavingsProducts = false;
     this.configurationWizardService.showSavingsProductsPage = true;
     this.router.navigate(['/products/saving-products']);
@@ -183,6 +189,10 @@ export class ProductsComponent implements AfterViewInit {
    * Next Step (Share Products Page) Configuration Wizard.
    */
   nextStepShareProducts() {
+    if (!this.accountFeatures.shares) {
+      this.nextStepFixedDepositProducts();
+      return;
+    }
     this.configurationWizardService.showShareProducts = false;
     this.configurationWizardService.showShareProductsPage = true;
     this.router.navigate(['/products/share-products']);
@@ -201,6 +211,10 @@ export class ProductsComponent implements AfterViewInit {
    * Next Step (Fixed Deposit Products Page) Configuration Wizard.
    */
   nextStepFixedDepositProducts() {
+    if (!this.accountFeatures.fixedDeposits) {
+      this.nextStepRecurringDepositProducts();
+      return;
+    }
     this.configurationWizardService.showFixedDepositProducts = false;
     this.configurationWizardService.showFixedDepositProductsPage = true;
     this.router.navigate(['/products/fixed-deposit-products']);
@@ -219,6 +233,12 @@ export class ProductsComponent implements AfterViewInit {
    * Next Step (Recurring Deposit Products Page) Configuration Wizard.
    */
   nextStepRecurringDepositProducts() {
+    if (!this.accountFeatures.recurringDeposits) {
+      this.configurationWizardService.showRecurringDepositProducts = false;
+      this.configurationWizardService.showManageFunds = true;
+      this.router.navigate(['/organization']);
+      return;
+    }
     this.configurationWizardService.showRecurringDepositProducts = false;
     this.configurationWizardService.showRecurringDepositProductsPage = true;
     this.router.navigate(['/products/recurring-deposit-products']);

@@ -11,10 +11,11 @@ import { Injectable, inject } from '@angular/core';
 import { ActivatedRouteSnapshot } from '@angular/router';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
 /** Custom Services */
 import { GroupsService } from '../groups.service';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * GSIM Accounts data resolver.
@@ -30,6 +31,9 @@ export class GSIMAccountsResolver {
    */
   resolve(route: ActivatedRouteSnapshot): Observable<any> {
     const groupId = route.parent.paramMap.get('groupId');
+    if (!isAccountFeatureEnabled('savings')) {
+      return of([]);
+    }
     return this.groupsService.getGSIMAccountsData(groupId);
   }
 }

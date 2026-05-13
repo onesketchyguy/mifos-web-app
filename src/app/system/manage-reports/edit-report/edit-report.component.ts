@@ -38,6 +38,7 @@ import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { MatButton, MatIconButton } from '@angular/material/button';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Edit Report Component.
@@ -102,7 +103,7 @@ export class EditReportComponent implements OnInit {
   reportCategoryTypeOptions: string[] = [
     'Client',
     'Loan',
-    'Savings',
+    ...(isAccountFeatureEnabled('savings') ? ['Savings'] : []),
     'Fund',
     'Accounting'
   ];

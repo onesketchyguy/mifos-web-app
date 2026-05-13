@@ -117,6 +117,7 @@ import { ViewLoanOriginatorComponent } from './loan-originators/view-loan-origin
 import { EditLoanOriginatorComponent } from './loan-originators/edit-loan-originator/edit-loan-originator.component';
 import { CreateLoanOriginatorComponent } from './loan-originators/create-loan-originator/create-loan-originator.component';
 import { LoanOriginatorsTemplateResolver } from './loan-originators/loan-originators-template.resolver';
+import { savingsAccountFeatureCanActivateGuard } from 'app/shared/account-features/account-feature.guard';
 
 /** Organization Routes */
 const routes: Routes = [
@@ -344,6 +345,7 @@ const routes: Routes = [
         },
         {
           path: 'standing-instructions-history',
+          canActivate: [savingsAccountFeatureCanActivateGuard],
           component: StandingInstructionsHistoryComponent,
           data: { title: 'Standing Instructions History', breadcrumb: 'Standing Instructions History' },
           resolve: {

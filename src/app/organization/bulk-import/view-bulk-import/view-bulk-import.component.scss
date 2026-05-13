@@ -113,6 +113,52 @@
   }
 }
 
+.ivytek-import-card {
+  margin-bottom: 24px;
+  padding: 24px;
+
+  mat-card-content {
+    padding: 0;
+  }
+
+  mifosx-file-upload {
+    display: block;
+    margin: 16px 0;
+  }
+
+  mat-progress-bar {
+    margin: 16px 0 8px;
+  }
+
+  .flex-13 {
+    margin-top: 16px;
+
+    button {
+      padding: 8px 24px;
+    }
+  }
+}
+
+.ivytek-results {
+  margin-top: 24px;
+
+  .ivytek-result-row {
+    display: flex;
+    gap: 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+
+    span {
+      flex: 2 1 0;
+      overflow-wrap: anywhere;
+    }
+
+    strong {
+      flex: 1 1 0;
+    }
+  }
+}
+
 .imports-table {
   overflow: auto;
   margin-top: 16px;

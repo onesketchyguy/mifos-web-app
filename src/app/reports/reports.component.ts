@@ -25,6 +25,7 @@ import {
 } from '@angular/material/table';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * Reports component.
@@ -56,6 +57,7 @@ export class ReportsComponent implements OnInit {
 
   /** Reports data. */
   reportsData: any;
+  accountFeatures = accountFeatures;
   /** Report category filter. */
   filter: string;
   /** Columns to be displayed in reports table. */
@@ -111,9 +113,30 @@ export class ReportsComponent implements OnInit {
    * Initializes the data source, paginator and sorter for reports table.
    */
   setReports() {
-    this.dataSource = new MatTableDataSource(this.reportsData);
+    this.dataSource = new MatTableDataSource(this.reportsData.filter((report: any) => this.isReportVisible(report)));
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
+  }
+
+  private isReportVisible(report: any): boolean {
+    const category = (report.reportCategory || '').toLowerCase();
+    const reportName = (report.reportName || '').toLowerCase();
+    const searchableText = `${category} ${reportName}`;
+
+    if (!this.accountFeatures.shares && searchableText.includes('share')) {
+      return false;
+    }
+    if (!this.accountFeatures.fixedDeposits && searchableText.includes('fixed deposit')) {
+      return false;
+    }
+    if (!this.accountFeatures.recurringDeposits && searchableText.includes('recurring deposit')) {
+      return false;
+    }
+    if (!this.accountFeatures.savings && searchableText.includes('saving')) {
+      return false;
+    }
+
+    return true;
   }
 
   /**

@@ -30,5 +30,10 @@ interface Window {
     mifosRemittanceEnabled?: boolean;
     mifosRemittanceApiKey?: string;
     minPasswordLength?: number;
+    enableSavingsAccounts?: string | boolean;
+    enableFixedDepositAccounts?: string | boolean;
+    enableRecurringDepositAccounts?: string | boolean;
+    enableShareAccounts?: string | boolean;
+    enableCheckingAccounts?: string | boolean;
   };
 }

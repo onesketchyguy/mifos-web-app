@@ -117,6 +117,13 @@
   // Set to 'true' to enable RBAC, 'false' (default) for backward compatibility
   window['env']['productionModeEnableRBAC'] = '$MIFOS_PRODUCTION_MODE_ENABLE_RBAC';
 
+  // Non-loan account feature toggles. Leave false for loan-only deployments.
+  window['env']['enableSavingsAccounts'] = '$ENABLE_SAVINGS_ACCOUNTS';
+  window['env']['enableFixedDepositAccounts'] = '$ENABLE_FIXED_DEPOSIT_ACCOUNTS';
+  window['env']['enableRecurringDepositAccounts'] = '$ENABLE_RECURRING_DEPOSIT_ACCOUNTS';
+  window['env']['enableShareAccounts'] = '$ENABLE_SHARE_ACCOUNTS';
+  window['env']['enableCheckingAccounts'] = '$ENABLE_CHECKING_ACCOUNTS';
+
   // External National ID System Integration
   // API key is injected server-side via nginx proxy_set_header — not exposed to browser
   window['env']['enableExternalNationalIdSystem'] = '$ENABLE_EXTERNAL_NATIONAL_ID_SYSTEM';

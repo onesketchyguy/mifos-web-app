@@ -27,6 +27,7 @@ import {
 import { DatetimeFormatPipe } from '../../../pipes/datetime-format.pipe';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
  * View Audit Component.
@@ -55,6 +56,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 })
 export class ViewAuditComponent implements OnInit {
   private route = inject(ActivatedRoute);
+  accountFeatures = accountFeatures;
 
   /** Audit Trail Data. */
   auditTrailData: any;

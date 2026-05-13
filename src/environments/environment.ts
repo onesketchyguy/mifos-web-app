@@ -19,6 +19,7 @@ const loadedEnv = window.env || {};
 
 const parsedMinLength = Number(loadedEnv.minPasswordLength);
 const resolvedMinPasswordLength = Number.isInteger(parsedMinLength) && parsedMinLength > 0 ? parsedMinLength : 8;
+const isRuntimeFlagEnabled = (value: unknown): boolean => value === 'true' || value === true;
 
 export const environment = {
   production: false,
@@ -135,6 +136,14 @@ export const environment = {
    */
   productionModeEnableRBAC:
     loadedEnv.productionModeEnableRBAC === 'true' || loadedEnv.productionModeEnableRBAC === true || false,
+
+  accountFeatures: {
+    savings: isRuntimeFlagEnabled(loadedEnv.enableSavingsAccounts),
+    fixedDeposits: isRuntimeFlagEnabled(loadedEnv.enableFixedDepositAccounts),
+    recurringDeposits: isRuntimeFlagEnabled(loadedEnv.enableRecurringDepositAccounts),
+    shares: isRuntimeFlagEnabled(loadedEnv.enableShareAccounts),
+    checking: isRuntimeFlagEnabled(loadedEnv.enableCheckingAccounts)
+  },
 
   OIDC: {
     // Support legacy FINERACT_PLUGIN_OIDC_* variable names for backward compatibility

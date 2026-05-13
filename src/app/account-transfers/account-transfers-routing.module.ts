@@ -26,6 +26,7 @@ import { StandingInstructionsTemplateResolver } from './common-resolvers/standin
 import { MakeAccountTransferTemplateResolver } from './common-resolvers/make-account-transfer-template.resolver';
 import { ListTransactionsResolver } from './common-resolvers/list-transactions.resolver';
 import { ViewAccountTransferResolver } from './common-resolvers/view-account-transfer.resolver';
+import { savingsAccountFeatureCanActivateGuard } from 'app/shared/account-features/account-feature.guard';
 
 /** Loans Route. */
 const routes: Routes = [
@@ -34,6 +35,7 @@ const routes: Routes = [
     children: [
       {
         path: 'create-standing-instructions',
+        canActivate: [savingsAccountFeatureCanActivateGuard],
         data: {
           title: 'Create Standing Instructions',
           breadcrumb: 'Create Standing Instructions',
@@ -54,6 +56,7 @@ const routes: Routes = [
       },
       {
         path: 'list-standing-instructions',
+        canActivate: [savingsAccountFeatureCanActivateGuard],
         data: {
           title: 'List Standing Instructions',
           breadcrumb: 'List Standing Instructions',
@@ -84,6 +87,7 @@ const routes: Routes = [
       },
       {
         path: ':standingInstructionsId',
+        canActivate: [savingsAccountFeatureCanActivateGuard],
         data: { title: 'Standing Instructions', routeParamBreadcrumb: 'standingInstructionsId' },
         children: [
           {

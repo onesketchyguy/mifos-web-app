@@ -20,6 +20,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 /** Custom Services. */
 import { OrganizationService } from 'app/organization/organization.service';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
 
 /**
  * Create Entity Data Table Checks component.
@@ -65,9 +66,11 @@ export class CreateEntityDataTableChecksComponent implements OnInit {
       this.entityTypes = [
         { name: 'Client', value: 'm_client' },
         { name: 'Loan', value: 'm_loan' },
-        { name: 'Group', value: 'm_group' },
-        { name: 'Savings Account', value: 'm_savings_account' }
+        { name: 'Group', value: 'm_group' }
       ];
+      if (isAccountFeatureEnabled('savings')) {
+        this.entityTypes.push({ name: 'Savings Account', value: 'm_savings_account' });
+      }
     });
   }
 
@@ -124,13 +127,20 @@ export class CreateEntityDataTableChecksComponent implements OnInit {
           this.createEntityForm.removeControl('productId');
           break;
         }
-        default: {
+        case 'm_savings_account': {
           this.entityType = 'm_savings_account';
           this.dataTableList = this.createEntityData.datatables.filter(
             (data: any) => data.entity === 'm_savings_account'
           );
           this.statusList = this.createEntityData.statusSavings;
           this.createEntityForm.addControl('productId', new UntypedFormControl('', Validators.required));
+          break;
+        }
+        default: {
+          this.entityType = '';
+          this.dataTableList = [];
+          this.statusList = [];
+          this.createEntityForm.removeControl('productId');
           break;
         }
       }

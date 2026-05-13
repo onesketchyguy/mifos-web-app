@@ -66,7 +66,7 @@
 @if (actions['Create Guarantor']) {
   <mifosx-create-guarantor [dataObject]="actionButtonData"></mifosx-create-guarantor>
 }
-@if (actions['Disburse to Savings']) {
+@if (accountFeatures.savings && actions['Disburse to Savings']) {
   <mifosx-disburse-to-savings-account [dataObject]="actionButtonData"></mifosx-disburse-to-savings-account>
 }
 @if (actions['Reject']) {

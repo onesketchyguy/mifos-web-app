@@ -55,6 +55,12 @@ import { ClientChargeViewResolver } from './common-resolvers/client-charge-view.
 import { ClientTransactionPayResolver } from './common-resolvers/client-transaction-pay.resolver';
 import { ClientDataAndTemplateResolver } from './common-resolvers/client-and-template.resolver';
 import { ClientCollateralResolver } from './common-resolvers/client-collateral.resolver';
+import {
+  fixedDepositAccountFeatureCanMatchGuard,
+  recurringDepositAccountFeatureCanMatchGuard,
+  savingsAccountFeatureCanMatchGuard,
+  sharesAccountFeatureCanMatchGuard
+} from 'app/shared/account-features/account-feature.guard';
 
 const routes: Routes = [
   Route.withShell([
@@ -263,15 +269,18 @@ const routes: Routes = [
             },
             {
               path: 'fixed-deposits-accounts',
+              canMatch: [fixedDepositAccountFeatureCanMatchGuard],
               loadChildren: () =>
                 import('../deposits/fixed-deposits/fixed-deposits.module').then((m) => m.FixedDepositsModule)
             },
             {
               path: 'savings-accounts',
+              canMatch: [savingsAccountFeatureCanMatchGuard],
               loadChildren: () => import('../savings/savings.module').then((m) => m.SavingsModule)
             },
             {
               path: 'recurring-deposits-accounts',
+              canMatch: [recurringDepositAccountFeatureCanMatchGuard],
               loadChildren: () =>
                 import('../deposits/recurring-deposits/recurring-deposits.module').then(
                   (m) => m.RecurringDepositsModule
@@ -279,10 +288,12 @@ const routes: Routes = [
             },
             {
               path: 'shares-accounts',
+              canMatch: [sharesAccountFeatureCanMatchGuard],
               loadChildren: () => import('../shares/shares.module').then((m) => m.SharesModule)
             },
             {
               path: 'standing-instructions',
+              canMatch: [savingsAccountFeatureCanMatchGuard],
               loadChildren: () =>
                 import('../account-transfers/account-transfers.module').then((m) => m.AccountTransfersModule)
             }

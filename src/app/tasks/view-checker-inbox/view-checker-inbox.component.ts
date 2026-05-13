@@ -23,6 +23,7 @@ import { MatDivider } from '@angular/material/divider';
 import { KeyValuePipe } from '@angular/common';
 import { DateFormatPipe } from '../../pipes/date-format.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 @Component({
   selector: 'mifosx-view-checker-inbox',
@@ -42,6 +43,7 @@ export class ViewCheckerInboxComponent {
   private router = inject(Router);
   private translateService = inject(TranslateService);
   private tasksService = inject(TasksService);
+  accountFeatures = accountFeatures;
 
   /** Checker Inbox Details Data */
   checkerInboxDetail: any;

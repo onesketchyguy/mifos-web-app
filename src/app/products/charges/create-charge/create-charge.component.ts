@@ -21,6 +21,7 @@ import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { ProductsService } from '../../products.service';
 import { SettingsService } from 'app/settings/settings.service';
 import { Dates } from 'app/core/utils/dates';
+import { Charges } from 'app/core/utils/charges';
 import { minNumberValueValidator } from 'app/shared/validators/min-number-value.validator';
 import { maxNumberValueValidator } from 'app/shared/validators/max-number-value.validator';
 import { MatDivider } from '@angular/material/divider';
@@ -50,6 +51,7 @@ export class CreateChargeComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private dateUtils = inject(Dates);
+  private charges = inject(Charges);
   private settingsService = inject(SettingsService);
 
   /** Charge form. */
@@ -83,6 +85,9 @@ export class CreateChargeComponent implements OnInit {
   constructor() {
     this.route.data.subscribe((data: { chargesTemplate: any }) => {
       this.chargesTemplateData = data.chargesTemplate;
+      this.chargesTemplateData.chargeAppliesToOptions = this.charges.filterChargeAppliesToOptions(
+        data.chargesTemplate.chargeAppliesToOptions || []
+      );
       const incomeOptions = data.chargesTemplate.incomeOrLiabilityAccountOptions.incomeAccountOptions || [];
       const liabilityOptions = data.chargesTemplate.incomeOrLiabilityAccountOptions.liabilityAccountOptions || [];
       if (liabilityOptions.length > 0) {

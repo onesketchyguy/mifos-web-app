@@ -11,6 +11,7 @@ import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
+import { MatProgressBar } from '@angular/material/progress-bar';
 import {
   MatTableDataSource,
   MatTable,
@@ -24,9 +25,14 @@ import {
   MatRowDef,
   MatRow
 } from '@angular/material/table';
-import { UntypedFormGroup, UntypedFormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { UntypedFormGroup, UntypedFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 
 /** Custom Imports */
+import { ClientsService } from 'app/clients/clients.service';
+import { LegalFormId } from 'app/clients/models/legal-form.enum';
+import { SettingsService } from 'app/settings/settings.service';
+import { Dates } from 'app/core/utils/dates';
 import { OrganizationService } from '../../organization.service';
 import { BulkImports } from './bulk-imports';
 import { MatFormField, MatLabel, MatHint } from '@angular/material/form-field';
@@ -62,6 +68,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     MatRowDef,
     MatRow,
     MatPaginator,
+    MatProgressBar,
     DateFormatPipe
   ]
 })
@@ -69,6 +76,9 @@ export class ViewBulkImportComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private formBuilder = inject(UntypedFormBuilder);
   private organizationService = inject(OrganizationService);
+  private clientsService = inject(ClientsService);
+  private settingsService = inject(SettingsService);
+  private dateUtils = inject(Dates);
 
   /** offices Data */
   officeData: any;
@@ -80,6 +90,18 @@ export class ViewBulkImportComponent implements OnInit {
   importsData: any;
   /** bulk-import form. */
   bulkImportForm: UntypedFormGroup;
+  /** IvyTek import form. */
+  ivyTekImportForm: UntypedFormGroup;
+  /** IvyTek CSV file. */
+  ivyTekFile: File;
+  /** IvyTek import processing flag. */
+  ivyTekImporting = false;
+  /** IvyTek import progress count. */
+  ivyTekProcessedRecords = 0;
+  /** IvyTek import total count. */
+  ivyTekTotalRecords = 0;
+  /** IvyTek import results. */
+  ivyTekImportResults: any[] = [];
   /** array of deined bulk-imports */
   bulkImportsArray = BulkImports;
   /** bulk-import which user navigated to */
@@ -137,6 +159,16 @@ export class ViewBulkImportComponent implements OnInit {
       officeId: [''],
       staffId: [''],
       legalForm: ['']
+    });
+    this.ivyTekImportForm = this.formBuilder.group({
+      targetEntity: [
+        'clients',
+        Validators.required
+      ],
+      officeId: [
+        '',
+        Validators.required
+      ]
     });
   }
 
@@ -199,6 +231,17 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Sets IvyTek CSV file form control value.
+   * @param {any} $event file change event.
+   */
+  onIvyTekFileSelect($event: any) {
+    if ($event.target.files.length > 0) {
+      this.ivyTekFile = $event.target.files[0];
+      this.ivyTekImportResults = [];
+    }
+  }
+
+  /**
    * Upload excel file containing bulk import data.
    */
   uploadTemplate() {
@@ -238,5 +281,223 @@ export class ViewBulkImportComponent implements OnInit {
       const fileOfBlob = new File([blob], name, { type: contentType });
       window.open(window.URL.createObjectURL(fileOfBlob));
     });
+  }
+
+  /**
+   * Uploads IvyTek Contact CSV data and applies it to clients.
+   */
+  async uploadIvyTekData() {
+    if (
+      !this.ivyTekFile ||
+      this.ivyTekImportForm.invalid ||
+      this.ivyTekImportForm.get('targetEntity').value !== 'clients'
+    ) {
+      return;
+    }
+
+    this.ivyTekImporting = true;
+    this.ivyTekProcessedRecords = 0;
+    this.ivyTekImportResults = [];
+
+    try {
+      const csvText = await this.readFileAsText(this.ivyTekFile);
+      const ivyTekRows = this.parseCsv(csvText).filter((row: any) => this.hasRequiredIvyTekClientData(row));
+      this.ivyTekTotalRecords = ivyTekRows.length;
+
+      for (const row of ivyTekRows) {
+        await this.upsertIvyTekClient(row);
+        this.ivyTekProcessedRecords += 1;
+      }
+    } finally {
+      this.ivyTekImporting = false;
+    }
+  }
+
+  /**
+   * Creates or updates a client from an IvyTek CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private async upsertIvyTekClient(row: any) {
+    const externalId = this.getIvyTekExternalId(row);
+    const clientPayload = this.getIvyTekClientPayload(row);
+
+    try {
+      const existingClient: any = await this.findClientByExternalId(externalId);
+      if (existingClient?.id) {
+        delete clientPayload.officeId;
+        await firstValueFrom(this.clientsService.updateClient(existingClient.id, clientPayload));
+        this.ivyTekImportResults.push({
+          name: this.getIvyTekDisplayName(row),
+          externalId,
+          status: 'labels.inputs.Updated'
+        });
+      } else {
+        await firstValueFrom(this.clientsService.createClient(clientPayload));
+        this.ivyTekImportResults.push({
+          name: this.getIvyTekDisplayName(row),
+          externalId,
+          status: 'labels.inputs.Created'
+        });
+      }
+    } catch (error: any) {
+      this.ivyTekImportResults.push({
+        name: this.getIvyTekDisplayName(row),
+        externalId,
+        status: 'labels.inputs.Failed',
+        message: error?.error?.defaultUserMessage || error?.message
+      });
+    }
+  }
+
+  /**
+   * Finds a client by external identifier.
+   * @param {string} externalId External identifier.
+   */
+  private async findClientByExternalId(externalId: string) {
+    try {
+      return await firstValueFrom(this.clientsService.getClientByExternalId(externalId));
+    } catch (error: any) {
+      if (error?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Builds the Fineract client payload from an IvyTek CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekClientPayload(row: any) {
+    const dateFormat = this.settingsService.dateFormat;
+    const locale = this.settingsService.language.code;
+    const payload: any = {
+      officeId: this.ivyTekImportForm.get('officeId').value,
+      legalFormId: LegalFormId.PERSON,
+      firstname: this.getCsvValue(row, 'FirstName'),
+      middlename: this.getCsvValue(row, 'MiddleName'),
+      lastname: this.getCsvValue(row, 'LastName'),
+      externalId: this.getIvyTekExternalId(row),
+      mobileNo: this.getCsvValue(row, 'Phone') || this.getCsvValue(row, 'OtherPhone'),
+      submittedOnDate: this.dateUtils.formatDate(this.settingsService.businessDate, dateFormat),
+      dateFormat,
+      locale
+    };
+    const birthdate = this.getCsvValue(row, 'Birthdate');
+    if (birthdate) {
+      payload.dateOfBirth = this.dateUtils.formatDate(new Date(birthdate), dateFormat);
+    }
+    Object.keys(payload).forEach((key: string) => {
+      if (payload[key] === '') {
+        delete payload[key];
+      }
+    });
+    return payload;
+  }
+
+  /**
+   * Gets the IvyTek external identifier from a CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekExternalId(row: any): string {
+    return this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c') || this.getCsvValue(row, 'WS_EntityID__c');
+  }
+
+  /**
+   * Gets the display name from a CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekDisplayName(row: any): string {
+    return `${this.getCsvValue(row, 'FirstName')} ${this.getCsvValue(row, 'LastName')}`.trim();
+  }
+
+  /**
+   * Checks whether a CSV row has enough data to become a client payload.
+   * @param {any} row IvyTek CSV row.
+   */
+  private hasRequiredIvyTekClientData(row: any): boolean {
+    return (
+      !!this.getIvyTekExternalId(row) && !!this.getCsvValue(row, 'FirstName') && !!this.getCsvValue(row, 'LastName')
+    );
+  }
+
+  /**
+   * Reads a file as text.
+   * @param {File} file File to read.
+   */
+  private readFileAsText(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file);
+    });
+  }
+
+  /**
+   * Parses CSV text into row objects.
+   * @param {string} csvText CSV text.
+   */
+  private parseCsv(csvText: string): any[] {
+    const rows = this.parseCsvRows(csvText);
+    const headers = rows.shift()?.map((header: string) => header.replace(/^\uFEFF/, '').trim()) || [];
+    return rows.map((row: string[]) =>
+      headers.reduce((record: any, header: string, index: number) => {
+        record[header] = row[index] || '';
+        return record;
+      }, {})
+    );
+  }
+
+  /**
+   * Parses CSV text into arrays.
+   * @param {string} csvText CSV text.
+   */
+  private parseCsvRows(csvText: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let value = '';
+    let quoted = false;
+
+    for (let index = 0; index < csvText.length; index += 1) {
+      const character = csvText[index];
+      const nextCharacter = csvText[index + 1];
+
+      if (character === '"' && quoted && nextCharacter === '"') {
+        value += character;
+        index += 1;
+      } else if (character === '"') {
+        quoted = !quoted;
+      } else if (character === ',' && !quoted) {
+        row.push(value);
+        value = '';
+      } else if ((character === '\n' || character === '\r') && !quoted) {
+        if (character === '\r' && nextCharacter === '\n') {
+          index += 1;
+        }
+        row.push(value);
+        rows.push(row);
+        row = [];
+        value = '';
+      } else {
+        value += character;
+      }
+    }
+
+    if (value || row.length) {
+      row.push(value);
+      rows.push(row);
+    }
+
+    return rows.filter((csvRow: string[]) => csvRow.some((cell: string) => cell.trim() !== ''));
+  }
+
+  /**
+   * Gets and trims a CSV field value.
+   * @param {any} row CSV row.
+   * @param {string} key CSV field key.
+   */
+  private getCsvValue(row: any, key: string): string {
+    return (row[key] || '').toString().trim();
   }
 }
