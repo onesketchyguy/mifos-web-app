@@ -8,7 +8,10 @@
 
 /** Angular Imports. */
 import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { MatCheckbox } from '@angular/material/checkbox';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { TranslateService } from '@ngx-translate/core';
 import { MatPaginator, PageEvent } from '@angular/material/paginator';
 import { MatSort, Sort, MatSortHeader } from '@angular/material/sort';
 import {
@@ -34,6 +37,8 @@ import { catchError, debounceTime, distinctUntilChanged, map, switchMap, takeUnt
 /** Custom Services */
 import { environment } from '../../environments/environment';
 import { ClientsService } from './clients.service';
+import { Dates } from 'app/core/utils/dates';
+import { SettingsService } from 'app/settings/settings.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatProgressBar } from '@angular/material/progress-bar';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
@@ -68,6 +73,11 @@ export const DEBOUNCE_MS = 500;
 })
 export class ClientsComponent implements OnInit, OnDestroy {
   private clientService = inject(ClientsService);
+  private formBuilder = inject(UntypedFormBuilder);
+  private dateUtils = inject(Dates);
+  private settingsService = inject(SettingsService);
+  private snackBar = inject(MatSnackBar);
+  private translateService = inject(TranslateService);
 
   private destroy$ = new Subject<void>();
   private searchInput$ = new Subject<string>();
@@ -102,6 +112,13 @@ export class ClientsComponent implements OnInit, OnDestroy {
     'loanOfficer'
   ];
   dataSource: MatTableDataSource<any> = new MatTableDataSource();
+  duplicateClientGroups: Array<{ name: string; clients: any[]; primaryClient: any }> = [];
+  showAdvancedOptions = false;
+  duplicateMergeForm: UntypedFormGroup;
+  duplicateMergeClosureReasons: any[] = [];
+  duplicateMergeTemplateLoading = false;
+  duplicateMergeTemplateLoaded = false;
+  mergingClientIds: number[] = [];
 
   existsClientsToFilter = false;
   notExistsClientsToFilter = false;
@@ -120,6 +137,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   @ViewChild(MatSort) sort: MatSort;
 
   ngOnInit() {
+    this.createDuplicateMergeForm();
     this.searchInput$
       .pipe(debounceTime(DEBOUNCE_MS), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe((value) => {
@@ -131,6 +149,19 @@ export class ClientsComponent implements OnInit, OnDestroy {
     if (environment.preloadClients) {
       this.getClients();
     }
+  }
+
+  createDuplicateMergeForm(): void {
+    this.duplicateMergeForm = this.formBuilder.group({
+      closureReasonId: [
+        '',
+        Validators.required
+      ],
+      confirmDestructiveMerge: [
+        false,
+        Validators.requiredTrue
+      ]
+    });
   }
 
   ngOnDestroy() {
@@ -176,6 +207,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
         (data: any) => {
           const clients = data.content || [];
           this.dataSource.data = clients;
+          this.refreshDuplicateClientGroups();
 
           this.totalRows = data.totalElements;
 
@@ -221,7 +253,114 @@ export class ClientsComponent implements OnInit, OnDestroy {
           entityIdNumber: clientDetails[index].entityIdNumber,
           loanOfficer: clientDetails[index].loanOfficer
         }));
+        this.refreshDuplicateClientGroups();
       });
+  }
+
+  toggleAdvancedOptions(): void {
+    this.showAdvancedOptions = !this.showAdvancedOptions;
+    if (this.showAdvancedOptions) {
+      this.loadDuplicateMergeTemplate();
+    }
+  }
+
+  private loadDuplicateMergeTemplate(): void {
+    if (this.duplicateMergeTemplateLoaded || this.duplicateMergeTemplateLoading) {
+      return;
+    }
+    this.duplicateMergeTemplateLoading = true;
+    this.clientService.getClientCommandTemplate('close').subscribe({
+      next: (templateData: any) => {
+        this.duplicateMergeClosureReasons = templateData?.narrations || [];
+        this.duplicateMergeTemplateLoaded = true;
+        this.duplicateMergeTemplateLoading = false;
+      },
+      error: () => {
+        this.duplicateMergeTemplateLoading = false;
+      }
+    });
+  }
+
+  private refreshDuplicateClientGroups(): void {
+    const groups = new Map<string, any[]>();
+    this.dataSource.data.forEach((client: any) => {
+      const normalizedName = this.normalizeClientName(client.displayName);
+      if (!normalizedName) {
+        return;
+      }
+      const group = groups.get(normalizedName) || [];
+      group.push(client);
+      groups.set(normalizedName, group);
+    });
+
+    this.duplicateClientGroups = Array.from(groups.values())
+      .filter((clients: any[]) => clients.length > 1)
+      .map((clients: any[]) => ({
+        name: clients[0].displayName,
+        clients,
+        primaryClient: this.getPrimaryDuplicateClientCandidate(clients)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private normalizeClientName(name: string): string {
+    return (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private getPrimaryDuplicateClientCandidate(clients: any[]): any {
+    return [...clients].sort((a: any, b: any) => {
+      const aHasEntityId = a.entityIdNumber ? 1 : 0;
+      const bHasEntityId = b.entityIdNumber ? 1 : 0;
+      if (aHasEntityId !== bHasEntityId) {
+        return bHasEntityId - aHasEntityId;
+      }
+      return (a.id || 0) - (b.id || 0);
+    })[0];
+  }
+
+  isPrimaryDuplicateClient(group: any, client: any): boolean {
+    return group.primaryClient?.id === client.id;
+  }
+
+  isMergingDuplicateClient(client: any): boolean {
+    return this.mergingClientIds.includes(client.id);
+  }
+
+  mergeDuplicateClient(group: any, client: any): void {
+    if (
+      this.isPrimaryDuplicateClient(group, client) ||
+      this.duplicateMergeForm.invalid ||
+      this.isMergingDuplicateClient(client)
+    ) {
+      return;
+    }
+
+    const dateFormat = this.settingsService.dateFormat;
+    const data = {
+      closureDate: this.dateUtils.formatDate(this.settingsService.businessDate, dateFormat),
+      closureReasonId: this.duplicateMergeForm.get('closureReasonId').value,
+      dateFormat,
+      locale: this.settingsService.language.code
+    };
+
+    this.mergingClientIds = [
+      ...this.mergingClientIds,
+      client.id
+    ];
+    this.clientService.executeClientCommand(client.id.toString(), 'close', data).subscribe({
+      next: () => {
+        this.mergingClientIds = this.mergingClientIds.filter((clientId: number) => clientId !== client.id);
+        this.snackBar.open(
+          this.translateService.instant('labels.text.Duplicate client merged into primary candidate.'),
+          this.translateService.instant('labels.buttons.Close'),
+          { duration: 3000 }
+        );
+        this.getClients();
+      },
+      error: () => {
+        this.mergingClientIds = this.mergingClientIds.filter((clientId: number) => clientId !== client.id);
+      }
+    });
   }
 
   private getClientRowDetails(

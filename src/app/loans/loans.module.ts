@@ -16,6 +16,7 @@ import { SharedModule } from 'app/shared/shared.module';
 import { PipesModule } from '../pipes/pipes.module';
 
 /** Custom Components */
+import { LoansComponent } from './loans.component';
 import { AddLoanChargeComponent } from './loans-view/loan-account-actions/add-loan-charge/add-loan-charge.component';
 import { LoansViewComponent } from './loans-view/loans-view.component';
 import { GeneralTabComponent } from './loans-view/general-tab/general-tab.component';
@@ -102,6 +103,7 @@ import { LoansActiveClientMembersComponent } from './loans-account-stepper/loans
     LoansRoutingModule,
     PipesModule,
     TranslateModule,
+    LoansComponent,
     AddLoanChargeComponent,
     LoansViewComponent,
     GeneralTabComponent,

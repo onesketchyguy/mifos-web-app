@@ -7,3 +7,100 @@
  */
 
 @use '../shared/styles/list-layout' as *;
+
+.duplicate-client-review {
+  margin-top: 24px;
+  padding: 24px;
+
+  h3 {
+    margin: 0 0 8px;
+  }
+
+  p {
+    margin: 0 0 16px;
+  }
+
+  .duplicate-merge-warning {
+    padding: 16px;
+    border-left: 4px solid var(--md-sys-color-error, #ba1a1a);
+    background-color: rgb(186 26 26 / 8%);
+  }
+
+  .duplicate-merge-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+
+    mat-form-field {
+      min-width: 240px;
+    }
+  }
+
+  .duplicate-group-summary {
+    margin-bottom: 16px;
+    font-weight: 500;
+  }
+
+  .duplicate-group {
+    padding: 16px 0;
+    border-top: 1px solid rgb(0 0 0 / 12%);
+  }
+
+  .duplicate-group-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+
+    h4 {
+      margin: 0;
+    }
+  }
+
+  .duplicate-client-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .duplicate-client-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid rgb(0 0 0 / 12%);
+    border-radius: 8px;
+
+    &.primary {
+      border-color: var(--md-sys-color-primary, #1976d2);
+      background-color: rgb(25 118 210 / 8%);
+    }
+
+    div {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 20%;
+      gap: 8px;
+      min-width: 160px;
+    }
+
+    a,
+    button {
+      flex: 0 0 auto;
+    }
+
+    strong,
+    span {
+      overflow-wrap: anywhere;
+    }
+  }
+
+  @media (width <= 960px) {
+    .duplicate-group-header {
+      flex-direction: column;
+    }
+  }
+}

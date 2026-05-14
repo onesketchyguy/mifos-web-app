@@ -39,6 +39,9 @@
       </div>
     }
     <div class="action-button gap-25px">
+      <button mat-raised-button type="button" (click)="toggleAdvancedOptions()" *mifosxHasPermission="'READ_CLIENT'">
+        <fa-icon icon="cog" class="m-r-20"></fa-icon>{{ 'labels.buttons.Advanced Options' | translate }}
+      </button>
       <button
         mat-raised-button
         color="primary"
@@ -52,6 +55,101 @@
       </button>
     </div>
   </div>
+
+  @if (showAdvancedOptions) {
+    <section class="duplicate-client-review">
+      <h3>{{ 'labels.heading.Duplicate Client Review' | translate }}</h3>
+      <p>{{ 'labels.text.Duplicate client review uses the current client search results.' | translate }}</p>
+      <p class="duplicate-merge-warning">
+        {{
+          'labels.text.Merging closes the duplicate client record and keeps the primary candidate active.' | translate
+        }}
+      </p>
+
+      <form [formGroup]="duplicateMergeForm" class="duplicate-merge-form">
+        <mat-form-field>
+          <mat-label>{{ 'labels.inputs.Closure Reason' | translate }}</mat-label>
+          <mat-select formControlName="closureReasonId">
+            @for (reason of duplicateMergeClosureReasons; track reason) {
+              <mat-option [value]="reason.id">{{ reason.name }}</mat-option>
+            }
+          </mat-select>
+          @if (duplicateMergeForm.controls.closureReasonId.hasError('required')) {
+            <mat-error>
+              {{ 'labels.inputs.Closure Reason' | translate }} {{ 'labels.commons.is' | translate }}
+              <strong>{{ 'labels.commons.required' | translate }}</strong>
+            </mat-error>
+          }
+        </mat-form-field>
+
+        <mat-checkbox formControlName="confirmDestructiveMerge">
+          {{ 'labels.text.I understand this destructive action closes duplicate clients.' | translate }}
+        </mat-checkbox>
+      </form>
+
+      @if (duplicateClientGroups.length) {
+        <div class="duplicate-group-summary">
+          {{ 'labels.inputs.Potential Duplicate Groups' | translate }}: {{ duplicateClientGroups.length }}
+        </div>
+
+        @for (group of duplicateClientGroups; track group.name) {
+          <section class="duplicate-group">
+            <div class="duplicate-group-header">
+              <h4>{{ hideClientData ? maskName(group.name) : group.name }}</h4>
+              <span>{{ group.clients.length }} {{ 'labels.heading.Clients' | translate }}</span>
+            </div>
+
+            <div class="duplicate-client-list">
+              @for (client of group.clients; track client.id) {
+                <div class="duplicate-client-row" [class.primary]="isPrimaryDuplicateClient(group, client)">
+                  <div>
+                    <strong>
+                      {{
+                        isPrimaryDuplicateClient(group, client)
+                          ? ('labels.inputs.Primary Candidate' | translate)
+                          : ('labels.inputs.Merge Candidate' | translate)
+                      }}
+                    </strong>
+                    <span>{{ hideClientData ? maskName(client.displayName) : client.displayName }}</span>
+                  </div>
+
+                  <div>
+                    <strong>{{ 'labels.inputs.EntityID' | translate }}</strong>
+                    <span>{{ client.entityIdNumber || '-' }}</span>
+                  </div>
+
+                  <div>
+                    <strong>{{ 'labels.inputs.Loan Officer' | translate }}</strong>
+                    <span>{{ getLoanOfficer(client) || '-' }}</span>
+                  </div>
+
+                  <a mat-button color="primary" [routerLink]="[client.id, 'general']">
+                    {{ 'labels.buttons.Review Client' | translate }}
+                  </a>
+
+                  @if (!isPrimaryDuplicateClient(group, client)) {
+                    <button
+                      mat-raised-button
+                      color="warn"
+                      type="button"
+                      [disabled]="
+                        duplicateMergeForm.invalid || duplicateMergeTemplateLoading || isMergingDuplicateClient(client)
+                      "
+                      (click)="mergeDuplicateClient(group, client)"
+                    >
+                      {{ 'labels.buttons.Merge into Primary' | translate }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </section>
+        }
+      } @else {
+        <p>{{ 'labels.text.No duplicate client names were found in the current search results.' | translate }}</p>
+      }
+    </section>
+  }
 
   <div [hidden]="!existsClientsToFilter" class="client-list">
     @if (isLoading) {

@@ -9,6 +9,7 @@
 /** Angular Imports */
 import { NgModule } from '@angular/core';
 import { Routes, RouterModule } from '@angular/router';
+import { Route } from './core/route/route.service';
 
 // Not Found Component
 import { NotFoundComponent } from './not-found/not-found.component';
@@ -22,6 +23,12 @@ const routes: Routes = [
     path: 'callback',
     component: CallbackComponent
   },
+  Route.withShell([
+    {
+      path: 'loans',
+      loadChildren: () => import('./loans/loans.module').then((m) => m.LoansModule)
+    }
+  ]),
   {
     path: '**',
     component: NotFoundComponent

@@ -11,6 +11,7 @@ import { NgModule } from '@angular/core';
 import { Routes, RouterModule } from '@angular/router';
 
 /** Custom Components */
+import { LoansComponent } from './loans.component';
 import { LoansViewComponent } from './loans-view/loans-view.component';
 import { GeneralTabComponent } from './loans-view/general-tab/general-tab.component';
 import { AccountDetailsComponent } from './loans-view/account-details/account-details.component';
@@ -40,6 +41,7 @@ import { LoanBuyDownFeesTabComponent } from './loans-view/loan-buy-down-fees-tab
 import { LoanAccountDashboardComponent } from './loans-view/loan-account-dashboard/loan-account-dashboard.component';
 
 /** Custom Resolvers */
+import { LoansResolver } from './common-resolvers/loans.resolver';
 import { LoanDetailsResolver } from './common-resolvers/loan-details.resolver';
 import { LoanNotesResolver } from './common-resolvers/loan-notes.resolver';
 import { LoanDatatablesResolver } from './common-resolvers/loan-datatables.resolver';
@@ -87,6 +89,13 @@ const routes: Routes = [
     path: '',
     data: { title: 'Loans', breadcrumb: 'Loans', routeParamBreadcrumb: false },
     children: [
+      {
+        path: '',
+        component: LoansComponent,
+        resolve: {
+          loansData: LoansResolver
+        }
+      },
       {
         path: 'create',
         data: { title: 'Create Loans Account', breadcrumb: 'Create Loans Account' },
@@ -428,6 +437,7 @@ const routes: Routes = [
   exports: [RouterModule],
   declarations: [],
   providers: [
+    LoansResolver,
     LoanDetailsResolver,
     LoanNotesResolver,
     LoanDatatablesResolver,

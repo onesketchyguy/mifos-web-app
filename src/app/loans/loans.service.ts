@@ -35,6 +35,17 @@ export class LoansService {
   private dateUtils = inject(Dates);
 
   /**
+   * Get paginated loans.
+   * @param {number} offset Page offset.
+   * @param {number} limit Page size.
+   * @returns {Observable<any>}
+   */
+  getLoans(offset: number = 0, limit: number = 100): Observable<any> {
+    const httpParams = new HttpParams().set('offset', offset.toString()).set('limit', limit.toString());
+    return this.http.get('/loans', { params: httpParams });
+  }
+
+  /**
    * @param {string} loanId loanId of the loan.
    * @returns {Observable<any>}
    */
