@@ -13,6 +13,13 @@ import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
 import { MatProgressBar } from '@angular/material/progress-bar';
 import {
+  MatAccordion,
+  MatExpansionPanel,
+  MatExpansionPanelDescription,
+  MatExpansionPanelHeader,
+  MatExpansionPanelTitle
+} from '@angular/material/expansion';
+import {
   MatTableDataSource,
   MatTable,
   MatColumnDef,
@@ -69,10 +76,17 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     MatRow,
     MatPaginator,
     MatProgressBar,
+    MatAccordion,
+    MatExpansionPanel,
+    MatExpansionPanelHeader,
+    MatExpansionPanelTitle,
+    MatExpansionPanelDescription,
     DateFormatPipe
   ]
 })
 export class ViewBulkImportComponent implements OnInit {
+  private readonly ivyTekClientTribalDatatableName = 'Client Tribal Data';
+
   private route = inject(ActivatedRoute);
   private formBuilder = inject(UntypedFormBuilder);
   private organizationService = inject(OrganizationService);
@@ -92,6 +106,8 @@ export class ViewBulkImportComponent implements OnInit {
   bulkImportForm: UntypedFormGroup;
   /** IvyTek import form. */
   ivyTekImportForm: UntypedFormGroup;
+  /** IvyTek selected result details form. */
+  ivyTekResultDetailsForm: UntypedFormGroup;
   /** IvyTek CSV file. */
   ivyTekFile: File;
   /** IvyTek import processing flag. */
@@ -102,6 +118,25 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekTotalRecords = 0;
   /** IvyTek import results. */
   ivyTekImportResults: any[] = [];
+  /** Selected IvyTek import result. */
+  selectedIvyTekResult: any;
+  /** IvyTek retry processing flag. */
+  ivyTekRetrying = false;
+  /** IvyTek result groups. */
+  ivyTekResultGroups = [
+    {
+      status: 'labels.inputs.Failed',
+      title: 'labels.inputs.Failed'
+    },
+    {
+      status: 'labels.inputs.Created',
+      title: 'labels.inputs.Created'
+    },
+    {
+      status: 'labels.inputs.Updated',
+      title: 'labels.inputs.Updated'
+    }
+  ];
   /** array of deined bulk-imports */
   bulkImportsArray = BulkImports;
   /** bulk-import which user navigated to */
@@ -119,6 +154,10 @@ export class ViewBulkImportComponent implements OnInit {
     'failureCount',
     'download'
   ];
+
+  get isIvyTekImportPage(): boolean {
+    return this.bulkImport.name === 'IvyTek Clients';
+  }
 
   /** Paginator for imports table. */
   @ViewChild(MatPaginator, { static: true }) paginator: MatPaginator;
@@ -169,6 +208,25 @@ export class ViewBulkImportComponent implements OnInit {
         '',
         Validators.required
       ]
+    });
+    this.ivyTekResultDetailsForm = this.formBuilder.group({
+      firstName: [
+        '',
+        Validators.required
+      ],
+      middleName: [''],
+      lastName: [
+        '',
+        Validators.required
+      ],
+      externalId: [
+        '',
+        Validators.required
+      ],
+      entityId: [''],
+      phone: [''],
+      otherPhone: [''],
+      birthdate: ['']
     });
   }
 
@@ -238,6 +296,7 @@ export class ViewBulkImportComponent implements OnInit {
     if ($event.target.files.length > 0) {
       this.ivyTekFile = $event.target.files[0];
       this.ivyTekImportResults = [];
+      this.selectedIvyTekResult = null;
     }
   }
 
@@ -301,7 +360,7 @@ export class ViewBulkImportComponent implements OnInit {
 
     try {
       const csvText = await this.readFileAsText(this.ivyTekFile);
-      const ivyTekRows = this.parseCsv(csvText).filter((row: any) => this.hasRequiredIvyTekClientData(row));
+      const ivyTekRows = this.parseCsv(csvText);
       this.ivyTekTotalRecords = ivyTekRows.length;
 
       for (const row of ivyTekRows) {
@@ -318,35 +377,105 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private async upsertIvyTekClient(row: any) {
-    const externalId = this.getIvyTekExternalId(row);
-    const clientPayload = this.getIvyTekClientPayload(row);
+    const result = this.createIvyTekResult(row);
 
     try {
-      const existingClient: any = await this.findClientByExternalId(externalId);
-      if (existingClient?.id) {
-        delete clientPayload.officeId;
-        await firstValueFrom(this.clientsService.updateClient(existingClient.id, clientPayload));
-        this.ivyTekImportResults.push({
-          name: this.getIvyTekDisplayName(row),
-          externalId,
-          status: 'labels.inputs.Updated'
-        });
-      } else {
-        await firstValueFrom(this.clientsService.createClient(clientPayload));
-        this.ivyTekImportResults.push({
-          name: this.getIvyTekDisplayName(row),
-          externalId,
-          status: 'labels.inputs.Created'
-        });
-      }
+      this.validateIvyTekClientData(row);
+      const status = await this.saveIvyTekClientAndTribalData(row);
+      this.setIvyTekResultStatus(result, status);
     } catch (error: any) {
-      this.ivyTekImportResults.push({
-        name: this.getIvyTekDisplayName(row),
-        externalId,
-        status: 'labels.inputs.Failed',
-        message: error?.error?.defaultUserMessage || error?.message
-      });
+      this.setIvyTekResultStatus(result, 'labels.inputs.Failed', this.getErrorMessage(error));
     }
+    this.ivyTekImportResults.push(result);
+  }
+
+  /**
+   * Selects an IvyTek import result and populates the correction form.
+   * @param {any} result IvyTek import result.
+   */
+  selectIvyTekResult(result: any) {
+    this.selectedIvyTekResult = result;
+    this.ivyTekResultDetailsForm.patchValue({
+      firstName: this.getCsvValue(result.row, 'FirstName'),
+      middleName: this.getCsvValue(result.row, 'MiddleName'),
+      lastName: this.getCsvValue(result.row, 'LastName'),
+      externalId: this.getIvyTekExternalId(result.row),
+      entityId: this.getIvyTekEntityId(result.row),
+      phone: this.getCsvValue(result.row, 'Phone'),
+      otherPhone: this.getCsvValue(result.row, 'OtherPhone'),
+      birthdate: this.getCsvValue(result.row, 'Birthdate')
+    });
+  }
+
+  /**
+   * Retries a failed IvyTek import result after applying corrections.
+   */
+  async retryIvyTekResult() {
+    if (!this.selectedIvyTekResult || this.ivyTekResultDetailsForm.invalid) {
+      return;
+    }
+
+    this.ivyTekRetrying = true;
+    const correctedRow = {
+      ...this.selectedIvyTekResult.row,
+      FirstName: this.ivyTekResultDetailsForm.get('firstName').value,
+      MiddleName: this.ivyTekResultDetailsForm.get('middleName').value,
+      LastName: this.ivyTekResultDetailsForm.get('lastName').value,
+      IvytekTestPkg__ExternalID__c: this.ivyTekResultDetailsForm.get('externalId').value,
+      WS_EntityID__c: this.ivyTekResultDetailsForm.get('entityId').value,
+      Phone: this.ivyTekResultDetailsForm.get('phone').value,
+      OtherPhone: this.ivyTekResultDetailsForm.get('otherPhone').value,
+      Birthdate: this.ivyTekResultDetailsForm.get('birthdate').value
+    };
+    this.selectedIvyTekResult.row = correctedRow;
+    this.selectedIvyTekResult.name = this.getIvyTekDisplayName(correctedRow);
+    this.selectedIvyTekResult.externalId = this.getIvyTekExternalId(correctedRow);
+    this.selectedIvyTekResult.entityId = this.getIvyTekEntityId(correctedRow);
+    this.selectedIvyTekResult.message = '';
+
+    try {
+      this.validateIvyTekClientData(correctedRow);
+      const status = await this.saveIvyTekClientAndTribalData(correctedRow);
+      this.setIvyTekResultStatus(this.selectedIvyTekResult, status);
+    } catch (error: any) {
+      this.setIvyTekResultStatus(this.selectedIvyTekResult, 'labels.inputs.Failed', this.getErrorMessage(error));
+    } finally {
+      this.ivyTekRetrying = false;
+    }
+  }
+
+  /**
+   * Gets IvyTek import results for a status.
+   * @param {string} status Result status.
+   */
+  getIvyTekResultsByStatus(status: string) {
+    return this.ivyTekImportResults.filter((result: any) => result.status === status);
+  }
+
+  /**
+   * Creates an IvyTek result view model from a CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private createIvyTekResult(row: any) {
+    return {
+      name: this.getIvyTekDisplayName(row),
+      externalId: this.getIvyTekExternalId(row),
+      entityId: this.getIvyTekEntityId(row),
+      row,
+      status: '',
+      message: ''
+    };
+  }
+
+  /**
+   * Updates an IvyTek result status.
+   * @param {any} result IvyTek result.
+   * @param {string} status Status translation key.
+   * @param {string} message Optional failure message.
+   */
+  private setIvyTekResultStatus(result: any, status: string, message: string = '') {
+    result.status = status;
+    result.message = message;
   }
 
   /**
@@ -365,24 +494,111 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Saves the Mifos client and IvyTek tribal datatable value from one CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private async saveIvyTekClientAndTribalData(row: any): Promise<string> {
+    const existingClient: any = await this.findClientByExternalId(this.getIvyTekExternalId(row));
+    let clientId: any;
+    let status: string;
+
+    if (existingClient?.id) {
+      await firstValueFrom(this.clientsService.updateClient(existingClient.id, this.getIvyTekClientPayload(row)));
+      clientId = existingClient.id;
+      status = 'labels.inputs.Updated';
+    } else {
+      const createdClient: any = await firstValueFrom(
+        this.clientsService.createClient(this.getIvyTekClientPayload(row, true, true))
+      );
+      clientId = createdClient?.resourceId || createdClient?.clientId || createdClient?.id;
+      status = 'labels.inputs.Created';
+    }
+
+    if (!clientId) {
+      throw new Error('Client saved, but Mifos did not return a client id for the tribal data update.');
+    }
+
+    await this.upsertIvyTekClientTribalData(clientId.toString(), row);
+    return status;
+  }
+
+  /**
+   * Adds or updates the Client Tribal Data datatable entry.
+   * @param {string} clientId Client identifier.
+   * @param {any} row IvyTek CSV row.
+   */
+  private async upsertIvyTekClientTribalData(clientId: string, row: any) {
+    const entityId = this.getIvyTekEntityId(row);
+    if (!entityId) {
+      return;
+    }
+
+    let datatable: any = null;
+    try {
+      datatable = await firstValueFrom(
+        this.clientsService.getClientDatatable(clientId, this.ivyTekClientTribalDatatableName)
+      );
+    } catch (error: any) {
+      if (error?.status !== 404) {
+        throw error;
+      }
+    }
+
+    const payload = this.getIvyTekClientTribalDataPayload(row);
+    if (datatable?.data?.length) {
+      await firstValueFrom(
+        this.clientsService.editClientDatatableEntry(clientId, this.ivyTekClientTribalDatatableName, payload)
+      );
+    } else {
+      await firstValueFrom(
+        this.clientsService.addClientDatatableEntry(clientId, this.ivyTekClientTribalDatatableName, payload)
+      );
+    }
+  }
+
+  /**
+   * Builds the Client Tribal Data payload from an IvyTek CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekClientTribalDataPayload(row: any) {
+    return {
+      EntityID: this.getIvyTekEntityId(row),
+      locale: this.settingsService.language.code
+    };
+  }
+
+  /**
    * Builds the Fineract client payload from an IvyTek CSV row.
    * @param {any} row IvyTek CSV row.
    */
-  private getIvyTekClientPayload(row: any) {
+  private getIvyTekClientPayload(row: any, isNewClient: boolean = false, includeDatatables: boolean = false) {
     const dateFormat = this.settingsService.dateFormat;
     const locale = this.settingsService.language.code;
+    const importDate = this.dateUtils.formatDate(this.settingsService.businessDate, dateFormat);
     const payload: any = {
-      officeId: this.ivyTekImportForm.get('officeId').value,
       legalFormId: LegalFormId.PERSON,
       firstname: this.getCsvValue(row, 'FirstName'),
       middlename: this.getCsvValue(row, 'MiddleName'),
-      lastname: this.getCsvValue(row, 'LastName'),
+      lastname: this.getIvyTekLastName(row),
       externalId: this.getIvyTekExternalId(row),
       mobileNo: this.getCsvValue(row, 'Phone') || this.getCsvValue(row, 'OtherPhone'),
-      submittedOnDate: this.dateUtils.formatDate(this.settingsService.businessDate, dateFormat),
       dateFormat,
       locale
     };
+    if (isNewClient) {
+      payload.officeId = this.ivyTekImportForm.get('officeId').value;
+      payload.active = true;
+      payload.submittedOnDate = importDate;
+      payload.activationDate = importDate;
+    }
+    if (includeDatatables && this.getIvyTekEntityId(row)) {
+      payload.datatables = [
+        {
+          registeredTableName: this.ivyTekClientTribalDatatableName,
+          data: this.getIvyTekClientTribalDataPayload(row)
+        }
+      ];
+    }
     const birthdate = this.getCsvValue(row, 'Birthdate');
     if (birthdate) {
       payload.dateOfBirth = this.dateUtils.formatDate(new Date(birthdate), dateFormat);
@@ -400,7 +616,15 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private getIvyTekExternalId(row: any): string {
-    return this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c') || this.getCsvValue(row, 'WS_EntityID__c');
+    return this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c');
+  }
+
+  /**
+   * Gets the IvyTek tribal entity identifier from a CSV row.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekEntityId(row: any): string {
+    return this.getCsvValue(row, 'WS_EntityID__c');
   }
 
   /**
@@ -408,17 +632,56 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private getIvyTekDisplayName(row: any): string {
-    return `${this.getCsvValue(row, 'FirstName')} ${this.getCsvValue(row, 'LastName')}`.trim();
+    return `${this.getCsvValue(row, 'FirstName')} ${this.getIvyTekLastName(row)}`.trim();
+  }
+
+  /**
+   * Gets the IvyTek last name, preserving the Salesforce suffix from the legacy import mapping.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekLastName(row: any): string {
+    return [
+      this.getCsvValue(row, 'LastName'),
+      this.getCsvValue(row, 'Suffix')
+    ]
+      .filter((namePart: string) => !!namePart)
+      .join(' ');
   }
 
   /**
    * Checks whether a CSV row has enough data to become a client payload.
    * @param {any} row IvyTek CSV row.
    */
-  private hasRequiredIvyTekClientData(row: any): boolean {
-    return (
-      !!this.getIvyTekExternalId(row) && !!this.getCsvValue(row, 'FirstName') && !!this.getCsvValue(row, 'LastName')
-    );
+  private validateIvyTekClientData(row: any) {
+    if (!this.getIvyTekExternalId(row)) {
+      throw new Error('IvyTek External ID is required. Check IvytekTestPkg__ExternalID__c.');
+    }
+    if (!this.getCsvValue(row, 'FirstName')) {
+      throw new Error('First name is required.');
+    }
+    if (!this.getCsvValue(row, 'LastName')) {
+      throw new Error('Last name is required.');
+    }
+  }
+
+  /**
+   * Gets the most useful message from a failed API response.
+   * @param {any} error API or runtime error.
+   */
+  private getErrorMessage(error: any): string {
+    const errorBody = error?.error;
+    const messages = [
+      errorBody?.defaultUserMessage,
+      errorBody?.developerMessage,
+      ...(errorBody?.errors || []).map(
+        (apiError: any) => apiError?.defaultUserMessage || apiError?.developerMessage || apiError?.parameterName
+      ),
+      typeof errorBody === 'string' ? errorBody : '',
+      error?.message,
+      error?.status ? `HTTP ${error.status}${error.statusText ? ` ${error.statusText}` : ''}` : ''
+    ].filter((message: string) => !!message);
+
+    return Array.from(new Set(messages)).join(' ') || 'Unable to import this IvyTek record.';
   }
 
   /**

@@ -142,20 +142,103 @@
 .ivytek-results {
   margin-top: 24px;
 
+  mat-accordion {
+    display: block;
+  }
+
   .ivytek-result-row {
     display: flex;
-    gap: 16px;
-    padding: 8px 0;
+    flex-wrap: wrap;
+    align-items: start;
+    width: 100%;
+    gap: 8px 16px;
+    padding: 10px 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    background: transparent;
     border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    cursor: pointer;
 
-    span {
-      flex: 2 1 0;
+    &.selected {
+      background-color: rgb(16 116 185 / 8%);
+    }
+
+    &:hover,
+    &:focus {
+      background-color: rgb(16 116 185 / 6%);
+    }
+
+    .result-id,
+    .result-message,
+    .result-name {
       overflow-wrap: anywhere;
     }
 
-    strong {
-      flex: 1 1 0;
+    .result-name {
+      flex: 1 1 22%;
+      min-width: 180px;
     }
+
+    .result-id {
+      flex: 1 1 24%;
+      min-width: 120px;
+    }
+
+    .result-status {
+      flex: 0 1 12%;
+      min-width: 88px;
+      text-align: right;
+    }
+
+    .result-message {
+      flex: 1 0 100%;
+      color: var(--md-sys-color-error, #ba1a1a);
+      font-size: 0.875rem;
+    }
+
+    @media (width <= 960px) {
+      .result-status {
+        text-align: left;
+      }
+    }
+  }
+
+  .empty-results {
+    margin: 8px 0;
+  }
+}
+
+.ivytek-detail-card {
+  margin-top: 24px;
+  padding: 24px;
+
+  mat-card-content {
+    padding: 0;
+    flex-wrap: wrap;
+
+    mat-form-field {
+      min-width: 240px;
+    }
+  }
+
+  button {
+    margin-top: 16px;
+  }
+}
+
+.ivytek-error-message {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-left: 4px solid var(--md-sys-color-error, #ba1a1a);
+  background-color: rgb(186 26 26 / 8%);
+
+  p {
+    margin: 8px 0 0;
+    overflow-wrap: anywhere;
   }
 }
 

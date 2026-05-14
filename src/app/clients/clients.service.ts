@@ -96,22 +96,22 @@ export class ClientsService {
 
   getClientDatatable(clientId: string, datatableName: string) {
     const httpParams = new HttpParams().set('genericResultSet', 'true');
-    return this.http.get(`/datatables/${datatableName}/${clientId}`, { params: httpParams });
+    return this.http.get(`/datatables/${encodeURIComponent(datatableName)}/${clientId}`, { params: httpParams });
   }
 
   addClientDatatableEntry(clientId: string, datatableName: string, data: any) {
     const httpParams = new HttpParams().set('genericResultSet', 'true');
-    return this.http.post(`/datatables/${datatableName}/${clientId}`, data, { params: httpParams });
+    return this.http.post(`/datatables/${encodeURIComponent(datatableName)}/${clientId}`, data, { params: httpParams });
   }
 
   editClientDatatableEntry(clientId: string, datatableName: string, data: any) {
     const httpParams = new HttpParams().set('genericResultSet', 'true');
-    return this.http.put(`/datatables/${datatableName}/${clientId}`, data, { params: httpParams });
+    return this.http.put(`/datatables/${encodeURIComponent(datatableName)}/${clientId}`, data, { params: httpParams });
   }
 
   deleteDatatableContent(clientId: string, datatableName: string) {
     const httpParams = new HttpParams().set('genericResultSet', 'true');
-    return this.http.delete(`/datatables/${datatableName}/${clientId}`, { params: httpParams });
+    return this.http.delete(`/datatables/${encodeURIComponent(datatableName)}/${clientId}`, { params: httpParams });
   }
 
   getClientAccountData(clientId: string) {

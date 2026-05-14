@@ -7,96 +7,98 @@
 -->
 
 <div class="container">
-  <div class="gap-2percent m-b-20">
-    <mat-card class="layout-column gap-2percent flex-50">
-      <h3>
-        <strong
-          >{{ 'labels.heading.' + bulkImport.name | translate }} {{ 'labels.heading.Template' | translate }}</strong
-        >
-      </h3>
+  @if (!isIvyTekImportPage) {
+    <div class="gap-2percent m-b-20">
+      <mat-card class="layout-column gap-2percent flex-50">
+        <h3>
+          <strong
+            >{{ 'labels.heading.' + bulkImport.name | translate }} {{ 'labels.heading.Template' | translate }}</strong
+          >
+        </h3>
 
-      <form [formGroup]="bulkImportForm">
-        <mat-card-content>
-          @if (bulkImport.formFields >= 1) {
-            <div>
-              <mat-form-field class="flex-fill">
-                <mat-label>{{ 'labels.inputs.Office' | translate }}</mat-label>
-                <mat-select formControlName="officeId">
-                  @for (office of officeData; track office) {
-                    <mat-option [value]="office.id">
-                      {{ office.name }}
-                    </mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
-            </div>
-          }
+        <form [formGroup]="bulkImportForm">
+          <mat-card-content>
+            @if (bulkImport.formFields >= 1) {
+              <div>
+                <mat-form-field class="flex-fill">
+                  <mat-label>{{ 'labels.inputs.Office' | translate }}</mat-label>
+                  <mat-select formControlName="officeId">
+                    @for (office of officeData; track office) {
+                      <mat-option [value]="office.id">
+                        {{ office.name }}
+                      </mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
+            }
 
-          @if (bulkImport.formFields >= 2) {
-            <div>
-              <mat-form-field class="flex-fill">
-                <mat-label>{{ 'labels.inputs.Staff' | translate }}</mat-label>
-                <mat-select formControlName="staffId">
-                  @for (staff of staffData; track staff) {
-                    <mat-option [value]="staff.id">
-                      {{ staff.displayName }}
-                    </mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
-            </div>
-          }
+            @if (bulkImport.formFields >= 2) {
+              <div>
+                <mat-form-field class="flex-fill">
+                  <mat-label>{{ 'labels.inputs.Staff' | translate }}</mat-label>
+                  <mat-select formControlName="staffId">
+                    @for (staff of staffData; track staff) {
+                      <mat-option [value]="staff.id">
+                        {{ staff.displayName }}
+                      </mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
+            }
 
-          @if (bulkImport.formFields === 3) {
-            <div>
-              <mat-form-field class="flex-fill">
-                <mat-label>{{ 'labels.inputs.Legal Form' | translate }}</mat-label>
-                <mat-select required formControlName="legalForm">
-                  <mat-option value="Entity">{{ 'labels.inputs.Entity' | translate }}</mat-option>
-                  <mat-option value="Person">{{ 'labels.inputs.Person' | translate }}</mat-option>
-                </mat-select>
-              </mat-form-field>
-            </div>
-          }
-        </mat-card-content>
-      </form>
+            @if (bulkImport.formFields === 3) {
+              <div>
+                <mat-form-field class="flex-fill">
+                  <mat-label>{{ 'labels.inputs.Legal Form' | translate }}</mat-label>
+                  <mat-select required formControlName="legalForm">
+                    <mat-option value="Entity">{{ 'labels.inputs.Entity' | translate }}</mat-option>
+                    <mat-option value="Person">{{ 'labels.inputs.Person' | translate }}</mat-option>
+                  </mat-select>
+                </mat-form-field>
+              </div>
+            }
+          </mat-card-content>
+        </form>
 
-      <div class="flex-13">
-        <button
-          mat-raised-button
-          color="primary"
-          (click)="downloadTemplate()"
-          *mifosxHasPermission="bulkImport.permission"
-        >
-          <i class="fa fa-download"></i>&nbsp;&nbsp;{{ 'labels.buttons.Download' | translate }}
-        </button>
-      </div>
-    </mat-card>
+        <div class="flex-13">
+          <button
+            mat-raised-button
+            color="primary"
+            (click)="downloadTemplate()"
+            *mifosxHasPermission="bulkImport.permission"
+          >
+            <i class="fa fa-download"></i>&nbsp;&nbsp;{{ 'labels.buttons.Download' | translate }}
+          </button>
+        </div>
+      </mat-card>
 
-    <mat-card class="layout-column gap-2percent flex-50">
-      <h3>
-        <strong>{{ 'labels.heading.' + bulkImport.name | translate }}</strong>
-      </h3>
+      <mat-card class="layout-column gap-2percent flex-50">
+        <h3>
+          <strong>{{ 'labels.heading.' + bulkImport.name | translate }}</strong>
+        </h3>
 
-      <h4>{{ 'labels.heading.Select Excel File' | translate }}</h4>
+        <h4>{{ 'labels.heading.Select Excel File' | translate }}</h4>
 
-      <mifosx-file-upload flex="75%" (change)="onFileSelect($event)" acceptFilter=".xls,.xlsx"></mifosx-file-upload>
+        <mifosx-file-upload flex="75%" (change)="onFileSelect($event)" acceptFilter=".xls,.xlsx"></mifosx-file-upload>
 
-      @if (bulkImport.name === 'Clients') {
-        <mat-hint>{{ 'labels.text.Please retain the value Entity/Person in the filename.' | translate }}</mat-hint>
-      }
+        @if (bulkImport.name === 'Clients') {
+          <mat-hint>{{ 'labels.text.Please retain the value Entity/Person in the filename.' | translate }}</mat-hint>
+        }
 
-      <div class="flex-spacer"></div>
+        <div class="flex-spacer"></div>
 
-      <div class="flex-13">
-        <button mat-raised-button color="primary" [disabled]="!template" (click)="uploadTemplate()">
-          <i class="fa fa-upload"></i>&nbsp;&nbsp;{{ 'labels.buttons.Upload' | translate }}
-        </button>
-      </div>
-    </mat-card>
-  </div>
+        <div class="flex-13">
+          <button mat-raised-button color="primary" [disabled]="!template" (click)="uploadTemplate()">
+            <i class="fa fa-upload"></i>&nbsp;&nbsp;{{ 'labels.buttons.Upload' | translate }}
+          </button>
+        </div>
+      </mat-card>
+    </div>
+  }
 
-  @if (bulkImport.name === 'Clients') {
+  @if (isIvyTekImportPage) {
     <mat-card class="ivytek-import-card">
       <h3>
         <strong>{{ 'labels.heading.IvyTek Client Import' | translate }}</strong>
@@ -155,86 +157,180 @@
       @if (ivyTekImportResults.length) {
         <div class="ivytek-results">
           <h4>{{ 'labels.heading.Import Results' | translate }}</h4>
-          @for (result of ivyTekImportResults; track $index) {
-            <div class="ivytek-result-row">
-              <span>{{ result.name }}</span>
-              <span>{{ result.externalId }}</span>
-              <strong>{{ result.status | translate }}</strong>
-            </div>
-          }
+          <mat-accordion multi>
+            @for (group of ivyTekResultGroups; track group.status) {
+              <mat-expansion-panel [expanded]="group.status === 'labels.inputs.Failed'">
+                <mat-expansion-panel-header>
+                  <mat-panel-title>{{ group.title | translate }}</mat-panel-title>
+                  <mat-panel-description>{{ getIvyTekResultsByStatus(group.status).length }}</mat-panel-description>
+                </mat-expansion-panel-header>
+
+                @if (getIvyTekResultsByStatus(group.status).length) {
+                  @for (result of getIvyTekResultsByStatus(group.status); track $index) {
+                    <button
+                      type="button"
+                      class="ivytek-result-row"
+                      [class.selected]="selectedIvyTekResult === result"
+                      (click)="selectIvyTekResult(result)"
+                    >
+                      <span class="result-name">{{ result.name }}</span>
+                      <span class="result-id">{{ result.externalId }}</span>
+                      <span class="result-id">{{ result.entityId || '-' }}</span>
+                      <strong class="result-status">{{ result.status | translate }}</strong>
+                      @if (result.message) {
+                        <span class="result-message">{{ result.message }}</span>
+                      }
+                    </button>
+                  }
+                } @else {
+                  <p class="empty-results">{{ 'labels.text.No records found' | translate }}</p>
+                }
+              </mat-expansion-panel>
+            }
+          </mat-accordion>
         </div>
       }
     </mat-card>
+
+    @if (selectedIvyTekResult) {
+      <mat-card class="ivytek-detail-card">
+        <h3>
+          <strong>{{ 'labels.heading.Selected Record' | translate }}</strong>
+        </h3>
+
+        @if (selectedIvyTekResult.message) {
+          <div class="ivytek-error-message">
+            <strong>{{ 'labels.heading.Error Details' | translate }}</strong>
+            <p>{{ selectedIvyTekResult.message }}</p>
+          </div>
+        }
+
+        <form [formGroup]="ivyTekResultDetailsForm">
+          <mat-card-content class="layout-row responsive-column gap-2percent">
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.First Name' | translate }}</mat-label>
+              <input matInput required formControlName="firstName" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.Middle Name' | translate }}</mat-label>
+              <input matInput formControlName="middleName" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.Last Name' | translate }}</mat-label>
+              <input matInput required formControlName="lastName" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.External ID' | translate }}</mat-label>
+              <input matInput required formControlName="externalId" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.EntityID' | translate }}</mat-label>
+              <input matInput formControlName="entityId" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.Phone' | translate }}</mat-label>
+              <input matInput formControlName="phone" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.Other Phone' | translate }}</mat-label>
+              <input matInput formControlName="otherPhone" />
+            </mat-form-field>
+
+            <mat-form-field class="flex-fill">
+              <mat-label>{{ 'labels.inputs.Birthdate' | translate }}</mat-label>
+              <input matInput formControlName="birthdate" />
+            </mat-form-field>
+          </mat-card-content>
+        </form>
+
+        <button
+          mat-raised-button
+          color="primary"
+          [disabled]="ivyTekRetrying || ivyTekResultDetailsForm.invalid"
+          (click)="retryIvyTekResult()"
+        >
+          <i class="fa fa-repeat"></i>&nbsp;&nbsp;{{ 'labels.buttons.Retry' | translate }}
+        </button>
+      </mat-card>
+    }
   }
 
-  <mat-card>
-    <div>
-      <h3 class="documents">
-        <strong>{{ 'labels.heading.Documents' | translate }}</strong>
-      </h3>
-    </div>
+  @if (!isIvyTekImportPage) {
+    <mat-card>
+      <div>
+        <h3 class="documents">
+          <strong>{{ 'labels.heading.Documents' | translate }}</strong>
+        </h3>
+      </div>
 
-    <div class="m-b-10 layout-align-end">
-      <button mat-raised-button color="primary" (click)="refreshDocuments()">
-        <i class="fa fa-repeat"></i>&nbsp;&nbsp;{{ 'labels.buttons.Refresh' | translate }}
-      </button>
-    </div>
+      <div class="m-b-10 layout-align-end">
+        <button mat-raised-button color="primary" (click)="refreshDocuments()">
+          <i class="fa fa-repeat"></i>&nbsp;&nbsp;{{ 'labels.buttons.Refresh' | translate }}
+        </button>
+      </div>
 
-    <div class="imports-table mat-elevation-z1">
-      <table #importsTable mat-table [dataSource]="dataSource" matSort>
-        <ng-container matColumnDef="name">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.name' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.name }}</td>
-        </ng-container>
+      <div class="imports-table mat-elevation-z1">
+        <table #importsTable mat-table [dataSource]="dataSource" matSort>
+          <ng-container matColumnDef="name">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.name' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.name }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="importTime">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Import Time' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.importTime | dateFormat }}</td>
-        </ng-container>
+          <ng-container matColumnDef="importTime">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Import Time' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.importTime | dateFormat }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="endTime">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.End Time' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.endTime | dateFormat }}</td>
-        </ng-container>
+          <ng-container matColumnDef="endTime">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.End Time' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.endTime | dateFormat }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="completed">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Completed' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.completed }}</td>
-        </ng-container>
+          <ng-container matColumnDef="completed">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Completed' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.completed }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="totalRecords">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Total Records' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.totalRecords }}</td>
-        </ng-container>
+          <ng-container matColumnDef="totalRecords">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Total Records' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.totalRecords }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="successCount">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Success Count' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.successCount }}</td>
-        </ng-container>
+          <ng-container matColumnDef="successCount">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Success Count' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.successCount }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="failureCount">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Failure Count' | translate }}</th>
-          <td mat-cell *matCellDef="let import">{{ import.failureCount }}</td>
-        </ng-container>
+          <ng-container matColumnDef="failureCount">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Failure Count' | translate }}</th>
+            <td mat-cell *matCellDef="let import">{{ import.failureCount }}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="download">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Download' | translate }}</th>
-          <td mat-cell *matCellDef="let import">
-            <button
-              mat-icon-button
-              (click)="downloadDocument(import.name, import.importId)"
-              *mifosxHasPermission="'READ_DOCUMENT'"
-            >
-              <fa-icon icon="cloud-download-alt"></fa-icon>
-            </button>
-          </td>
-        </ng-container>
+          <ng-container matColumnDef="download">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Download' | translate }}</th>
+            <td mat-cell *matCellDef="let import">
+              <button
+                mat-icon-button
+                (click)="downloadDocument(import.name, import.importId)"
+                *mifosxHasPermission="'READ_DOCUMENT'"
+              >
+                <fa-icon icon="cloud-download-alt"></fa-icon>
+              </button>
+            </td>
+          </ng-container>
 
-        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: displayedColumns" class="select-row"></tr>
-      </table>
-    </div>
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns" class="select-row"></tr>
+        </table>
+      </div>
 
-    <mat-paginator [pageSizeOptions]="[10, 25, 50, 100]" showFirstLastButtons></mat-paginator>
-  </mat-card>
+      <mat-paginator [pageSizeOptions]="[10, 25, 50, 100]" showFirstLastButtons></mat-paginator>
+    </mat-card>
+  }
 </div>
