@@ -139,6 +139,29 @@
   }
 }
 
+.ivytek-file-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 16px;
+
+  > div {
+    flex: 1 1 calc(33.333% - 16px);
+    min-width: 240px;
+  }
+
+  @media (width <= 960px) {
+    > div {
+      flex-basis: 100%;
+    }
+  }
+}
+
+.ivytek-import-note {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant, #666);
+}
+
 .ivytek-results {
   margin-top: 24px;
 

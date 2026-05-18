@@ -51,6 +51,20 @@ export const BulkImports = [
     formFields: 0
   },
   {
+    name: 'IvyTek Loans',
+    entityType: 'loans',
+    urlSuffix: '/loans',
+    permission: 'READ_LOAN',
+    formFields: 0
+  },
+  {
+    name: 'IvyTek Transactions',
+    entityType: 'loantransactions',
+    urlSuffix: '/loans/repayments',
+    permission: 'READ_LOAN',
+    formFields: 0
+  },
+  {
     name: 'Employees',
     entityType: 'staff',
     urlSuffix: '/staff',

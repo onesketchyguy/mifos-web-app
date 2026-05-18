@@ -70,16 +70,28 @@ export class LoansComponent implements OnInit {
   /** Columns to be displayed in loans table. */
   displayedColumns: string[] = [
     'loanId',
-    'accountNo',
     'borrower',
-    'loanProduct',
-    'principal',
-    'balance',
-    'status'
+    'currentDueDate',
+    'balanceNow',
+    'amountNowDue',
+    'projectedAccruedInterest',
+    'interestRate',
+    'amountLast',
+    'maturityDate',
+    'daysLate'
   ];
 
   /** Sorter for loans table. */
-  @ViewChild(MatSort, { static: true }) sort: MatSort;
+  sort: MatSort;
+
+  /**
+   * Sets the sorter when the table is rendered.
+   */
+  @ViewChild(MatSort)
+  set matSort(sort: MatSort) {
+    this.sort = sort;
+    this.dataSource.sort = this.sort;
+  }
 
   /** Current page index. */
   currentPage = 0;
@@ -101,31 +113,21 @@ export class LoansComponent implements OnInit {
    * Initializes sorting and filtering for the loans table.
    */
   ngOnInit(): void {
-    this.dataSource.sort = this.sort;
     this.dataSource.sortingDataAccessor = (loan: any, column: string) => {
-      switch (column) {
-        case 'borrower':
-          return this.getBorrowerName(loan);
-        case 'loanProduct':
-          return loan.loanProductName;
-        case 'balance':
-          return this.getLoanBalance(loan) || 0;
-        case 'status':
-          return loan.status?.value;
-        default:
-          return loan[column];
-      }
+      return this.getSortValue(loan, column);
     };
     this.dataSource.filterPredicate = (loan: any, filter: string) => {
       const searchData = [
-        loan.id,
-        loan.accountNo,
+        this.getLoanIdentifier(loan),
         this.getBorrowerName(loan),
-        loan.loanProductName,
-        loan.status?.value,
-        loan.status?.code,
-        loan.clientOfficeName,
-        loan.group?.name
+        this.getCurrentDueDate(loan),
+        this.getBalanceNow(loan),
+        this.getAmountNowDue(loan),
+        this.getProjectedAccruedInterest(loan),
+        this.getInterestRate(loan),
+        this.getAmountLast(loan),
+        this.getMaturityDate(loan),
+        this.getDaysLate(loan)
       ]
         .filter((value: any) => value !== undefined && value !== null)
         .join(' ')
@@ -171,6 +173,15 @@ export class LoansComponent implements OnInit {
   }
 
   /**
+   * Returns the loan identifier displayed in the list.
+   * @param {any} loan Loan data.
+   * @returns {string | number} Loan identifier.
+   */
+  getLoanIdentifier(loan: any): string | number {
+    return loan.accountNo || loan.externalId || loan.id || '';
+  }
+
+  /**
    * Returns borrower route for client or group loans.
    * @param {any} loan Loan data.
    * @returns {any[]} Borrower route.
@@ -198,14 +209,100 @@ export class LoansComponent implements OnInit {
    * @param {any} loan Loan data.
    * @returns {number | undefined} Loan balance.
    */
-  getLoanBalance(loan: any): number | undefined {
+  getBalanceNow(loan: any): number | undefined {
     return (
+      loan.balanceNow ??
       loan.loanBalance ??
       loan.totalOutstanding ??
       loan.outstandingBalance ??
       loan.summary?.totalOutstanding ??
       loan.summary?.totalExpectedRepayment
     );
+  }
+
+  /**
+   * Returns the current due date from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {any} Current due date.
+   */
+  getCurrentDueDate(loan: any): any {
+    return (
+      loan.currentDueDate ||
+      loan.nextDueDate ||
+      loan.nextRepaymentDate ||
+      loan.dueDate ||
+      loan.summary?.overdueSinceDate
+    );
+  }
+
+  /**
+   * Returns amount currently due from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {number | undefined} Amount now due.
+   */
+  getAmountNowDue(loan: any): number | undefined {
+    return loan.amountNowDue ?? loan.totalOverdue ?? loan.amountInArrears ?? loan.summary?.totalOverdue;
+  }
+
+  /**
+   * Returns projected accrued interest from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {number | undefined} Projected accrued interest.
+   */
+  getProjectedAccruedInterest(loan: any): number | undefined {
+    return (
+      loan.projectedAccruedInterest ??
+      loan.projectedAccruedInterestAmount ??
+      loan.accruedInterest ??
+      loan.summary?.interestOutstanding
+    );
+  }
+
+  /**
+   * Returns interest rate from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {number | undefined} Interest rate.
+   */
+  getInterestRate(loan: any): number | undefined {
+    return loan.interestRate ?? loan.annualInterestRate ?? loan.interestRatePerPeriod;
+  }
+
+  /**
+   * Returns last amount from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {number | undefined} Last amount.
+   */
+  getAmountLast(loan: any): number | undefined {
+    return loan.amountLast ?? loan.lastPaymentAmount ?? loan.lastRepaymentAmount ?? loan.lastTransactionAmount;
+  }
+
+  /**
+   * Returns maturity date from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {any} Maturity date.
+   */
+  getMaturityDate(loan: any): any {
+    return loan.maturityDate || loan.timeline?.expectedMaturityDate || loan.timeline?.actualMaturityDate;
+  }
+
+  /**
+   * Returns days late from available loan list fields.
+   * @param {any} loan Loan data.
+   * @returns {number | undefined} Days late.
+   */
+  getDaysLate(loan: any): number | undefined {
+    const daysLate = loan.daysLate ?? loan.delinquent?.delinquentDays ?? loan.delinquent?.pastDueDays;
+    if (daysLate !== undefined && daysLate !== null) {
+      return daysLate;
+    }
+
+    const overdueSinceDate = loan.summary?.overdueSinceDate;
+    const overdueSinceTime = this.getDateSortValue(overdueSinceDate);
+    if (!overdueSinceTime) {
+      return undefined;
+    }
+
+    return Math.max(Math.floor((Date.now() - overdueSinceTime) / 86400000), 0);
   }
 
   /**
@@ -224,6 +321,56 @@ export class LoansComponent implements OnInit {
     this.loans = loansData?.pageItems || [];
     this.totalRecords = loansData?.totalFilteredRecords || this.loans.length;
     this.dataSource.data = this.loans;
-    this.dataSource.sort = this.sort;
+    if (this.sort) {
+      this.dataSource.sort = this.sort;
+    }
+  }
+
+  private getSortValue(loan: any, column: string): string | number {
+    switch (column) {
+      case 'loanId':
+        return this.normalizeString(this.getLoanIdentifier(loan));
+      case 'borrower':
+        return this.normalizeString(this.getBorrowerName(loan));
+      case 'currentDueDate':
+        return this.getDateSortValue(this.getCurrentDueDate(loan));
+      case 'balanceNow':
+        return this.getBalanceNow(loan) || 0;
+      case 'amountNowDue':
+        return this.getAmountNowDue(loan) || 0;
+      case 'projectedAccruedInterest':
+        return this.getProjectedAccruedInterest(loan) || 0;
+      case 'interestRate':
+        return this.getInterestRate(loan) || 0;
+      case 'amountLast':
+        return this.getAmountLast(loan) || 0;
+      case 'maturityDate':
+        return this.getDateSortValue(this.getMaturityDate(loan));
+      case 'daysLate':
+        return this.getDaysLate(loan) || 0;
+      default:
+        return this.normalizeString(loan[column]);
+    }
+  }
+
+  private normalizeString(value: any): string {
+    return value === undefined || value === null ? '' : value.toString().toLowerCase();
+  }
+
+  private getDateSortValue(value: any): number {
+    if (!value) {
+      return 0;
+    }
+
+    if (Array.isArray(value)) {
+      const [
+        year,
+        month,
+        day
+      ] = value;
+      return new Date(year, month - 1, day).getTime();
+    }
+
+    return new Date(value).getTime() || 0;
   }
 }

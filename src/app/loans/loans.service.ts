@@ -515,6 +515,17 @@ export class LoansService {
     return this.http.post(`/${productType}`, loanAccount);
   }
 
+  /**
+   * Executes a command directly on a loan account.
+   * @param {string} loanId Loan Account Id.
+   * @param {string} command Loan command.
+   * @param {any} data Command payload.
+   */
+  executeLoanCommand(loanId: string, command: string, data: any): Observable<any> {
+    const httpParams = new HttpParams().set('command', command);
+    return this.http.post(`/loans/${loanId}`, data, { params: httpParams });
+  }
+
   getLoanDocuments(loanId: any): Observable<any> {
     return this.http.get(`/loans/${loanId}/documents`);
   }
