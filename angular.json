@@ -105,6 +105,11 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
+            "allowedHosts": [
+              "mifos",
+              "192.168.1.120",
+              "localhost"
+            ],
             "buildTarget": "mifosx-web-app:build",
             "proxyConfig": "proxy.conf.js"
           },

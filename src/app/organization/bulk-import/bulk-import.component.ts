@@ -31,7 +31,7 @@ import { AccountFeature, isAccountFeatureEnabled } from 'app/shared/account-feat
 })
 export class BulkImportComponent {
   // Initialize an array of boolean values, all set to false
-  arrowBooleans: boolean[] = new Array(21).fill(false);
+  arrowBooleans: boolean[] = new Array(19).fill(false);
 
   /** Bulk Import Options */
   bulkImportOptions = [
@@ -119,28 +119,16 @@ export class BulkImportComponent {
       index: 9
     },
     {
-      permission: 'READ_CLIENT',
-      routerLink: 'IvyTek Clients',
-      icon: 'user',
-      title: 'labels.heading.IvyTek Client Import',
-      explanation: 'labels.text.Upload IvyTek contact CSV files to update or create clients',
+      permission: [
+        'READ_CLIENT',
+        'READ_LOAN'
+      ],
+      routerLink: 'IvyTek Import',
+      icon: 'cloud-upload',
+      title: 'labels.heading.IvyTek Import',
+      explanation:
+        'labels.text.Upload IvyTek CSV files and import clients, loans, and transactions in dependency order',
       index: 18
-    },
-    {
-      permission: 'READ_LOAN',
-      routerLink: 'IvyTek Loans',
-      icon: 'money-bill-alt',
-      title: 'labels.heading.IvyTek Loan Import',
-      explanation: 'labels.text.Upload IvyTek loan CSV files to create loan accounts',
-      index: 19
-    },
-    {
-      permission: 'READ_LOAN',
-      routerLink: 'IvyTek Transactions',
-      icon: 'exchange-alt',
-      title: 'labels.heading.IvyTek Transaction Import',
-      explanation: 'labels.text.Validate IvyTek transaction CSV files before running the SQL import',
-      index: 20
     },
     {
       permission: 'READ_CENTER',

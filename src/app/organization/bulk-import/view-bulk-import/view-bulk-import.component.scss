@@ -146,7 +146,7 @@
   margin-top: 16px;
 
   > div {
-    flex: 1 1 calc(33.333% - 16px);
+    flex: 1 1 240px;
     min-width: 240px;
   }
 
@@ -157,13 +157,72 @@
   }
 }
 
-.ivytek-import-note {
-  margin: 0;
+.ivytek-stage-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
   color: var(--md-sys-color-on-surface-variant, #666);
+}
+
+.ivytek-import-note {
+  margin: 16px 0 0;
+  color: var(--md-sys-color-on-surface-variant, #666);
+}
+
+.ivytek-run-summary {
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+  border-radius: 8px;
+  background-color: var(--md-sys-color-surface-container-low, #f7f7f7);
+
+  .ivytek-run-summary-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .ivytek-run-summary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .ivytek-run-summary-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+
+    span {
+      flex: 1 1 220px;
+      min-width: 220px;
+      overflow-wrap: anywhere;
+    }
+  }
 }
 
 .ivytek-results {
   margin-top: 24px;
+
+  .ivytek-results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+
+    h4 {
+      margin: 0;
+    }
+
+    @media (width <= 600px) {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
 
   mat-accordion {
     display: block;

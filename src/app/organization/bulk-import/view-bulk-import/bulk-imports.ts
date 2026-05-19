@@ -44,6 +44,13 @@ export const BulkImports = [
     formFields: 3
   },
   {
+    name: 'IvyTek Import',
+    entityType: 'client',
+    urlSuffix: '/clients',
+    permission: 'READ_CLIENT',
+    formFields: 0
+  },
+  {
     name: 'IvyTek Clients',
     entityType: 'client',
     urlSuffix: '/clients',

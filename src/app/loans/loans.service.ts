@@ -189,6 +189,14 @@ export class LoansService {
   }
 
   /**
+   * Gets loan account details by external id.
+   * @param externalId Loan external id.
+   */
+  getLoanByExternalId(externalId: string): Observable<any> {
+    return this.http.get(`/loans/external-id/${encodeURIComponent(externalId)}`);
+  }
+
+  /**
    * Get collateral template.
    * @param {string} loanId Loan Id.
    * @returns {Observable<any>}
