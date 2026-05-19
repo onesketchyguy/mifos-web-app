@@ -147,13 +147,10 @@ export const environment = {
 
   OIDC: {
     // Support legacy FINERACT_PLUGIN_OIDC_* variable names for backward compatibility
-    oidcServerEnabled:
-      loadedEnv.oidcServerEnabled === true ||
-      loadedEnv.oidcServerEnabled === 'true' ||
-      loadedEnv.FINERACT_PLUGIN_OIDC_ENABLED === 'true',
-    oidcBaseUrl: loadedEnv.oidcBaseUrl || loadedEnv.FINERACT_PLUGIN_OIDC_BASE_URL || '',
-    oidcClientId: loadedEnv.oidcClientId || loadedEnv.FINERACT_PLUGIN_OIDC_CLIENT_ID || '',
-    oidcApiUrl: loadedEnv.oidcApiUrl || loadedEnv.FINERACT_PLUGIN_OIDC_API_URL || '',
+    oidcServerEnabled: true,
+    oidcBaseUrl: 'http://192.168.1.125:4000/realms/master',
+    oidcClientId: 'mifos-web-app',
+    oidcApiUrl: 'http://192.168.1.125:8080/fineract-provider/api/v1',
     oidcFrontUrl: loadedEnv.oidcFrontUrl || loadedEnv.FINERACT_PLUGIN_OIDC_FRONTEND_URL || ''
   }
 };
