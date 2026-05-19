@@ -151,7 +151,7 @@ export const environment = {
     oidcBaseUrl: 'http://192.168.1.125:4000/realms/master',
     oidcClientId: 'mifos-web-app',
     oidcApiUrl: 'http://192.168.1.125:8080/fineract-provider/api/v1',
-    oidcFrontUrl: loadedEnv.oidcFrontUrl || loadedEnv.FINERACT_PLUGIN_OIDC_FRONTEND_URL || ''
+    oidcFrontUrl: 'http://mifos:8080'
   }
 };
 
