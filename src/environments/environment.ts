@@ -40,14 +40,14 @@ export const environment = {
   /** Feature flag for Remember Me functionality */
   enableRememberMe: false,
   oauth: {
-    enabled: true,
-    serverUrl: 'http://192.168.1.125:4000/realms/master',
-    logoutUrl: 'http://192.168.1.125:4000/realms/master/protocol/openid-connect/logout',
-    appId: 'mifos-web-app',
-    authorizeUrl: 'http://192.168.1.125:4000/realms/master/protocol/openid-connect/auth',
-    tokenUrl: 'http://192.168.1.125:4000/realms/master/protocol/openid-connect/token',
-    redirectUri: 'http://192.168.1.120:8080/',
-    scope: 'openid profile email'
+    enabled: loadedEnv.oauthServerEnabled === true,
+    serverUrl: loadedEnv.oauthServerUrl || '',
+    logoutUrl: loadedEnv.oauthServerLogoutUrl || '',
+    appId: loadedEnv.oauthAppId || '',
+    authorizeUrl: loadedEnv.oauthAuthorizeUrl || '',
+    tokenUrl: loadedEnv.oauthTokenUrl || '',
+    redirectUri: loadedEnv.oauthRedirectUri || '',
+    scope: loadedEnv.oauthScope || ''
   },
   warningDialog: {
     title: 'Warning',
@@ -147,11 +147,14 @@ export const environment = {
 
   OIDC: {
     // Support legacy FINERACT_PLUGIN_OIDC_* variable names for backward compatibility
-    oidcServerEnabled: true,
-    oidcBaseUrl: 'http://192.168.1.125:4000/realms/master',
-    oidcClientId: 'mifos-web-app',
-    oidcApiUrl: 'http://192.168.1.125:8080/fineract-provider/api/v1',
-    oidcFrontUrl: 'http://mifos:8080'
+    oidcServerEnabled:
+      loadedEnv.oidcServerEnabled === true ||
+      loadedEnv.oidcServerEnabled === 'true' ||
+      loadedEnv.FINERACT_PLUGIN_OIDC_ENABLED === 'true',
+    oidcBaseUrl: loadedEnv.oidcBaseUrl || loadedEnv.FINERACT_PLUGIN_OIDC_BASE_URL || '',
+    oidcClientId: loadedEnv.oidcClientId || loadedEnv.FINERACT_PLUGIN_OIDC_CLIENT_ID || '',
+    oidcApiUrl: loadedEnv.oidcApiUrl || loadedEnv.FINERACT_PLUGIN_OIDC_API_URL || '',
+    oidcFrontUrl: loadedEnv.oidcFrontUrl || loadedEnv.FINERACT_PLUGIN_OIDC_FRONTEND_URL || ''
   }
 };
 

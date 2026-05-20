@@ -41,7 +41,8 @@ export class AuthenticationInterceptor implements HttpInterceptor {
    * Intercepts a Http request and sets the request headers.
    */
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    if (this.isKeycloakUrl(request.url) || this.isExternalUrl(request.url)) {
+    //if (this.isKeycloakUrl(request.url) || this.isExternalUrl(request.url)) {
+    if (this.isExternalUrl(request.url)) {
       return next.handle(request);
     }
 
@@ -53,14 +54,14 @@ export class AuthenticationInterceptor implements HttpInterceptor {
     return next.handle(request);
   }
 
-  private isKeycloakUrl(url: string): boolean {
-    return (
-      url.includes('192.168.1.125:4000') ||
-      url.includes('/realms/master/') ||
-      url.includes('/protocol/openid-connect/') ||
-      url.includes('/.well-known/openid-configuration')
-    );
-  }
+  // private isKeycloakUrl(url: string): boolean {
+  //   return (
+  //     url.includes('192.168.1.125:4000') ||
+  //     url.includes('/realms/master/') ||
+  //     url.includes('/protocol/openid-connect/') ||
+  //     url.includes('/.well-known/openid-configuration')
+  //   );
+  // }
 
   /**
    * Absolute URLs pointing at our own Fineract server are internal — ApiPrefixInterceptor
