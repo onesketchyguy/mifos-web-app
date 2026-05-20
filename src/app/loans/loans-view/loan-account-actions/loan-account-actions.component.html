@@ -120,3 +120,6 @@
 @if (actions['Update discount']) {
   <mifosx-update-discount [dataObject]="actionButtonData"></mifosx-update-discount>
 }
+@if (actions['Generate Delinquency Letter']) {
+  <mifosx-loan-delinquency-letter [dataObject]="actionButtonData || navigationData"></mifosx-loan-delinquency-letter>
+}

@@ -177,8 +177,17 @@
           </mat-form-field>
 
           <mat-form-field class="flex-fill">
+            <mat-label>{{ 'labels.inputs.Start Stage' | translate }}</mat-label>
+            <mat-select required formControlName="startStage">
+              <mat-option value="clients">{{ 'labels.heading.Stage 1 Clients' | translate }}</mat-option>
+              <mat-option value="loans">{{ 'labels.heading.Stage 2 Loans' | translate }}</mat-option>
+              <mat-option value="transactions">{{ 'labels.heading.Stage 3 Transactions' | translate }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field class="flex-fill">
             <mat-label>{{ 'labels.inputs.Office' | translate }}</mat-label>
-            <mat-select required formControlName="officeId">
+            <mat-select [required]="ivyTekStartStage !== 'transactions'" formControlName="officeId">
               @for (office of officeData; track office) {
                 <mat-option [value]="office.id">
                   {{ office.name }}
@@ -200,7 +209,12 @@
 
           <mat-form-field class="flex-fill">
             <mat-label>{{ 'labels.inputs.Charge Name' | translate }}</mat-label>
-            <input matInput formControlName="chargeName" />
+            <mat-select formControlName="chargeName">
+              <mat-option value="">{{ 'labels.inputs.No Charge' | translate }}</mat-option>
+              @for (charge of ivyTekLoanChargeOptions; track charge.id) {
+                <mat-option [value]="charge.name">{{ charge.name }}</mat-option>
+              }
+            </mat-select>
           </mat-form-field>
 
           <mat-form-field class="flex-fill">
@@ -420,7 +434,7 @@
                 <mat-expansion-panel-header>
                   <mat-panel-title>{{ group.title | translate }}</mat-panel-title>
                   <mat-panel-description>
-                    {{ getIvyTekTransactionResultsByStatus(group.status).length }}
+                    {{ getIvyTekTransactionResultGroupCount(group.status) }}
                   </mat-panel-description>
                 </mat-expansion-panel-header>
 

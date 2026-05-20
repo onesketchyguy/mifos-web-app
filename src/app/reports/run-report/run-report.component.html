@@ -112,6 +112,16 @@
           <fa-icon icon="download" class="m-r-10"></fa-icon>
           {{ 'labels.buttons.Run and Download Report' | translate }}
         </button>
+        <button
+          *ngIf="isTableReport()"
+          mat-raised-button
+          color="primary"
+          [disabled]="!reportForm.valid || isProcessing"
+          (click)="runReportAndPrint($event)"
+        >
+          <fa-icon icon="print" class="m-r-10"></fa-icon>
+          {{ 'labels.buttons.Run and Print Report' | translate }}
+        </button>
       </mat-card-actions>
     </form>
   </mat-card>

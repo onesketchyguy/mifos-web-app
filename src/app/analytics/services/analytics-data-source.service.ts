@@ -7,7 +7,7 @@
  */
 
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { TranslateService } from '@ngx-translate/core';
 
 import { Observable, forkJoin, of } from 'rxjs';
@@ -19,6 +19,7 @@ import {
   AnalyticsWidgetDefinition,
   AnalyticsWidgetState
 } from '../models/analytics-dashboard.model';
+import { SKIP_ERROR_HANDLER } from 'app/core/http/error-handler.interceptor';
 
 @Injectable({
   providedIn: 'root'
@@ -245,7 +246,15 @@ export class AnalyticsDataSourceService {
       return cached;
     }
 
-    const request$ = this.http.get(`/runreports/${reportName}`, { params: httpParams }).pipe(shareReplay(1));
+    const request$ = this.http
+      .get(`/runreports/${reportName}`, {
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true),
+        params: httpParams
+      })
+      .pipe(
+        catchError(() => of([])),
+        shareReplay(1)
+      );
     this.reportCache.set(cacheKey, request$);
     return request$;
   }

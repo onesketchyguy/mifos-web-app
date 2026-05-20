@@ -21,6 +21,8 @@ import { Alert } from './alert.model';
 export class AlertService {
   /** Alert event. */
   public alertEvent: EventEmitter<Alert>;
+  /** Alert suppression reference count. */
+  private suppressedAlerts = 0;
 
   /**
    * Initializes alert event.
@@ -34,6 +36,20 @@ export class AlertService {
    * @param {Alert} alertEvent Alert event.
    */
   alert(alertEvent: Alert) {
+    if (this.suppressedAlerts > 0) {
+      return;
+    }
     this.alertEvent.emit(alertEvent);
+  }
+
+  /**
+   * Suppresses alert events until the returned callback is invoked.
+   * @returns {() => void} Callback to restore alert events.
+   */
+  suppress(): () => void {
+    this.suppressedAlerts += 1;
+    return () => {
+      this.suppressedAlerts = Math.max(0, this.suppressedAlerts - 1);
+    };
   }
 }

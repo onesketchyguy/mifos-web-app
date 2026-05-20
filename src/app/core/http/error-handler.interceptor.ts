@@ -8,7 +8,14 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
-import { HttpEvent, HttpInterceptor, HttpHandler, HttpRequest, HttpErrorResponse } from '@angular/common/http';
+import {
+  HttpContextToken,
+  HttpEvent,
+  HttpInterceptor,
+  HttpHandler,
+  HttpRequest,
+  HttpErrorResponse
+} from '@angular/common/http';
 
 /** rxjs Imports */
 import { Observable, throwError } from 'rxjs';
@@ -25,6 +32,9 @@ import { TranslateService } from '@ngx-translate/core';
 /** Initialize Logger */
 const log = new Logger('ErrorHandlerInterceptor');
 
+/** Allows optional/background requests to handle their own errors. */
+export const SKIP_ERROR_HANDLER = new HttpContextToken<boolean>(() => false);
+
 /**
  * Http Request interceptor to add a default error handler to requests.
  */
@@ -38,6 +48,10 @@ export class ErrorHandlerInterceptor implements HttpInterceptor {
   ];
 
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    if (request.context.get(SKIP_ERROR_HANDLER)) {
+      return next.handle(request);
+    }
+
     return next.handle(request).pipe(catchError((error) => this.handleError(error, request)));
   }
 

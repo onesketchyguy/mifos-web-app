@@ -44,6 +44,7 @@ import { AttachOriginatorComponent } from './attach-originator/attach-originator
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { UpdateDiscountComponent } from './update-discount/update-discount.component';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
+import { LoanDelinquencyLetterComponent } from './loan-delinquency-letter/loan-delinquency-letter.component';
 
 /**
  * Loan Account Actions component.
@@ -85,7 +86,8 @@ import { accountFeatures } from 'app/shared/account-features/account-features.co
     AddInterestPauseComponent,
     UndoWriteOffComponent,
     AttachOriginatorComponent,
-    UpdateDiscountComponent
+    UpdateDiscountComponent,
+    LoanDelinquencyLetterComponent
   ]
 })
 export class LoanAccountActionsComponent {
@@ -139,6 +141,7 @@ export class LoanAccountActionsComponent {
     'Undo Write-off': boolean;
     'Attach Loan Originator': boolean;
     'Update discount': boolean;
+    'Generate Delinquency Letter': boolean;
   } = {
     Close: false,
     'Undo Approval': false,
@@ -180,7 +183,8 @@ export class LoanAccountActionsComponent {
     'Buy Down Fee': false,
     'Undo Write-off': false,
     'Attach Loan Originator': false,
-    'Update discount': false
+    'Update discount': false,
+    'Generate Delinquency Letter': false
   };
 
   actionButtonData: any;

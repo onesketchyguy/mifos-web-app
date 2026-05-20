@@ -303,6 +303,14 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
         });
       }
 
+      if (this.hasDelinquencyLetterData()) {
+        this.buttonConfig.addButton({
+          name: 'Generate Delinquency Letter',
+          icon: 'file-word',
+          taskPermissionName: 'READ_LOAN'
+        });
+      }
+
       if (this.loanDetailsData.canDisburse || this.loanDetailsData.multiDisburseLoan) {
         this.buttonConfig.addButton({
           name: 'Disburse',
@@ -595,5 +603,18 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
       return false;
     }
     return this.loanDetailsData?.status?.active === true;
+  }
+
+  private hasDelinquencyLetterData(): boolean {
+    if (!this.loanDetailsData) {
+      return false;
+    }
+    return (
+      this.loanDetailsData.inArrears === true ||
+      (this.loanDetailsData.delinquent?.pastDueDays ?? 0) > 0 ||
+      (this.loanDetailsData.delinquent?.delinquentDays ?? 0) > 0 ||
+      (this.loanDetailsData.delinquent?.delinquentAmount ?? 0) > 0 ||
+      (this.loanDetailsData.summary?.totalOverdue ?? 0) > 0
+    );
   }
 }

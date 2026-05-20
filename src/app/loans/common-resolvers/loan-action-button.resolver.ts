@@ -81,6 +81,8 @@ export class LoanActionButtonResolver {
         : this.loansService.getWorkingCapitalLoanActionTemplate(loanId, loanActionButton.toLowerCase());
     } else if (loanActionButton === 'Loan Screen Reports') {
       return this.loansService.getLoanScreenReportsData();
+    } else if (loanActionButton === 'Generate Delinquency Letter') {
+      return this.loansService.getLoanAccountAssociationDetails(loanId);
     } else if (loanActionButton === 'Approve') {
       return this.loanProductService.isLoanProduct
         ? this.loansService.getLoanApprovalTemplate(loanId)

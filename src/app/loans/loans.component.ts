@@ -25,8 +25,13 @@ import {
   MatRow
 } from '@angular/material/table';
 
+/** rxjs Imports */
+import { forkJoin, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+
 /** Custom Services */
 import { LoansService } from './loans.service';
+import { SettingsService } from 'app/settings/settings.service';
 
 /** Custom Imports */
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
@@ -62,6 +67,7 @@ export class LoansComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private loansService = inject(LoansService);
+  private settingsService = inject(SettingsService);
 
   /** Loans data. */
   loans: any[] = [];
@@ -99,6 +105,8 @@ export class LoansComponent implements OnInit {
   pageSize = 100;
   /** Total filtered records. */
   totalRecords = 0;
+  /** Current loan enrichment request id. */
+  enrichmentRequest = 0;
 
   /**
    * Retrieves the loans data from `resolve`.
@@ -212,10 +220,10 @@ export class LoansComponent implements OnInit {
   getBalanceNow(loan: any): number | undefined {
     return (
       loan.balanceNow ??
+      loan.summary?.totalOutstanding ??
       loan.loanBalance ??
       loan.totalOutstanding ??
       loan.outstandingBalance ??
-      loan.summary?.totalOutstanding ??
       loan.summary?.totalExpectedRepayment
     );
   }
@@ -226,12 +234,16 @@ export class LoansComponent implements OnInit {
    * @returns {any} Current due date.
    */
   getCurrentDueDate(loan: any): any {
+    const duePeriods = this.getOutstandingSchedulePeriods(loan);
+    const currentDuePeriod = duePeriods.find((period: any) => this.getDateSortValue(period.dueDate) <= this.getToday());
     return (
       loan.currentDueDate ||
       loan.nextDueDate ||
       loan.nextRepaymentDate ||
       loan.dueDate ||
-      loan.summary?.overdueSinceDate
+      loan.summary?.overdueSinceDate ||
+      currentDuePeriod?.dueDate ||
+      duePeriods[0]?.dueDate
     );
   }
 
@@ -241,7 +253,13 @@ export class LoansComponent implements OnInit {
    * @returns {number | undefined} Amount now due.
    */
   getAmountNowDue(loan: any): number | undefined {
-    return loan.amountNowDue ?? loan.totalOverdue ?? loan.amountInArrears ?? loan.summary?.totalOverdue;
+    return (
+      loan.amountNowDue ??
+      loan.summary?.totalOverdue ??
+      loan.totalOverdue ??
+      loan.amountInArrears ??
+      this.getOutstandingDueAmount(loan)
+    );
   }
 
   /**
@@ -254,7 +272,12 @@ export class LoansComponent implements OnInit {
       loan.projectedAccruedInterest ??
       loan.projectedAccruedInterestAmount ??
       loan.accruedInterest ??
-      loan.summary?.interestOutstanding
+      loan.summary?.interestOverdue ??
+      loan.summary?.interestOutstanding ??
+      this.getOutstandingPeriodTotal(loan, [
+        'interestOutstanding',
+        'interestDue'
+      ])
     );
   }
 
@@ -273,7 +296,8 @@ export class LoansComponent implements OnInit {
    * @returns {number | undefined} Last amount.
    */
   getAmountLast(loan: any): number | undefined {
-    return loan.amountLast ?? loan.lastPaymentAmount ?? loan.lastRepaymentAmount ?? loan.lastTransactionAmount;
+    const lastPayment = this.getLastPaymentTransaction(loan);
+    return loan.amountLast ?? loan.lastPaymentAmount ?? loan.lastRepaymentAmount ?? lastPayment?.amount;
   }
 
   /**
@@ -282,7 +306,12 @@ export class LoansComponent implements OnInit {
    * @returns {any} Maturity date.
    */
   getMaturityDate(loan: any): any {
-    return loan.maturityDate || loan.timeline?.expectedMaturityDate || loan.timeline?.actualMaturityDate;
+    return (
+      loan.maturityDate ||
+      loan.timeline?.expectedMaturityDate ||
+      loan.timeline?.actualMaturityDate ||
+      loan.repaymentSchedule?.periods?.[loan.repaymentSchedule.periods.length - 1]?.dueDate
+    );
   }
 
   /**
@@ -296,7 +325,10 @@ export class LoansComponent implements OnInit {
       return daysLate;
     }
 
-    const overdueSinceDate = loan.summary?.overdueSinceDate;
+    const overduePeriod = this.getOutstandingSchedulePeriods(loan).find(
+      (period: any) => this.getDateSortValue(period.dueDate) < this.getToday()
+    );
+    const overdueSinceDate = loan.summary?.overdueSinceDate || overduePeriod?.dueDate;
     const overdueSinceTime = this.getDateSortValue(overdueSinceDate);
     if (!overdueSinceTime) {
       return undefined;
@@ -318,12 +350,41 @@ export class LoansComponent implements OnInit {
   }
 
   private setLoans(loansData: any) {
+    const enrichmentRequest = ++this.enrichmentRequest;
     this.loans = loansData?.pageItems || [];
     this.totalRecords = loansData?.totalFilteredRecords || this.loans.length;
     this.dataSource.data = this.loans;
     if (this.sort) {
       this.dataSource.sort = this.sort;
     }
+    this.enrichLoans(enrichmentRequest);
+  }
+
+  private enrichLoans(enrichmentRequest: number) {
+    if (!this.loans.length) {
+      return;
+    }
+
+    forkJoin(
+      this.loans.map((loan: any) =>
+        this.loansService.getLoanAccountAssociationDetails(loan.id).pipe(
+          map((loanDetails: any) => ({
+            ...loan,
+            ...loanDetails
+          })),
+          catchError(() => of(loan))
+        )
+      )
+    ).subscribe((loans: any[]) => {
+      if (enrichmentRequest !== this.enrichmentRequest) {
+        return;
+      }
+      this.loans = loans;
+      this.dataSource.data = this.loans;
+      if (this.sort) {
+        this.dataSource.sort = this.sort;
+      }
+    });
   }
 
   private getSortValue(loan: any, column: string): string | number {
@@ -355,6 +416,70 @@ export class LoansComponent implements OnInit {
 
   private normalizeString(value: any): string {
     return value === undefined || value === null ? '' : value.toString().toLowerCase();
+  }
+
+  private getOutstandingSchedulePeriods(loan: any): any[] {
+    return (loan.repaymentSchedule?.periods || [])
+      .filter((period: any) => period.dueDate && !period.complete && this.getPeriodOutstanding(period) > 0)
+      .sort((firstPeriod: any, secondPeriod: any) => {
+        return this.getDateSortValue(firstPeriod.dueDate) - this.getDateSortValue(secondPeriod.dueDate);
+      });
+  }
+
+  private getOutstandingDueAmount(loan: any): number | undefined {
+    const today = this.getToday();
+    const total = this.getOutstandingSchedulePeriods(loan)
+      .filter((period: any) => this.getDateSortValue(period.dueDate) <= today)
+      .reduce((amountDue: number, period: any) => amountDue + this.getPeriodOutstanding(period), 0);
+    return total || undefined;
+  }
+
+  private getPeriodOutstanding(period: any): number {
+    if (period.totalOutstandingForPeriod !== undefined && period.totalOutstandingForPeriod !== null) {
+      return period.totalOutstandingForPeriod;
+    }
+
+    const outstandingBreakdown =
+      (period.principalOutstanding || 0) +
+      (period.interestOutstanding || 0) +
+      (period.feeChargesOutstanding || 0) +
+      (period.penaltyChargesOutstanding || 0);
+
+    return outstandingBreakdown || period.totalDueForPeriod || 0;
+  }
+
+  private getOutstandingPeriodTotal(loan: any, fields: string[]): number | undefined {
+    const total = this.getOutstandingSchedulePeriods(loan).reduce((outstandingTotal: number, period: any) => {
+      return (
+        outstandingTotal +
+        fields.reduce((fieldTotal: number, field: string) => {
+          return fieldTotal + (period[field] || 0);
+        }, 0)
+      );
+    }, 0);
+    return total || undefined;
+  }
+
+  private getLastPaymentTransaction(loan: any): any {
+    return (loan.transactions || [])
+      .filter((transaction: any) => {
+        const transactionType = transaction.type?.value || '';
+        return (
+          !transaction.manuallyReversed &&
+          !transaction.reversed &&
+          (transaction.type?.repayment || /repayment|payment|refund/i.test(transactionType))
+        );
+      })
+      .sort((firstTransaction: any, secondTransaction: any) => {
+        return (
+          this.getDateSortValue(secondTransaction.date) - this.getDateSortValue(firstTransaction.date) ||
+          (secondTransaction.id || 0) - (firstTransaction.id || 0)
+        );
+      })[0];
+  }
+
+  private getToday(): number {
+    return this.getDateSortValue(this.settingsService.businessDate || new Date());
   }
 
   private getDateSortValue(value: any): number {

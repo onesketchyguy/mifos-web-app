@@ -31,6 +31,7 @@ import { GlobalConfiguration } from 'app/system/configurations/global-configurat
 import * as ExcelJS from 'exceljs';
 import { AlertService } from 'app/core/alert/alert.service';
 import { TranslateService } from '@ngx-translate/core';
+import { finalize } from 'rxjs/operators';
 import { NgIf, NgFor, NgSwitch, NgSwitchCase } from '@angular/common';
 import { MatCheckbox } from '@angular/material/checkbox';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
@@ -452,35 +453,55 @@ export class RunReportComponent implements OnInit {
   runReportAndExport($event: Event): void {
     $event.stopPropagation();
     this.isProcessing = true;
-    const userResponseValues = this.formatUserResponse(this.reportForm.value);
 
     const reportName = this.report.name;
-    const payload = {
-      ...userResponseValues,
-      decimalChoice: this.decimalChoice.value
-      // exportCSV: true
-    };
-    this.reportsService.getRunReportData(reportName, payload).subscribe((res: any) => {
-      if (res.data.length > 0) {
-        this.alertService.alert({
-          type: this.translateService.instant('errors.report.type'),
-          message: this.translateService.instant('errors.report.generated', { reportName })
-        });
+    this.reportsService
+      .getRunReportData(reportName, this.getTableReportPayload())
+      .pipe(
+        finalize(() => {
+          this.isProcessing = false;
+        })
+      )
+      .subscribe((res: any) => {
+        if (res.data.length > 0) {
+          this.alertService.alert({
+            type: this.translateService.instant('errors.report.type'),
+            message: this.translateService.instant('errors.report.generated', { reportName })
+          });
 
-        const displayedColumns: string[] = [];
-        res.columnHeaders.forEach((header: any) => {
-          displayedColumns.push(header.columnName);
-        });
+          const displayedColumns = this.getDisplayedColumns(res);
+          this.exportToXLS(reportName, res.data, displayedColumns);
+        } else {
+          this.alertService.alert({
+            type: this.translateService.instant('errors.report.type'),
+            message: this.translateService.instant('errors.report.generatedNoData', { reportName })
+          });
+        }
+      });
+  }
 
-        this.exportToXLS(reportName, res.data, displayedColumns);
-      } else {
-        this.alertService.alert({
-          type: this.translateService.instant('errors.report.type'),
-          message: this.translateService.instant('errors.report.generatedNoData', { reportName })
-        });
-      }
-      this.isProcessing = false;
-    });
+  runReportAndPrint($event: Event): void {
+    $event.stopPropagation();
+    this.isProcessing = true;
+
+    const reportName = this.report.name;
+    this.reportsService
+      .getRunReportData(reportName, this.getTableReportPayload())
+      .pipe(
+        finalize(() => {
+          this.isProcessing = false;
+        })
+      )
+      .subscribe((res: any) => {
+        if (res.data.length > 0) {
+          this.printTableReport(reportName, res.data, this.getDisplayedColumns(res));
+        } else {
+          this.alertService.alert({
+            type: this.translateService.instant('errors.report.type'),
+            message: this.translateService.instant('errors.report.generatedNoData', { reportName })
+          });
+        }
+      });
   }
 
   async exportToXLS(reportName: string, csvData: any, displayedColumns: string[]): Promise<void> {
@@ -524,5 +545,98 @@ export class RunReportComponent implements OnInit {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 0);
+  }
+
+  private getTableReportPayload(): object {
+    return {
+      ...this.formatUserResponse(this.reportForm.value),
+      decimalChoice: this.decimalChoice.value
+    };
+  }
+
+  private getDisplayedColumns(reportData: any): string[] {
+    return reportData.columnHeaders.map((header: any) => header.columnName);
+  }
+
+  private printTableReport(reportName: string, reportRows: any[], displayedColumns: string[]): void {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      return;
+    }
+
+    const tableHeaders = displayedColumns.map((column: string) => `<th>${this.escapeHtml(column)}</th>`).join('');
+    const tableRows = reportRows
+      .map((reportRow: any) => {
+        const cells = displayedColumns
+          .map((_: string, index: number) => `<td>${this.escapeHtml(reportRow.row[index])}</td>`)
+          .join('');
+        return `<tr>${cells}</tr>`;
+      })
+      .join('');
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${this.escapeHtml(reportName)}</title>
+          <style>
+            body {
+              color: #212121;
+              font-family: Arial, sans-serif;
+              margin: 24px;
+            }
+
+            h1 {
+              font-size: 20px;
+              font-weight: 500;
+              margin: 0 0 16px;
+            }
+
+            table {
+              border-collapse: collapse;
+              width: 100%;
+            }
+
+            th,
+            td {
+              border: 1px solid #d6d6d6;
+              font-size: 12px;
+              padding: 8px;
+              text-align: left;
+              vertical-align: top;
+            }
+
+            th {
+              background: #f5f5f5;
+              font-weight: 600;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${this.escapeHtml(reportName)}</h1>
+          <table>
+            <thead>
+              <tr>${tableHeaders}</tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  }
+
+  private escapeHtml(value: any): string {
+    return value === undefined || value === null
+      ? ''
+      : value
+          .toString()
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
   }
 }

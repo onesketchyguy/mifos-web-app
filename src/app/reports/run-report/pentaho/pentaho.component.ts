@@ -9,6 +9,7 @@
 /** Angular Imports */
 import { Component, OnChanges, OnDestroy, Input, inject } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
+import { Subscription } from 'rxjs';
 
 /** Custom Services */
 import { ReportsService } from '../../reports.service';
@@ -42,6 +43,8 @@ export class PentahoComponent implements OnChanges, OnDestroy {
   pentahoUrl: any;
   /** current blob URL to track and revoke */
   private currentBlobUrl: string | null = null;
+  /** current report request subscription */
+  private reportSubscription?: Subscription;
 
   /**
    * Fetches run report data post changes in run report form.
@@ -52,7 +55,8 @@ export class PentahoComponent implements OnChanges, OnDestroy {
   }
 
   getRunReportData() {
-    this.reportsService
+    this.reportSubscription?.unsubscribe();
+    this.reportSubscription = this.reportsService
       .getPentahoRunReportData(
         this.dataObject.report.name,
         this.dataObject.formData,
@@ -60,24 +64,30 @@ export class PentahoComponent implements OnChanges, OnDestroy {
         this.settingsService.language.code,
         this.settingsService.dateFormat
       )
-      .subscribe((res: any) => {
-        const contentType = res.headers.get('Content-Type');
-        const file = new Blob([res.body], { type: contentType });
+      .subscribe({
+        next: (res: any) => {
+          const contentType = res.headers.get('Content-Type');
+          const file = new Blob([res.body], { type: contentType });
 
-        if (this.currentBlobUrl) {
-          URL.revokeObjectURL(this.currentBlobUrl);
+          if (this.currentBlobUrl) {
+            URL.revokeObjectURL(this.currentBlobUrl);
+          }
+
+          let filecontent = URL.createObjectURL(file);
+          this.currentBlobUrl = filecontent;
+
+          if (this.isTicketReport()) {
+            filecontent += '#zoom=500';
+          }
+
+          this.pentahoUrl = this.sanitizer.bypassSecurityTrustResourceUrl(filecontent);
+          this.hideOutput = false;
+          this.progressBarService.decrease();
+        },
+        error: () => {
+          this.hideOutput = true;
+          this.pentahoUrl = null;
         }
-
-        let filecontent = URL.createObjectURL(file);
-        this.currentBlobUrl = filecontent;
-
-        if (this.isTicketReport()) {
-          filecontent += '#zoom=500';
-        }
-
-        this.pentahoUrl = this.sanitizer.bypassSecurityTrustResourceUrl(filecontent);
-        this.hideOutput = false;
-        this.progressBarService.decrease();
       });
   }
 
@@ -86,6 +96,7 @@ export class PentahoComponent implements OnChanges, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.reportSubscription?.unsubscribe();
     if (this.currentBlobUrl) {
       URL.revokeObjectURL(this.currentBlobUrl);
     }
