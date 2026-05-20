@@ -41,14 +41,25 @@ export class AuthenticationInterceptor implements HttpInterceptor {
    * Intercepts a Http request and sets the request headers.
    */
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    if (this.isExternalUrl(request.url)) {
+    if (this.isKeycloakUrl(request.url) || this.isExternalUrl(request.url)) {
       return next.handle(request);
     }
+
     if (this.settingsService.tenantIdentifier) {
       httpOptions.headers['Fineract-Platform-TenantId'] = this.settingsService.tenantIdentifier;
     }
+
     request = request.clone({ setHeaders: httpOptions.headers });
     return next.handle(request);
+  }
+
+  private isKeycloakUrl(url: string): boolean {
+    return (
+      url.includes('192.168.1.125:4000') ||
+      url.includes('/realms/master/') ||
+      url.includes('/protocol/openid-connect/') ||
+      url.includes('/.well-known/openid-configuration')
+    );
   }
 
   /**
@@ -64,7 +75,7 @@ export class AuthenticationInterceptor implements HttpInterceptor {
       }
       return true;
     } catch {
-      return false; // Relative URL (new URL() throws) → internal
+      return false; // Relative URL (new URL() throws) is internal
     }
   }
 

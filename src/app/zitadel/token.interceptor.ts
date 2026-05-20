@@ -22,6 +22,17 @@ export class TokenInterceptor implements HttpInterceptor {
 
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     const token = this.authService.getAccessToken();
+
+    const isKeycloakRequest =
+      req.url.includes('192.168.1.125:4000') ||
+      req.url.includes('/realms/master/') ||
+      req.url.includes('/protocol/openid-connect/') ||
+      req.url.includes('/.well-known/openid-configuration');
+
+    if (isKeycloakRequest) {
+      return next.handle(req);
+    }
+
     let headersConfig: { [key: string]: string } = {
       'Fineract-Platform-TenantId': this.FINERACT_PLATFORM_TENANT_IDENTIFIER,
       'Content-Type': req.headers.get('Content-Type') || 'application/json'
