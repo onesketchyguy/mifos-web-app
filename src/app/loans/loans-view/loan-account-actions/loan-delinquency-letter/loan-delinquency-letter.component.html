@@ -86,23 +86,29 @@
               <input matInput type="number" formControlName="payoffAmount" required />
             </mat-form-field>
 
-            @if (requiresMaturityDate) {
-              <mat-form-field (click)="maturityDatePicker.open()">
-                <mat-label>{{ 'labels.inputs.Maturity Date' | translate }}</mat-label>
-                <input matInput [matDatepicker]="maturityDatePicker" formControlName="maturityDate" required />
-                <mat-datepicker-toggle matSuffix [for]="maturityDatePicker"></mat-datepicker-toggle>
-                <mat-datepicker #maturityDatePicker></mat-datepicker>
-              </mat-form-field>
-            }
+            <mat-form-field (click)="maturityDatePicker.open()">
+              <mat-label>{{ 'labels.inputs.Maturity Date' | translate }}</mat-label>
+              <input
+                matInput
+                [matDatepicker]="maturityDatePicker"
+                formControlName="maturityDate"
+                [required]="requiresMaturityDate"
+              />
+              <mat-datepicker-toggle matSuffix [for]="maturityDatePicker"></mat-datepicker-toggle>
+              <mat-datepicker #maturityDatePicker></mat-datepicker>
+            </mat-form-field>
 
-            @if (requiresDeadlineDate) {
-              <mat-form-field (click)="deadlineDatePicker.open()">
-                <mat-label>{{ 'labels.inputs.Deadline Date' | translate }}</mat-label>
-                <input matInput [matDatepicker]="deadlineDatePicker" formControlName="deadlineDate" required />
-                <mat-datepicker-toggle matSuffix [for]="deadlineDatePicker"></mat-datepicker-toggle>
-                <mat-datepicker #deadlineDatePicker></mat-datepicker>
-              </mat-form-field>
-            }
+            <mat-form-field (click)="deadlineDatePicker.open()">
+              <mat-label>{{ 'labels.inputs.Deadline Date' | translate }}</mat-label>
+              <input
+                matInput
+                [matDatepicker]="deadlineDatePicker"
+                formControlName="deadlineDate"
+                [required]="requiresDeadlineDate"
+              />
+              <mat-datepicker-toggle matSuffix [for]="deadlineDatePicker"></mat-datepicker-toggle>
+              <mat-datepicker #deadlineDatePicker></mat-datepicker>
+            </mat-form-field>
 
             <mat-form-field>
               <mat-label>{{ 'labels.inputs.Officer Name' | translate }}</mat-label>
@@ -129,9 +135,19 @@
           <section class="letter-preview mat-typography">
             <h3>{{ 'labels.heading.Letter Preview' | translate }}</h3>
             <div class="preview-page">
-              @for (line of previewLines; track $index) {
-                @if (line) {
-                  <p>{{ line }}</p>
+              <div class="preview-letterhead">
+                <img [src]="letterheadImagePath" alt="" />
+                <div class="preview-letterhead-contact">{{ letterheadContactLine }}</div>
+              </div>
+              @for (paragraph of previewParagraphs; track $index) {
+                @if (paragraph.text) {
+                  <p
+                    [class.preview-center]="paragraph.alignment === 'center'"
+                    [class.preview-bold]="paragraph.bold"
+                    [class.preview-notice]="paragraph.highlight"
+                  >
+                    {{ paragraph.text }}
+                  </p>
                 } @else {
                   <div class="preview-space"></div>
                 }
@@ -143,9 +159,22 @@
             <button type="button" mat-raised-button (click)="gotoLoanDefaultView()">
               {{ 'labels.buttons.Cancel' | translate }}
             </button>
-            <button mat-raised-button color="primary" [disabled]="letterForm.invalid || isLoadingClientData">
+            <button
+              mat-raised-button
+              color="primary"
+              [disabled]="letterForm.invalid || isLoadingClientData || isGeneratingLetter"
+            >
               <fa-icon icon="file-word" size="sm" class="m-r-10"></fa-icon>
               {{ 'labels.buttons.Download Letter' | translate }}
+            </button>
+            <button
+              type="button"
+              mat-raised-button
+              [disabled]="letterForm.invalid || isLoadingClientData || isGeneratingLetter"
+              (click)="downloadAllLetters()"
+            >
+              <fa-icon icon="file-word" size="sm" class="m-r-10"></fa-icon>
+              {{ 'labels.buttons.Download All Letters' | translate }}
             </button>
           </mat-card-actions>
         </mat-card-content>

@@ -32,5 +32,6 @@ export interface DelinquencyLetterParagraph {
   text: string;
   alignment?: 'left' | 'center';
   bold?: boolean;
+  highlight?: boolean;
   spacingAfter?: number;
 }

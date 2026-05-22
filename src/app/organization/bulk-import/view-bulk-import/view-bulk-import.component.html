@@ -261,6 +261,19 @@
 
         <div>
           <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
+          <h4>{{ 'labels.heading.Select IvyTek Application CSV File' | translate }}</h4>
+          <mifosx-file-upload
+            flex="75%"
+            (change)="onIvyTekApplicationFileSelect($event)"
+            acceptFilter=".csv"
+          ></mifosx-file-upload>
+          @if (ivyTekApplicationFile) {
+            <mat-hint>{{ ivyTekApplicationFile.name }}</mat-hint>
+          }
+        </div>
+
+        <div>
+          <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
           <h4>{{ 'labels.heading.Select IvyTek Contact Applications CSV File' | translate }}</h4>
           <mifosx-file-upload
             flex="75%"

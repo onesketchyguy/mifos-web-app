@@ -170,6 +170,8 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekLoanImportForm: UntypedFormGroup;
   /** IvyTek loan CSV file. */
   ivyTekLoanFile: File;
+  /** IvyTek application CSV file. */
+  ivyTekApplicationFile: File;
   /** IvyTek contact application CSV file. */
   ivyTekLoanContactApplicationsFile: File;
   /** IvyTek loan import processing flag. */
@@ -557,6 +559,17 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Sets IvyTek applications CSV file form control value.
+   * @param {any} $event file change event.
+   */
+  onIvyTekApplicationFileSelect($event: any) {
+    if ($event.target.files.length > 0) {
+      this.ivyTekApplicationFile = $event.target.files[0];
+      this.ivyTekLoanImportResults = [];
+    }
+  }
+
+  /**
    * Sets IvyTek contact applications CSV file form control value.
    * @param {any} $event file change event.
    */
@@ -637,14 +650,22 @@ export class ViewBulkImportComponent implements OnInit {
       const shouldRunTransactions = this.shouldRunIvyTekStage('transactions') && !!this.ivyTekTransactionFile;
       const contactRows =
         shouldRunClients || shouldRunLoans ? this.parseCsv(await this.readFileAsText(this.ivyTekFile)) : [];
+      const applicationRows =
+        (shouldRunClients || shouldRunLoans) && this.ivyTekApplicationFile
+          ? this.parseCsv(await this.readFileAsText(this.ivyTekApplicationFile))
+          : [];
       const contactApplicationRows =
         shouldRunClients || shouldRunLoans
           ? this.parseCsv(await this.readFileAsText(this.ivyTekLoanContactApplicationsFile))
           : [];
+      const loanContactLinkRows = [
+        ...applicationRows,
+        ...contactApplicationRows
+      ];
       const loanRows = this.parseCsv(await this.readFileAsText(this.ivyTekLoanFile));
 
       if (shouldRunClients) {
-        const clientRows = this.buildIvyTekClientRows(contactRows, contactApplicationRows, loanRows);
+        const clientRows = this.buildIvyTekClientRows(contactRows, loanContactLinkRows, loanRows);
         await this.uploadIvyTekClientRows(clientRows);
         if (this.hasIvyTekResultStatus(this.ivyTekImportResults, ['labels.inputs.Failed'])) {
           this.finishIvyTekPipelineRun(
@@ -656,7 +677,7 @@ export class ViewBulkImportComponent implements OnInit {
       }
 
       if (shouldRunLoans) {
-        await this.uploadIvyTekLoanRows(loanRows, contactRows, contactApplicationRows);
+        await this.uploadIvyTekLoanRows(loanRows, contactRows, loanContactLinkRows);
         if (
           this.hasIvyTekResultStatus(this.ivyTekLoanImportResults, [
             'labels.inputs.Failed',
@@ -718,8 +739,14 @@ export class ViewBulkImportComponent implements OnInit {
       this.ivyTekLoanImportResults = [];
       const loanRows = this.parseCsv(await this.readFileAsText(this.ivyTekLoanFile));
       const contactRows = this.parseCsv(await this.readFileAsText(this.ivyTekFile));
+      const applicationRows = this.ivyTekApplicationFile
+        ? this.parseCsv(await this.readFileAsText(this.ivyTekApplicationFile))
+        : [];
       const contactApplicationRows = this.parseCsv(await this.readFileAsText(this.ivyTekLoanContactApplicationsFile));
-      await this.uploadIvyTekLoanRows(loanRows, contactRows, contactApplicationRows);
+      await this.uploadIvyTekLoanRows(loanRows, contactRows, [
+        ...applicationRows,
+        ...contactApplicationRows
+      ]);
     } finally {
       restoreAlerts();
     }
@@ -792,6 +819,9 @@ export class ViewBulkImportComponent implements OnInit {
       const productsByName = this.buildIvyTekLoanProductsByName(productRows);
       const helperRowsByLoanId = this.buildIvyTekLoanRowsById(contactRows);
       const contactApplicationsByLoanId = this.buildIvyTekContactApplicationsByLoanId(contactApplicationRows);
+      const contactRowsById = this.buildIvyTekContactRowsById(contactRows);
+      const contactRowsByName = this.buildIvyTekContactRowsByName(contactRows);
+      const contactApplicationRowsById = this.buildIvyTekContactApplicationRowsById(contactApplicationRows);
       const clientCache = new Map<string, any>();
       const syncedClientIds = new Set<string>();
       const productDetailsCache = new Map<string, any>();
@@ -801,6 +831,9 @@ export class ViewBulkImportComponent implements OnInit {
           row,
           helperRowsByLoanId,
           contactApplicationsByLoanId,
+          contactRowsById,
+          contactRowsByName,
+          contactApplicationRowsById,
           productsByName,
           clientCache,
           syncedClientIds,
@@ -1032,11 +1065,7 @@ export class ViewBulkImportComponent implements OnInit {
       return this.buildIvyTekClientRowsFromContacts(contactRows, contactApplicationRows, loanRows);
     }
 
-    const linkedRows = this.buildIvyTekClientRowsFromContactApplications(contactRows, contactApplicationRows);
-    if (linkedRows.length) {
-      return linkedRows;
-    }
-    return contactRows;
+    return [];
   }
 
   /**
@@ -1050,7 +1079,8 @@ export class ViewBulkImportComponent implements OnInit {
     const loanRowsByContactId = this.buildIvyTekLoanRowsByContactId(contactApplicationRows, loansById);
 
     return contactRows.map((contactRow: any) => {
-      const relatedLoanRows = loanRowsByContactId.get(this.getCsvValue(contactRow, 'Id')) || [];
+      const contactSourceId = this.getIvyTekContactSourceId(contactRow);
+      const relatedLoanRows = contactSourceId ? loanRowsByContactId.get(contactSourceId) || [] : [];
       const earliestLoanDate = this.getEarliestIvyTekDate(
         relatedLoanRows.flatMap((loanRow: any) => [
           this.getCsvValue(loanRow, 'IvytekTestPkg__LoanDate__c'),
@@ -1060,13 +1090,18 @@ export class ViewBulkImportComponent implements OnInit {
       const safeEarliestLoanDate = this.getIvyTekOfficeSafeDate(earliestLoanDate);
       return {
         ...contactRow,
-        IvyTekClientExternalID: this.getCsvValue(contactRow, 'Id'),
+        IvyTekClientExternalID: this.getIvyTekContactExternalId(contactRow),
+        IvyTekClientSourceContactID: contactSourceId,
         IvyTekClientSourceExternalID: this.getCsvValue(contactRow, 'IvytekTestPkg__ExternalID__c'),
         IvyTekClientEntityID: this.getIvyTekEntityId(contactRow),
         IvyTekClientActivationDate: safeEarliestLoanDate
           ? this.dateUtils.formatDate(safeEarliestLoanDate, this.settingsService.dateFormat)
           : this.getIvyTekClientActivationDate(contactRow),
-        IvyTekClientActivationDateSource: earliestLoanDate ? 'loan' : ''
+        IvyTekClientActivationDateSource: earliestLoanDate ? 'loan' : '',
+        IvyTekClientRelatedExternalIDs: this.getUniqueIvyTekIdentifiers([
+          contactSourceId,
+          this.getCsvValue(contactRow, 'IvytekTestPkg__ExternalID__c')
+        ]).join(',')
       };
     });
   }
@@ -1208,6 +1243,9 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    * @param {Map<string, any>} helperRowsByLoanId helper rows keyed by loan id.
    * @param {Map<string, any[]>} contactApplicationsByLoanId contact application rows keyed by loan id.
+   * @param {Map<string, any>} contactRowsById contact rows keyed by source/contact ids.
+   * @param {Map<string, any[]>} contactRowsByName contact rows keyed by normalized names.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
    * @param {Map<string, any>} productsByName loan products keyed by normalized product name.
    * @param {Map<string, any>} clientCache client lookup cache.
    * @param {Map<string, any>} productDetailsCache product details cache.
@@ -1216,6 +1254,9 @@ export class ViewBulkImportComponent implements OnInit {
     row: any,
     helperRowsByLoanId: Map<string, any>,
     contactApplicationsByLoanId: Map<string, any[]>,
+    contactRowsById: Map<string, any>,
+    contactRowsByName: Map<string, any[]>,
+    contactApplicationRowsById: Map<string, any>,
     productsByName: Map<string, any>,
     clientCache: Map<string, any>,
     syncedClientIds: Set<string>,
@@ -1242,30 +1283,11 @@ export class ViewBulkImportComponent implements OnInit {
 
       const principal = this.getIvyTekLoanPrincipal(row);
       const balanceNow = this.getIvyTekLoanBalanceNow(row);
-      const repayments = this.getIvyTekNumberOfRepayments(row);
+      const repayments = this.getIvyTekNumberOfRepayments(row, principal, balanceNow);
       const mappedValueReviewMessage = this.getIvyTekLoanMappedValueReviewMessage(row, principal, balanceNow);
       result.mappedValues = this.getIvyTekLoanMappedValues(row, productName, principal, balanceNow, repayments);
       if (mappedValueReviewMessage) {
         this.setIvyTekLoanResultStatus(result, 'labels.inputs.Skipped', mappedValueReviewMessage);
-        this.ivyTekLoanImportResults.push(result);
-        return;
-      }
-
-      const client = await this.ensureIvyTekLoanClient(
-        row,
-        helperRowsByLoanId,
-        contactApplicationsByLoanId,
-        clientCache,
-        syncedClientIds
-      );
-      if (!client?.id) {
-        this.setIvyTekLoanResultStatus(result, 'labels.inputs.Skipped', 'No matching Mifos client was found.');
-        this.ivyTekLoanImportResults.push(result);
-        return;
-      }
-
-      if (!principal || principal <= 0) {
-        this.setIvyTekLoanResultStatus(result, 'labels.inputs.Skipped', this.getIvyTekPrincipalReviewMessage(row));
         this.ivyTekLoanImportResults.push(result);
         return;
       }
@@ -1276,16 +1298,96 @@ export class ViewBulkImportComponent implements OnInit {
         return;
       }
 
+      const clientSourceRowForResult = this.getIvyTekClientRowForLoan(
+        row,
+        helperRowsByLoanId,
+        contactApplicationsByLoanId,
+        contactRowsById,
+        contactRowsByName,
+        contactApplicationRowsById
+      );
+      const client = await this.ensureIvyTekLoanClient(
+        row,
+        helperRowsByLoanId,
+        contactApplicationsByLoanId,
+        contactRowsById,
+        contactRowsByName,
+        contactApplicationRowsById,
+        clientCache,
+        syncedClientIds
+      );
+      if (!client?.id) {
+        const hasClientLookupData =
+          contactRowsById.size || contactRowsByName.size || contactApplicationsByLoanId.size || helperRowsByLoanId.size;
+        const missingClientMessage = hasClientLookupData
+          ? 'No matching Contact row or Mifos client was found from the provided lookup data. No fallback client was created.'
+          : 'No matching Mifos client was found.';
+        this.setIvyTekLoanResultStatus(result, 'labels.inputs.Failed', missingClientMessage);
+        this.ivyTekLoanImportResults.push(result);
+        return;
+      }
+      result.mappedValues = {
+        ...result.mappedValues,
+        matchedClientId: this.getIvyTekClientId(client),
+        matchedClientName: this.getIvyTekClientDisplayName(client),
+        matchedClientExternalId: client?.externalId || '',
+        matchedClientSourceExternalId: clientSourceRowForResult
+          ? this.getIvyTekExternalId(clientSourceRowForResult)
+          : '',
+        matchedClientSourceContactId: this.getCsvValue(clientSourceRowForResult || {}, 'IvyTekClientSourceContactID'),
+        matchedClientEntityId: clientSourceRowForResult ? this.getIvyTekEntityId(clientSourceRowForResult) : '',
+        matchedClientLookupMethod: this.getIvyTekLoanClientLookupMethod(clientSourceRowForResult)
+      };
+
       const productDetails = await this.getIvyTekLoanProductDetails(product.id, productDetailsCache);
-      const shouldApproveAndDisburse = this.shouldApproveAndDisburseIvyTekLoan(row);
+      const shouldApproveAndDisburse = this.shouldApproveAndDisburseIvyTekLoan(row, balanceNow);
+      const shouldCloseAfterDisbursement = this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow);
       const payloadPrincipal = shouldApproveAndDisburse && balanceNow && balanceNow > 0 ? balanceNow : principal;
+      const payloadLoanDate = this.getIvyTekLoanPayloadDate(
+        row,
+        balanceNow,
+        shouldApproveAndDisburse,
+        shouldCloseAfterDisbursement
+      );
+      const payloadInterestRatePercent = this.getIvyTekLoanPayloadInterestRatePercent(
+        row,
+        shouldCloseAfterDisbursement
+      );
       result.mappedValues = {
         ...result.mappedValues,
         payloadPrincipal,
+        payloadInterestRatePercent,
+        payloadLoanDate,
+        sourceLoanDate: this.getIvyTekSourceLoanDate(row),
+        interestAccrualSuppressed: this.isIvyTekLoanInterestAccrualSuppressed(
+          row,
+          balanceNow,
+          shouldApproveAndDisburse,
+          shouldCloseAfterDisbursement
+        )
+          ? 'Yes'
+          : 'No',
+        historicalCloseDate: shouldCloseAfterDisbursement ? this.getIvyTekHistoricalLoanCloseDate(row) : '',
+        willCloseAfterDisbursement: shouldCloseAfterDisbursement ? 'Yes' : 'No',
         willApproveAndDisburse: shouldApproveAndDisburse ? 'Yes' : 'No'
       };
-      const payload = this.getIvyTekLoanPayload(row, client, product, productDetails, payloadPrincipal, repayments);
-      const lifecycleMessage = this.getIvyTekLoanLifecycleMessage(row, balanceNow, shouldApproveAndDisburse);
+      const payload = this.getIvyTekLoanPayload(
+        row,
+        client,
+        product,
+        productDetails,
+        payloadPrincipal,
+        repayments,
+        payloadInterestRatePercent,
+        payloadLoanDate
+      );
+      const lifecycleMessage = this.getIvyTekLoanLifecycleMessage(
+        row,
+        balanceNow,
+        shouldApproveAndDisburse,
+        shouldCloseAfterDisbursement,
+        payloadLoanDate
+      );
 
       const existingLoan = await this.findIvyTekLoanByExternalId(payload.externalId, payload.accountNo);
       if (existingLoan) {
@@ -1300,7 +1402,9 @@ export class ViewBulkImportComponent implements OnInit {
             result.loanId,
             existingLoan,
             row,
-            shouldApproveAndDisburse
+            balanceNow,
+            shouldApproveAndDisburse,
+            payload.submittedOnDate
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1329,7 +1433,9 @@ export class ViewBulkImportComponent implements OnInit {
             result.loanId,
             existingLoan,
             row,
-            shouldApproveAndDisburse
+            balanceNow,
+            shouldApproveAndDisburse,
+            payload.submittedOnDate
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1350,7 +1456,9 @@ export class ViewBulkImportComponent implements OnInit {
             result.loanId,
             existingLoan,
             row,
-            shouldApproveAndDisburse
+            balanceNow,
+            shouldApproveAndDisburse,
+            payload.submittedOnDate
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1376,15 +1484,20 @@ export class ViewBulkImportComponent implements OnInit {
           const tribalLoanDataUpdated = await this.upsertIvyTekLoanTribalData(result.loanId, row);
           this.setIvyTekLoanTribalResult(result, tribalLoanDataUpdated);
         }
+        const createdLoanDate = createdLoan.loanDate || this.getIvyTekLoanDate(row);
         if (result.loanId && shouldApproveAndDisburse) {
-          await this.approveAndDisburseIvyTekLoan(result.loanId, this.getIvyTekLoanDate(row));
+          await this.approveAndDisburseIvyTekLoan(result.loanId, createdLoanDate);
         }
+        const closeMessage = result.loanId
+          ? await this.settleAndCloseIvyTekZeroBalanceLoan(result.loanId, row, balanceNow, createdLoanDate)
+          : '';
         this.setIvyTekLoanResultStatus(
           result,
           'labels.inputs.Created',
           this.joinIvyTekMessages([
             lifecycleMessage,
-            createdLoan.activationMessage
+            createdLoan.activationMessage,
+            closeMessage
           ])
         );
       } catch (createError: any) {
@@ -1409,7 +1522,9 @@ export class ViewBulkImportComponent implements OnInit {
             result.loanId,
             duplicateLoan,
             row,
-            shouldApproveAndDisburse
+            balanceNow,
+            shouldApproveAndDisburse,
+            payload.submittedOnDate
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1430,7 +1545,9 @@ export class ViewBulkImportComponent implements OnInit {
             result.loanId,
             duplicateLoan,
             row,
-            shouldApproveAndDisburse
+            balanceNow,
+            shouldApproveAndDisburse,
+            payload.submittedOnDate
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1462,16 +1579,20 @@ export class ViewBulkImportComponent implements OnInit {
     try {
       return {
         response: await firstValueFrom(this.loansService.createLoansAccount('loans', payload)),
-        activationMessage: ''
+        activationMessage: '',
+        loanDate: payload.submittedOnDate
       };
     } catch (error: any) {
       if (!this.isIvyTekClientActivationLoanDateError(error)) {
         throw error;
       }
       const activationMessage = await this.backdateIvyTekLoanClientActivation(client, row);
+      const retryLoanDate = this.getIvyTekClientActivationBackdateDateText(row) || payload.submittedOnDate;
+      const retryPayload = this.getIvyTekLoanPayloadWithDate(row, payload, retryLoanDate);
       return {
-        response: await firstValueFrom(this.loansService.createLoansAccount('loans', payload)),
-        activationMessage
+        response: await firstValueFrom(this.loansService.createLoansAccount('loans', retryPayload)),
+        activationMessage,
+        loanDate: retryLoanDate
       };
     }
   }
@@ -1492,7 +1613,9 @@ export class ViewBulkImportComponent implements OnInit {
         throw error;
       }
       const activationMessage = await this.backdateIvyTekLoanClientActivation(client, row);
-      await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, payload));
+      const retryLoanDate = this.getIvyTekClientActivationBackdateDateText(row) || payload.submittedOnDate;
+      const retryPayload = this.getIvyTekLoanPayloadWithDate(row, payload, retryLoanDate);
+      await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, retryPayload));
       return activationMessage;
     }
   }
@@ -1629,6 +1752,34 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Gets a readable client name from common response shapes.
+   * @param {any} client Client response.
+   */
+  private getIvyTekClientDisplayName(client: any): string {
+    return client?.displayName || client?.fullname || client?.name || '';
+  }
+
+  /**
+   * Describes the source route used to identify the loan's client.
+   * @param {any} clientSourceRow Client source row derived for the loan.
+   */
+  private getIvyTekLoanClientLookupMethod(clientSourceRow: any): string {
+    if (!clientSourceRow) {
+      return 'existing-client-search';
+    }
+    if (this.getCsvValue(clientSourceRow, 'IvyTekClientFallback') === 'Yes') {
+      return 'fallback-client';
+    }
+    if (this.getCsvValue(clientSourceRow, 'IvyTekClientSourceContactID')) {
+      return 'contact-row';
+    }
+    if (this.getCsvValue(clientSourceRow, 'IvytekTestPkg__Contact__c')) {
+      return 'contact-application';
+    }
+    return 'client-source-row';
+  }
+
+  /**
    * Gets the source-backed activation date to use for client backdating.
    * @param {any} row IvyTek client or loan row.
    */
@@ -1647,6 +1798,15 @@ export class ViewBulkImportComponent implements OnInit {
         this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c')
       ])
     );
+  }
+
+  /**
+   * Gets the source-backed activation backdate formatted for loan retry payloads.
+   * @param {any} row IvyTek client or loan row.
+   */
+  private getIvyTekClientActivationBackdateDateText(row: any): string {
+    const targetActivationDate = this.getIvyTekClientActivationBackdateDate(row);
+    return targetActivationDate ? this.dateUtils.formatDate(targetActivationDate, this.settingsService.dateFormat) : '';
   }
 
   /**
@@ -1978,8 +2138,14 @@ export class ViewBulkImportComponent implements OnInit {
     const identifiers = this.getUniqueIvyTekIdentifiers([
       this.getIvyTekExternalId(row),
       this.getCsvValue(row, 'IvyTekClientSourceExternalID'),
+      this.getCsvValue(row, 'IvyTekClientSourceContactID'),
       this.getCsvValue(row, 'IvyTekClientApplicationExternalID'),
+      ...this.getCsvValue(row, 'IvyTekClientRelatedExternalIDs').split(','),
+      this.getCsvValue(row, 'source_contact_id'),
       this.getCsvValue(row, 'sf_contact_id'),
+      this.getCsvValue(row, 'ContactId'),
+      this.getCsvValue(row, 'ContactID'),
+      this.getCsvValue(row, 'AccountId'),
       this.getCsvValue(row, 'IvytekTestPkg__Contact__c'),
       this.getCsvValue(row, 'IvytekTestPkg__Borrower_Contact__c')
     ]);
@@ -2742,7 +2908,7 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getIvyTekExternalId(row: any): string {
     if (this.isIvyTekContactRow(row)) {
-      return this.getCsvValue(row, 'IvyTekClientExternalID') || this.getCsvValue(row, 'Id');
+      return this.getIvyTekContactExternalId(row);
     }
 
     return (
@@ -2752,6 +2918,7 @@ export class ViewBulkImportComponent implements OnInit {
       this.getCsvValue(row, 'IvytekTestPkg__Contact__c') ||
       this.getCsvValue(row, 'IvytekTestPkg__Borrower_Contact__c') ||
       this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c') ||
+      this.getCsvValue(row, 'external_id') ||
       this.getCsvValue(row, 'sf_contact_id') ||
       this.getCsvValue(row, 'Id')
     );
@@ -2762,11 +2929,57 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private isIvyTekContactRow(row: any): boolean {
+    const hasContactName =
+      !!this.getCsvValue(row, 'FirstName') ||
+      !!this.getCsvValue(row, 'LastName') ||
+      !!this.getCsvValue(row, 'First Name') ||
+      !!this.getCsvValue(row, 'Last Name') ||
+      !!this.getCsvValue(row, 'firstname') ||
+      !!this.getCsvValue(row, 'lastname');
+    const hasContactIdentifier =
+      !!this.getIvyTekContactSourceId(row) ||
+      !!this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c') ||
+      !!this.getCsvValue(row, 'external_id');
     return (
       this.getCsvValue(row, '_') === '[Contact]' ||
-      (!!this.getCsvValue(row, 'WS_EntityID__c') &&
-        (!!this.getCsvValue(row, 'FirstName') || !!this.getCsvValue(row, 'LastName')) &&
-        !!this.getCsvValue(row, 'Id'))
+      (hasContactName &&
+        hasContactIdentifier &&
+        (!!this.getIvyTekEntityId(row) ||
+          !!this.getCsvValue(row, 'Birthdate') ||
+          !!this.getCsvValue(row, 'Phone') ||
+          !!this.getCsvValue(row, 'OtherPhone')))
+    );
+  }
+
+  /**
+   * Gets the contact's Salesforce/source identifier without using it as the Mifos external id.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekContactSourceId(row: any): string {
+    return this.getFirstCsvValue(row, [
+      'IvyTekClientSourceContactID',
+      'source_contact_id',
+      'sf_contact_id',
+      'Id',
+      'ContactId',
+      'ContactID',
+      'AccountId'
+    ]);
+  }
+
+  /**
+   * Gets the Mifos client external id for a real Contact export.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekContactExternalId(row: any): string {
+    return (
+      this.getFirstCsvValue(row, [
+        'IvyTekClientExternalID',
+        'IvytekTestPkg__ExternalID__c',
+        'external_id',
+        'ExternalID',
+        'External ID'
+      ]) || this.getIvyTekContactSourceId(row)
     );
   }
 
@@ -2782,6 +2995,7 @@ export class ViewBulkImportComponent implements OnInit {
         'HomePhone',
         'OtherPhone',
         'phone',
+        'mobile_no',
         'mobile_phone',
         'IvytekTestPkg__CellPhone__c',
         'IvytekTestPkg__WorkPhone__c',
@@ -2848,10 +3062,13 @@ export class ViewBulkImportComponent implements OnInit {
         this.getCsvValue(row, 'IvyTekClientActivationDate'),
         this.getCsvValue(row, 'Client Activation Date'),
         this.getCsvValue(row, 'Client ActivationDate'),
+        this.getCsvValue(row, 'activation_date'),
+        this.getCsvValue(row, 'submittedon_date'),
         this.getCsvValue(row, 'Submitted On*'),
         this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c'),
         this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c'),
-        this.getCsvValue(row, 'CreatedDate')
+        this.getCsvValue(row, 'CreatedDate'),
+        this.getCsvValue(row, 'created_on_utc')
       ])
     );
     return safeActivationDate ? this.dateUtils.formatDate(safeActivationDate, this.settingsService.dateFormat) : '';
@@ -2900,13 +3117,17 @@ export class ViewBulkImportComponent implements OnInit {
       this.getFirstIvyTekValidEntityId(row, [
         'IvyTekClientEntityID',
         'WS_EntityID__c',
+        'source.WS_EntityID__c',
+        'WS EntityID',
         'WS Entity ID',
         'IvytekTestPkg__WS_EntityID__c',
         'IvytekTestPkg__WS_Entity_ID__c',
         'matched_contact_entity_id',
         'EntityID',
+        'entityid',
         'Entity Id',
         'entity_id',
+        'client_entity_id',
         'Tribal Entity ID',
         'TribalEntityID'
       ]) || this.getIvyTekEntityIdFromName(row)
@@ -2950,11 +3171,12 @@ export class ViewBulkImportComponent implements OnInit {
     if (!value) {
       return '';
     }
-    const parenthesizedEntityId = value.match(/\((\d{1,10})\)\s*$/);
+    const cleanedValue = value.replace(/\.0+$/, '');
+    const parenthesizedEntityId = cleanedValue.match(/\((\d{1,10})\)\s*$/);
     if (parenthesizedEntityId) {
       return parenthesizedEntityId[1];
     }
-    return /^[A-Za-z0-9-]{1,10}$/.test(value) ? value : '';
+    return /^[A-Za-z0-9-]{1,10}$/.test(cleanedValue) ? cleanedValue : '';
   }
 
   /**
@@ -3051,7 +3273,13 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private getIvyTekDisplayName(row: any): string {
-    return `${this.getIvyTekFirstName(row)} ${this.getIvyTekLastName(row)}`.trim();
+    return [
+      this.getIvyTekFirstName(row),
+      this.getIvyTekMiddleName(row),
+      this.getIvyTekLastName(row)
+    ]
+      .filter((namePart: string) => !!namePart)
+      .join(' ');
   }
 
   /**
@@ -3063,6 +3291,7 @@ export class ViewBulkImportComponent implements OnInit {
       this.getFirstCsvValue(row, [
         'FirstName',
         'First Name',
+        'firstname',
         'first_name',
         'IvytekTestPkg__First_Name__c',
         'IvytekTestPkg__ACH_First_Name__c'
@@ -3079,6 +3308,7 @@ export class ViewBulkImportComponent implements OnInit {
       this.getFirstCsvValue(row, [
         'MiddleName',
         'Middle Name',
+        'middlename',
         'middle_name',
         'IvytekTestPkg__Middle_Name__c'
       ]) || this.getIvyTekParsedName(row).middleName
@@ -3094,6 +3324,7 @@ export class ViewBulkImportComponent implements OnInit {
       this.getFirstCsvValue(row, [
         'LastName',
         'Last Name',
+        'lastname',
         'last_name',
         'IvytekTestPkg__Last_Name__c',
         'IvytekTestPkg__ACH_Last_Name__c'
@@ -3148,17 +3379,32 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private getIvyTekFullName(row: any): string {
-    const helperName = this.getFirstCsvValue(row, [
-      'IvytekTestPkg__Customer_Name_Text__c',
-      'Customer_Name_Text__c',
-      'customer_name'
-    ]);
+    const helperName = this.getIvyTekCustomerNameCandidates(row)[0];
     if (helperName) {
       return helperName;
     }
 
     const salesforceName = this.getCsvValue(row, 'Name');
     return /^(CA|Contract)-\d+$/i.test(salesforceName) ? '' : salesforceName;
+  }
+
+  /**
+   * Gets borrower/customer name candidates from the IvyTek loan and application exports.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekCustomerNameCandidates(row: any): string[] {
+    return this.getUniqueIvyTekIdentifiers([
+      this.getCsvValue(row, 'IvytekTestPkg__Customer_Name_Text__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Customer_Name__c'),
+      this.getCsvValue(row, 'IvyTestPkg__Customer_Name__c'),
+      this.getCsvValue(row, 'Customer_Name_Text__c'),
+      this.getCsvValue(row, 'Customer_Name__c'),
+      this.getCsvValue(row, 'Customer Name Text'),
+      this.getCsvValue(row, 'Customer Name'),
+      this.getCsvValue(row, 'customer_name'),
+      this.getCsvValue(row, 'IvytekTestPkg__Borrower_Name_Text__c'),
+      this.getCsvValue(row, 'Borrower Name')
+    ]);
   }
 
   /**
@@ -3191,7 +3437,7 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private createIvyTekLoanResult(row: any) {
     return {
-      name: this.getCsvValue(row, 'IvytekTestPkg__Customer_Name_Text__c') || this.getCsvValue(row, 'Name'),
+      name: this.getIvyTekCustomerNameCandidates(row)[0] || this.getCsvValue(row, 'Name'),
       externalId: this.getIvyTekLoanExternalId(row),
       legacyLoanId: this.getIvyTekLegacyLoanId(row),
       row,
@@ -3547,21 +3793,98 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
-   * Builds Borrower contact applications by loan id.
+   * Builds source Contact rows by every stable contact identifier available.
+   * @param {any[]} rows Contact CSV rows.
+   */
+  private buildIvyTekContactRowsById(rows: any[]): Map<string, any> {
+    const rowsById = new Map<string, any>();
+    rows
+      .filter((row: any) => this.isIvyTekContactRow(row))
+      .forEach((row: any) => {
+        [
+          this.getIvyTekContactSourceId(row),
+          this.getIvyTekContactExternalId(row),
+          this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c'),
+          this.getIvyTekEntityId(row)
+        ].forEach((identifier: string) => {
+          this.getIvyTekIdentifierLookupKeys(identifier).forEach((key: string) => rowsById.set(key, row));
+        });
+      });
+    return rowsById;
+  }
+
+  /**
+   * Builds source Contact rows by strict and middle-initial-tolerant name keys.
+   * @param {any[]} rows Contact CSV rows.
+   */
+  private buildIvyTekContactRowsByName(rows: any[]): Map<string, any[]> {
+    const rowsByName = new Map<string, any[]>();
+    rows
+      .filter((row: any) => this.isIvyTekContactRow(row))
+      .forEach((row: any) => {
+        const name = this.getIvyTekDisplayName(row);
+        [
+          `exact:${this.normalizeIvyTekSourceContactName(name)}`,
+          `strict:${this.normalizeIvyTekName(name)}`,
+          `loose:${this.normalizeIvyTekNameWithoutMiddleInitials(name)}`
+        ].forEach((key: string) => {
+          if (!key.split(':')[1]) {
+            return;
+          }
+          rowsByName.set(key, [
+            ...(rowsByName.get(key) || []),
+            row
+          ]);
+        });
+      });
+    return rowsByName;
+  }
+
+  /**
+   * Builds contact application rows by source id.
+   * @param {any[]} rows Contact application rows.
+   */
+  private buildIvyTekContactApplicationRowsById(rows: any[]): Map<string, any> {
+    const rowsById = new Map<string, any>();
+    rows.forEach((row: any) => {
+      [
+        this.getCsvValue(row, 'Id'),
+        this.getCsvValue(row, 'IvytekTestPkg__ContactApplication__c'),
+        this.getCsvValue(row, 'ContactApplicationId'),
+        this.getCsvValue(row, 'ContactApplicationID')
+      ].forEach((identifier: string) => {
+        this.getIvyTekIdentifierLookupKeys(identifier).forEach((key: string) => rowsById.set(key, row));
+      });
+    });
+    return rowsById;
+  }
+
+  /**
+   * Builds Borrower contact applications by loan, application, and external ids.
    * @param {any[]} rows Contact application rows.
    */
   private buildIvyTekContactApplicationsByLoanId(rows: any[]): Map<string, any[]> {
     const rowsByLoanId = new Map<string, any[]>();
     rows
-      .filter(
-        (row: any) => this.normalizeIvyTekText(this.getCsvValue(row, 'IvytekTestPkg__ReferenceType__c')) === 'borrower'
-      )
+      .filter((row: any) => {
+        const referenceType = this.normalizeIvyTekText(
+          this.getCsvValue(row, 'IvytekTestPkg__ReferenceType__c') || this.getCsvValue(row, 'ReferenceType')
+        );
+        return !referenceType || referenceType === 'borrower';
+      })
       .forEach((row: any) => {
-        this.getSalesforceIdKeys(this.getCsvValue(row, 'IvytekTestPkg__Loan__c')).forEach((loanId: string) => {
-          rowsByLoanId.set(loanId, [
-            ...(rowsByLoanId.get(loanId) || []),
-            row
-          ]);
+        [
+          this.getCsvValue(row, 'IvytekTestPkg__Loan__c'),
+          this.getCsvValue(row, 'IvytekTestPkg__Application__c'),
+          this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c'),
+          this.getCsvValue(row, 'Id')
+        ].forEach((identifier: string) => {
+          this.getIvyTekIdentifierLookupKeys(identifier).forEach((loanId: string) => {
+            rowsByLoanId.set(loanId, [
+              ...(rowsByLoanId.get(loanId) || []),
+              row
+            ]);
+          });
         });
       });
     return rowsByLoanId;
@@ -3572,12 +3895,18 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    * @param {Map<string, any>} helperRowsByLoanId helper rows keyed by loan id.
    * @param {Map<string, any[]>} contactApplicationsByLoanId contact application rows keyed by loan id.
+   * @param {Map<string, any>} contactRowsById contact rows keyed by source/contact ids.
+   * @param {Map<string, any[]>} contactRowsByName contact rows keyed by normalized names.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
    * @param {Map<string, any>} clientCache client lookup cache.
    */
   private async ensureIvyTekLoanClient(
     row: any,
     helperRowsByLoanId: Map<string, any>,
     contactApplicationsByLoanId: Map<string, any[]>,
+    contactRowsById: Map<string, any>,
+    contactRowsByName: Map<string, any[]>,
+    contactApplicationRowsById: Map<string, any>,
     clientCache: Map<string, any>,
     syncedClientIds: Set<string>
   ) {
@@ -3585,18 +3914,35 @@ export class ViewBulkImportComponent implements OnInit {
       row,
       helperRowsByLoanId,
       contactApplicationsByLoanId,
+      contactRowsById,
+      contactRowsByName,
+      contactApplicationRowsById,
       clientCache
     );
     if (existingClient?.id) {
       await this.syncIvyTekExistingLoanClientData(
         existingClient.id.toString(),
-        this.getIvyTekClientRowForLoan(row, helperRowsByLoanId, contactApplicationsByLoanId),
+        this.getIvyTekClientRowForLoan(
+          row,
+          helperRowsByLoanId,
+          contactApplicationsByLoanId,
+          contactRowsById,
+          contactRowsByName,
+          contactApplicationRowsById
+        ),
         syncedClientIds
       );
       return existingClient;
     }
 
-    const clientSourceRow = this.getIvyTekClientRowForLoan(row, helperRowsByLoanId, contactApplicationsByLoanId);
+    const clientSourceRow = this.getIvyTekClientRowForLoan(
+      row,
+      helperRowsByLoanId,
+      contactApplicationsByLoanId,
+      contactRowsById,
+      contactRowsByName,
+      contactApplicationRowsById
+    );
     if (!clientSourceRow) {
       return null;
     }
@@ -3607,9 +3953,12 @@ export class ViewBulkImportComponent implements OnInit {
       return await clientCache.get(cacheKey);
     }
 
-    const clientPromise = this.saveIvyTekClientAndTribalData(clientSourceRow).then(() => {
+    const clientPromise = this.saveIvyTekClientAndTribalData(clientSourceRow).then(async () => {
       clientCache.clear();
-      return this.findIvyTekLoanClient(row, helperRowsByLoanId, contactApplicationsByLoanId, clientCache);
+      return (
+        (await this.findIvyTekClientByExternalId(this.getIvyTekExternalId(clientSourceRow), clientCache)) ||
+        this.findExistingIvyTekClient(clientSourceRow)
+      );
     });
     clientCache.set(cacheKey, clientPromise);
     return await clientPromise;
@@ -3635,27 +3984,358 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    * @param {Map<string, any>} helperRowsByLoanId helper rows keyed by loan id.
    * @param {Map<string, any[]>} contactApplicationsByLoanId contact application rows keyed by loan id.
+   * @param {Map<string, any>} contactRowsById contact rows keyed by source/contact ids.
+   * @param {Map<string, any[]>} contactRowsByName contact rows keyed by normalized names.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
    */
   private getIvyTekClientRowForLoan(
     row: any,
     helperRowsByLoanId: Map<string, any>,
-    contactApplicationsByLoanId: Map<string, any[]>
+    contactApplicationsByLoanId: Map<string, any[]>,
+    contactRowsById: Map<string, any>,
+    contactRowsByName: Map<string, any[]>,
+    contactApplicationRowsById: Map<string, any>
   ) {
-    const loanKeys = this.getSalesforceIdKeys(this.getCsvValue(row, 'Id'));
-    const contactApplication = loanKeys
-      .flatMap((loanId: string) => contactApplicationsByLoanId.get(loanId) || [])
-      .find((match: any) => !!match);
-    const helperRow = loanKeys.map((loanId: string) => helperRowsByLoanId.get(loanId)).find((match: any) => !!match);
+    const contactApplications = this.getIvyTekContactApplicationsForLoan(row, contactApplicationsByLoanId);
+    const contactApplication = this.getIvyTekBorrowerContactApplication(
+      contactApplications,
+      contactApplicationRowsById
+    );
+    const helperRow = this.getIvyTekHelperRowForLoan(row, helperRowsByLoanId);
+    const matchedContactRow = this.findIvyTekContactRowForLoan(
+      row,
+      contactApplications,
+      contactRowsById,
+      contactRowsByName,
+      contactApplicationRowsById
+    );
 
-    if (contactApplication && (helperRow || row)) {
+    if (matchedContactRow) {
+      return this.buildIvyTekClientRowFromContactAndLoan(matchedContactRow, helperRow || row, contactApplication);
+    }
+
+    if (
+      !this.hasIvyTekRealContactLookupRows(contactRowsById, contactRowsByName) &&
+      contactApplication &&
+      (helperRow || row) &&
+      this.getCsvValue(contactApplication, 'IvytekTestPkg__Contact__c')
+    ) {
       return this.buildIvyTekClientRowFromLoanAndContactApplication(helperRow || row, contactApplication);
     }
 
+    return null;
+  }
+
+  /**
+   * Checks whether the import has authoritative Contact rows available.
+   * @param {Map<string, any>} contactRowsById Contact rows keyed by identifiers.
+   * @param {Map<string, any[]>} contactRowsByName Contact rows keyed by normalized names.
+   */
+  private hasIvyTekRealContactLookupRows(
+    contactRowsById: Map<string, any>,
+    contactRowsByName: Map<string, any[]>
+  ): boolean {
+    return contactRowsById.size > 0 || contactRowsByName.size > 0;
+  }
+
+  /**
+   * Gets the helper row that matches a loan row.
+   * @param {any} row IvyTek loan row.
+   * @param {Map<string, any>} helperRowsByLoanId helper rows keyed by loan id.
+   */
+  private getIvyTekHelperRowForLoan(row: any, helperRowsByLoanId: Map<string, any>) {
+    return this.getUniqueIvyTekIdentifiers([
+      this.getCsvValue(row, 'Id'),
+      this.getCsvValue(row, 'IvytekTestPkg__Application__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c')
+    ])
+      .flatMap((identifier: string) => this.getIvyTekIdentifierLookupKeys(identifier))
+      .map((key: string) => helperRowsByLoanId.get(key))
+      .find((match: any) => !!match);
+  }
+
+  /**
+   * Gets all contact/application bridge rows that can describe a loan's borrower.
+   * @param {any} row IvyTek loan row.
+   * @param {Map<string, any[]>} contactApplicationsByLoanId contact application rows keyed by loan id.
+   */
+  private getIvyTekContactApplicationsForLoan(row: any, contactApplicationsByLoanId: Map<string, any[]>) {
+    const matches: any[] = [];
+    const seenRows = new Set<any>();
+    this.getUniqueIvyTekIdentifiers([
+      this.getCsvValue(row, 'Id'),
+      this.getCsvValue(row, 'IvytekTestPkg__Application__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c')
+    ])
+      .flatMap((identifier: string) => this.getIvyTekIdentifierLookupKeys(identifier))
+      .forEach((key: string) => {
+        (contactApplicationsByLoanId.get(key) || []).forEach((match: any) => {
+          if (!seenRows.has(match)) {
+            seenRows.add(match);
+            matches.push(match);
+          }
+        });
+      });
+    return matches;
+  }
+
+  /**
+   * Gets a borrower contact application row, following application rows to their borrower bridge when available.
+   * @param {any[]} contactApplications Contact/application rows found for the loan.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
+   */
+  private getIvyTekBorrowerContactApplication(
+    contactApplications: any[],
+    contactApplicationRowsById: Map<string, any>
+  ) {
+    for (const contactApplication of contactApplications) {
+      const directContactId = this.getCsvValue(contactApplication, 'IvytekTestPkg__Contact__c');
+      if (directContactId) {
+        return contactApplication;
+      }
+
+      const borrowerContactApplicationId = this.getCsvValue(contactApplication, 'IvytekTestPkg__BorrowerContApp__c');
+      const linkedContactApplication = this.findIvyTekContactApplicationByIdentifier(
+        borrowerContactApplicationId,
+        contactApplicationRowsById
+      );
+      if (linkedContactApplication && this.getCsvValue(linkedContactApplication, 'IvytekTestPkg__Contact__c')) {
+        return linkedContactApplication;
+      }
+    }
+
+    return contactApplications.find((contactApplication: any) => !!contactApplication) || null;
+  }
+
+  /**
+   * Finds a contact application row by a Salesforce-style source id.
+   * @param {string} identifier Contact application id.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
+   */
+  private findIvyTekContactApplicationByIdentifier(identifier: string, contactApplicationRowsById: Map<string, any>) {
+    return this.getIvyTekIdentifierLookupKeys(identifier)
+      .map((key: string) => contactApplicationRowsById.get(key))
+      .find((match: any) => !!match);
+  }
+
+  /**
+   * Finds the real Contact row for a loan before falling back to client creation from loan-only data.
+   * @param {any} row IvyTek loan row.
+   * @param {any[]} contactApplications Contact/application rows found for the loan.
+   * @param {Map<string, any>} contactRowsById contact rows keyed by source/contact ids.
+   * @param {Map<string, any[]>} contactRowsByName contact rows keyed by normalized names.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
+   */
+  private findIvyTekContactRowForLoan(
+    row: any,
+    contactApplications: any[],
+    contactRowsById: Map<string, any>,
+    contactRowsByName: Map<string, any[]>,
+    contactApplicationRowsById: Map<string, any>
+  ) {
+    const borrowerContactApplication = this.getIvyTekBorrowerContactApplication(
+      contactApplications,
+      contactApplicationRowsById
+    );
+    const contactIdentifiers = this.getUniqueIvyTekIdentifiers([
+      ...contactApplications.flatMap((contactApplication: any) => [
+        this.getCsvValue(contactApplication, 'IvytekTestPkg__Contact__c'),
+        this.getCsvValue(contactApplication, 'IvytekTestPkg__Borrower_Contact__c'),
+        this.getCsvValue(contactApplication, 'ContactId'),
+        this.getCsvValue(contactApplication, 'ContactID')
+      ]),
+      this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Contact__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Contact__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Borrower_Contact__c')
+    ]);
+
+    for (const identifier of contactIdentifiers) {
+      const contactRow = this.findIvyTekContactRowByIdentifier(identifier, contactRowsById);
+      if (contactRow) {
+        return contactRow;
+      }
+    }
+
+    const contactExternalIdentifiers = this.getUniqueIvyTekIdentifiers([
+      this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Account__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__CR_Joint_Contact__c')
+    ]);
+    for (const identifier of contactExternalIdentifiers) {
+      const contactRow = this.findIvyTekContactRowByIdentifier(identifier, contactRowsById);
+      if (contactRow) {
+        return contactRow;
+      }
+    }
+
+    const contactApplicationNames = contactApplications.flatMap((contactApplication: any) => [
+      this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Borrower_Name_Text__c'),
+      this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Customer_Name_Text__c'),
+      this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Customer_Name__c'),
+      this.getCsvValue(contactApplication || {}, 'IvyTestPkg__Customer_Name__c'),
+      this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Full_Name__c')
+    ]);
+    const names = this.getUniqueIvyTekIdentifiers([
+      ...this.getIvyTekCustomerNameCandidates(row),
+      ...contactApplicationNames,
+      this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Borrower_Name_Text__c'),
+      this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Customer_Name_Text__c'),
+      this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Customer_Name__c'),
+      this.getCsvValue(borrowerContactApplication || {}, 'IvyTestPkg__Customer_Name__c'),
+      this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Full_Name__c'),
+      this.getIvyTekDisplayName(row)
+    ]);
+    for (const name of names) {
+      const contactRow = this.findIvyTekContactRowByName(name, contactRowsByName);
+      if (contactRow) {
+        return contactRow;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Finds a real Contact row by any comparable id key.
+   * @param {string} identifier Contact identifier.
+   * @param {Map<string, any>} contactRowsById contact rows keyed by source/contact ids.
+   */
+  private findIvyTekContactRowByIdentifier(identifier: string, contactRowsById: Map<string, any>) {
+    return this.getIvyTekIdentifierLookupKeys(identifier)
+      .map((key: string) => contactRowsById.get(key))
+      .find((match: any) => !!match);
+  }
+
+  /**
+   * Finds a uniquely matching Contact row by name, tolerating missing middle initials.
+   * @param {string} name Borrower name.
+   * @param {Map<string, any[]>} contactRowsByName contact rows keyed by normalized names.
+   */
+  private findIvyTekContactRowByName(name: string, contactRowsByName: Map<string, any[]>) {
+    const exactMatches = contactRowsByName.get(`exact:${this.normalizeIvyTekSourceContactName(name)}`) || [];
+    if (exactMatches.length === 1) {
+      return exactMatches[0];
+    }
+
+    const strictMatches = contactRowsByName.get(`strict:${this.normalizeIvyTekName(name)}`) || [];
+    if (strictMatches.length === 1) {
+      return strictMatches[0];
+    }
+
+    const looseMatches = contactRowsByName.get(`loose:${this.normalizeIvyTekNameWithoutMiddleInitials(name)}`) || [];
+    return looseMatches.length === 1 ? looseMatches[0] : null;
+  }
+
+  /**
+   * Builds a client source row from the real Contact row and the loan that needs it.
+   * @param {any} contactRow IvyTek Contact row.
+   * @param {any} loanRow IvyTek loan row.
+   * @param {any} contactApplication Contact application or application bridge row.
+   */
+  private buildIvyTekClientRowFromContactAndLoan(contactRow: any, loanRow: any, contactApplication: any = null) {
+    const contactSourceId = this.getIvyTekContactSourceId(contactRow);
+    const contactExternalId = this.getIvyTekContactExternalId(contactRow);
+    const contactApplicationExternalId = this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Contact__c')
+      ? this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__ExternalID__c')
+      : '';
+    const loanDate = this.getIvyTekOfficeSafeDate(
+      this.getEarliestIvyTekDate([
+        this.getCsvValue(loanRow, 'IvytekTestPkg__LoanDate__c'),
+        this.getCsvValue(loanRow, 'IvytekTestPkg__SetUpDate__c')
+      ])
+    );
+    const activationDate = loanDate
+      ? this.dateUtils.formatDate(loanDate, this.settingsService.dateFormat)
+      : this.getIvyTekClientActivationDate(contactRow);
+
     return {
-      ...row,
-      IvyTekClientActivationDate: this.getIvyTekClientActivationDate(row),
-      IvyTekClientActivationDateSource: 'loan'
+      ...loanRow,
+      ...contactRow,
+      IvytekTestPkg__Loan__c: this.getCsvValue(loanRow, 'Id'),
+      IvytekTestPkg__Application__c:
+        this.getCsvValue(loanRow, 'IvytekTestPkg__Application__c') ||
+        this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Application__c'),
+      IvytekTestPkg__Borrower_Contact__c: contactSourceId,
+      IvytekTestPkg__Contact__c: contactSourceId,
+      IvytekTestPkg__ContactApplication__c: this.getCsvValue(contactApplication || {}, 'Id'),
+      IvytekTestPkg__ContactApplication_ExternalID__c: contactApplicationExternalId,
+      IvyTekClientExternalID: contactExternalId,
+      IvyTekClientSourceContactID: contactSourceId,
+      IvyTekClientSourceExternalID: this.getCsvValue(contactRow, 'IvytekTestPkg__ExternalID__c') || contactExternalId,
+      IvyTekClientApplicationExternalID: contactApplicationExternalId,
+      IvyTekClientLoanExternalID: this.getIvyTekLoanExternalId(loanRow),
+      IvyTekClientEntityID: this.getIvyTekEntityId(contactRow),
+      IvyTekClientActivationDate: activationDate,
+      IvyTekClientActivationDateSource: loanDate ? 'loan' : '',
+      IvyTekClientRelatedExternalIDs: this.getUniqueIvyTekIdentifiers([
+        contactSourceId,
+        contactExternalId,
+        this.getCsvValue(contactRow, 'IvytekTestPkg__ExternalID__c'),
+        this.getCsvValue(contactApplication || {}, 'Id'),
+        contactApplicationExternalId
+      ]).join(',')
     };
+  }
+
+  /**
+   * Builds a deterministic fallback client row so production loan imports reach full coverage.
+   * @param {any} row IvyTek loan row.
+   * @param {any} helperRow Optional helper row.
+   * @param {any} contactApplication Optional contact/application row.
+   */
+  private buildIvyTekFallbackClientRowFromLoan(row: any, helperRow: any = null, contactApplication: any = null) {
+    const sourceRow = helperRow || row;
+    const fallbackExternalId = this.getIvyTekFallbackClientExternalId(row);
+    return {
+      ...sourceRow,
+      IvyTekClientExternalID: fallbackExternalId,
+      IvyTekClientSourceExternalID: this.getCsvValue(sourceRow, 'IvytekTestPkg__ExternalID__c'),
+      IvyTekClientApplicationExternalID: this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__ExternalID__c'),
+      IvyTekClientFallback: 'Yes',
+      IvyTekClientFallbackReason: 'No definitive Contact row or existing Mifos client matched this loan.',
+      IvyTekClientLoanExternalID: this.getIvyTekLoanExternalId(row),
+      IvyTekClientActivationDate: this.getIvyTekClientActivationDate(sourceRow),
+      IvyTekClientActivationDateSource: 'loan',
+      IvyTekClientRelatedExternalIDs: this.getUniqueIvyTekIdentifiers([
+        fallbackExternalId,
+        this.getCsvValue(sourceRow, 'Id'),
+        this.getCsvValue(sourceRow, 'IvytekTestPkg__ExternalID__c'),
+        this.getCsvValue(sourceRow, 'IvytekTestPkg__Application__c'),
+        this.getCsvValue(contactApplication || {}, 'Id'),
+        this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__ExternalID__c')
+      ]).join(',')
+    };
+  }
+
+  /**
+   * Gets a loan-scoped fallback client external id.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekFallbackClientExternalId(row: any): string {
+    const legacyLoanId = this.getIvyTekLegacyLoanId(row);
+    const sourceLoanId = this.getCsvValue(row, 'Id') || this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c');
+    return `ivytek_fallback_client_${legacyLoanId || sourceLoanId}`;
+  }
+
+  /**
+   * Gets every external id candidate that can identify a client row.
+   * @param {any} row IvyTek client source row.
+   */
+  private getIvyTekClientLookupIdentifiers(row: any): string[] {
+    return this.getUniqueIvyTekIdentifiers([
+      this.getIvyTekExternalId(row),
+      this.getCsvValue(row, 'IvyTekClientSourceExternalID'),
+      this.getCsvValue(row, 'IvyTekClientSourceContactID'),
+      this.getCsvValue(row, 'IvyTekClientApplicationExternalID'),
+      ...this.getCsvValue(row, 'IvyTekClientRelatedExternalIDs').split(','),
+      this.getCsvValue(row, 'source_contact_id'),
+      this.getCsvValue(row, 'sf_contact_id'),
+      this.getCsvValue(row, 'ContactId'),
+      this.getCsvValue(row, 'ContactID'),
+      this.getCsvValue(row, 'AccountId'),
+      this.getCsvValue(row, 'IvytekTestPkg__Contact__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Borrower_Contact__c')
+    ]);
   }
 
   /**
@@ -3663,26 +4343,51 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    * @param {Map<string, any>} helperRowsByLoanId helper rows keyed by loan id.
    * @param {Map<string, any[]>} contactApplicationsByLoanId contact application rows keyed by loan id.
+   * @param {Map<string, any>} contactRowsById contact rows keyed by source/contact ids.
+   * @param {Map<string, any[]>} contactRowsByName contact rows keyed by normalized names.
+   * @param {Map<string, any>} contactApplicationRowsById contact application rows keyed by source id.
    * @param {Map<string, any>} clientCache client lookup cache.
    */
   private async findIvyTekLoanClient(
     row: any,
     helperRowsByLoanId: Map<string, any>,
     contactApplicationsByLoanId: Map<string, any[]>,
+    contactRowsById: Map<string, any>,
+    contactRowsByName: Map<string, any[]>,
+    contactApplicationRowsById: Map<string, any>,
     clientCache: Map<string, any>
   ) {
-    const sourceLoanId = this.getCsvValue(row, 'Id');
-    const loanKeys = this.getSalesforceIdKeys(sourceLoanId);
-    const contactApplications = loanKeys.flatMap((loanId: string) => contactApplicationsByLoanId.get(loanId) || []);
-    const helperRow = loanKeys.map((loanId: string) => helperRowsByLoanId.get(loanId)).find((match: any) => !!match);
+    const contactApplications = this.getIvyTekContactApplicationsForLoan(row, contactApplicationsByLoanId);
+    const helperRow = this.getIvyTekHelperRowForLoan(row, helperRowsByLoanId);
+    const matchedContactRow = this.findIvyTekContactRowForLoan(
+      row,
+      contactApplications,
+      contactRowsById,
+      contactRowsByName,
+      contactApplicationRowsById
+    );
+    const matchedClientRow = matchedContactRow
+      ? this.buildIvyTekClientRowFromContactAndLoan(
+          matchedContactRow,
+          helperRow || row,
+          this.getIvyTekBorrowerContactApplication(contactApplications, contactApplicationRowsById)
+        )
+      : null;
+    const hasRealContactRows = this.hasIvyTekRealContactLookupRows(contactRowsById, contactRowsByName);
 
     const identifiers = this.getUniqueIvyTekIdentifiers([
-      ...contactApplications.flatMap((contactApplication: any) => [
-        this.getCsvValue(contactApplication, 'IvytekTestPkg__ExternalID__c'),
-        this.getCsvValue(contactApplication, 'IvytekTestPkg__Contact__c')
-      ]),
-      this.getIvyTekExternalId(row),
-      this.getIvyTekExternalId(helperRow || {})
+      ...(matchedClientRow ? this.getIvyTekClientLookupIdentifiers(matchedClientRow) : []),
+      ...contactApplications.flatMap((contactApplication: any) => {
+        const contactId = this.getCsvValue(contactApplication, 'IvytekTestPkg__Contact__c');
+        return [
+          contactId,
+          contactId ? this.getCsvValue(contactApplication, 'IvytekTestPkg__ExternalID__c') : ''
+        ];
+      }),
+      ...(matchedClientRow || hasRealContactRows ? [] : [
+            this.getIvyTekExternalId(row),
+            this.getIvyTekExternalId(helperRow || {})
+          ])
     ]);
 
     for (const identifier of identifiers) {
@@ -3692,10 +4397,28 @@ export class ViewBulkImportComponent implements OnInit {
       }
     }
 
-    const names = [
-      this.getCsvValue(helperRow || {}, 'IvytekTestPkg__Customer_Name_Text__c'),
-      this.getCsvValue(row, 'IvytekTestPkg__Customer_Name_Text__c')
-    ].filter((name: string) => !!name);
+    const exactNames = this.getUniqueIvyTekIdentifiers([
+      matchedClientRow ? this.getIvyTekDisplayName(matchedClientRow) : '',
+      matchedContactRow ? this.getIvyTekDisplayName(matchedContactRow) : '',
+      ...this.getIvyTekCustomerNameCandidates(helperRow || {}),
+      ...this.getIvyTekCustomerNameCandidates(row)
+    ]);
+
+    for (const name of exactNames) {
+      const clientByExactName = await this.findIvyTekClientByExactSourceName(name, clientCache);
+      if (clientByExactName) {
+        return clientByExactName;
+      }
+    }
+
+    for (const name of exactNames) {
+      const clientByLooseName = await this.findIvyTekClientByLooseSourceName(name, clientCache);
+      if (clientByLooseName) {
+        return clientByLooseName;
+      }
+    }
+
+    const names = hasRealContactRows ? [] : exactNames.filter((name: string) => !!name);
 
     for (const name of names) {
       const clientByName = await this.findIvyTekClientByStrictName(name, clientCache);
@@ -3704,7 +4427,7 @@ export class ViewBulkImportComponent implements OnInit {
       }
     }
 
-    return this.findIvyTekClientByExternalId(this.getIvyTekExternalId(row), clientCache);
+    return hasRealContactRows ? null : this.findIvyTekClientByExternalId(this.getIvyTekExternalId(row), clientCache);
   }
 
   /**
@@ -3723,6 +4446,117 @@ export class ViewBulkImportComponent implements OnInit {
     const client = await this.findClientByExternalId(externalId);
     clientCache.set(cacheKey, client);
     return client;
+  }
+
+  /**
+   * Finds one client by an exact source-name key that preserves Jr/Sr/III style suffixes.
+   * @param {string} name Client name.
+   * @param {Map<string, any>} clientCache Client cache.
+   */
+  private async findIvyTekClientByExactSourceName(name: string, clientCache: Map<string, any>) {
+    const sourceName = this.normalizeIvyTekSourceContactName(name);
+    const cacheKey = `exact-name:${sourceName}`;
+    if (!sourceName) {
+      return null;
+    }
+    if (clientCache.has(cacheKey)) {
+      return clientCache.get(cacheKey);
+    }
+
+    const searchResponse: any = await firstValueFrom(this.clientsService.searchByText(name, 0, 10));
+    const candidates = searchResponse?.pageItems || searchResponse?.content || searchResponse || [];
+    const matches = (Array.isArray(candidates) ? candidates : []).filter((client: any) => {
+      const clientName = client.displayName || client.fullname || client.name || '';
+      return this.normalizeIvyTekSourceContactName(clientName) === sourceName;
+    });
+    const client = matches.length === 1 ? matches[0] : null;
+    clientCache.set(cacheKey, client);
+    return client;
+  }
+
+  /**
+   * Finds one client by borrower name while tolerating missing middle initials.
+   * @param {string} name Client name.
+   * @param {Map<string, any>} clientCache Client cache.
+   */
+  private async findIvyTekClientByLooseSourceName(name: string, clientCache: Map<string, any>) {
+    const looseName = this.normalizeIvyTekNameWithoutMiddleInitials(name);
+    const cacheKey = `loose-name:${looseName}`;
+    if (!looseName) {
+      return null;
+    }
+    if (clientCache.has(cacheKey)) {
+      return clientCache.get(cacheKey);
+    }
+
+    const candidates = await this.searchIvyTekClientsByNameTerms(name);
+    const uniqueMatches = new Map<string, any>();
+    candidates
+      .filter((client: any) => {
+        const clientName = client.displayName || client.fullname || client.name || '';
+        return this.normalizeIvyTekNameWithoutMiddleInitials(clientName) === looseName;
+      })
+      .forEach((client: any) => {
+        const matchKey = (client.id || client.clientId || client.entityId || client.externalId || '').toString();
+        uniqueMatches.set(matchKey || this.normalizeIvyTekSourceContactName(client.displayName || ''), client);
+      });
+
+    const client = uniqueMatches.size === 1 ? Array.from(uniqueMatches.values())[0] : null;
+    clientCache.set(cacheKey, client);
+    return client;
+  }
+
+  /**
+   * Searches clients by full name and last-name terms for high-confidence matching.
+   * @param {string} name Source name.
+   */
+  private async searchIvyTekClientsByNameTerms(name: string): Promise<any[]> {
+    const searchTerms = this.getIvyTekNameSearchTerms(name);
+    const seen = new Set<string>();
+    const results: any[] = [];
+
+    for (const searchTerm of searchTerms) {
+      const searchResponse: any = await firstValueFrom(this.clientsService.searchByText(searchTerm, 0, 25));
+      this.normalizeIvyTekListResponse(searchResponse).forEach((client: any) => {
+        const clientKey = (client.id || client.clientId || client.entityId || client.externalId || '').toString();
+        const key = clientKey || this.normalizeIvyTekSourceContactName(client.displayName || client.fullname || '');
+        if (!key || seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        results.push(client);
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Gets conservative search terms for a source client name.
+   * @param {string} name Source name.
+   */
+  private getIvyTekNameSearchTerms(name: string): string[] {
+    const normalizedName = (name || '').toString().trim();
+    const tokens = normalizedName
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[^A-Za-z0-9, ]+/g, ' ')
+      .split(/[,\s]+/)
+      .filter((token: string) => !!token && !/^\d+$/.test(token));
+    const lastMeaningfulToken = [...tokens].reverse().find(
+      (token: string) => token.length > 1 && ![
+          'jr',
+          'sr',
+          'ii',
+          'iii',
+          'iv',
+          'v'
+        ].includes(token.toLowerCase())
+    );
+
+    return this.getUniqueIvyTekIdentifiers([
+      normalizedName,
+      lastMeaningfulToken || ''
+    ]);
   }
 
   /**
@@ -3921,6 +4755,79 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Gets the rate sent to Fineract for a migration snapshot loan.
+   * @param {any} row IvyTek loan row.
+   * @param {boolean} shouldCloseAfterDisbursement Whether this zero-balance loan will be closed immediately.
+   */
+  private getIvyTekLoanPayloadInterestRatePercent(row: any, shouldCloseAfterDisbursement: boolean): number {
+    return shouldCloseAfterDisbursement ? 0 : this.getIvyTekLoanInterestRatePercent(row);
+  }
+
+  /**
+   * Gets the loan date sent to Fineract.
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
+   * @param {boolean} shouldApproveAndDisburse Whether import should activate loans.
+   * @param {boolean} shouldCloseAfterDisbursement Whether this zero-balance loan will be closed immediately.
+   */
+  private getIvyTekLoanPayloadDate(
+    row: any,
+    balanceNow: number | null,
+    shouldApproveAndDisburse: boolean,
+    shouldCloseAfterDisbursement: boolean
+  ): string {
+    return this.shouldUseIvyTekMigrationDateForLoan(
+      row,
+      balanceNow,
+      shouldApproveAndDisburse,
+      shouldCloseAfterDisbursement
+    )
+      ? this.getIvyTekBusinessDate()
+      : this.getIvyTekLoanDate(row);
+  }
+
+  /**
+   * Checks whether an active snapshot should use the migration date to avoid back-accruing source interest.
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
+   * @param {boolean} shouldApproveAndDisburse Whether import should activate loans.
+   * @param {boolean} shouldCloseAfterDisbursement Whether this zero-balance loan will be closed immediately.
+   */
+  private shouldUseIvyTekMigrationDateForLoan(
+    row: any,
+    balanceNow: number | null,
+    shouldApproveAndDisburse: boolean,
+    shouldCloseAfterDisbursement: boolean
+  ) {
+    return (
+      shouldApproveAndDisburse &&
+      this.isIvyTekSourceLoanRecord(row) &&
+      balanceNow !== null &&
+      balanceNow > 0 &&
+      !shouldCloseAfterDisbursement
+    );
+  }
+
+  /**
+   * Checks whether Fineract should avoid generating historical accrued interest for this migration snapshot.
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
+   * @param {boolean} shouldApproveAndDisburse Whether import should activate loans.
+   * @param {boolean} shouldCloseAfterDisbursement Whether this zero-balance loan will be closed immediately.
+   */
+  private isIvyTekLoanInterestAccrualSuppressed(
+    row: any,
+    balanceNow: number | null,
+    shouldApproveAndDisburse: boolean,
+    shouldCloseAfterDisbursement: boolean
+  ) {
+    return (
+      shouldCloseAfterDisbursement ||
+      this.shouldUseIvyTekMigrationDateForLoan(row, balanceNow, shouldApproveAndDisburse, shouldCloseAfterDisbursement)
+    );
+  }
+
+  /**
    * Gets the fixed payment amount from IvyTek note/payment fields.
    * @param {any} row IvyTek loan row.
    */
@@ -4030,6 +4937,7 @@ export class ViewBulkImportComponent implements OnInit {
     const frequency = this.getIvyTekRepaymentFrequency(row);
     const relation = this.getIvyTekLoanRelation(row);
     return {
+      customerName: this.getIvyTekCustomerNameCandidates(row)[0],
       accountNo: this.getIvyTekLegacyLoanId(row),
       productName,
       accountStatus: this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c'),
@@ -4037,6 +4945,14 @@ export class ViewBulkImportComponent implements OnInit {
       balanceNow: balanceNow ?? '',
       interestRatePercent: this.getIvyTekLoanInterestRatePercent(row),
       interestRateFrequencyType: 'Per year',
+      accruedInterestAll: this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c')) ?? '',
+      backInterestDue: this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__BackInterestDue__c')) ?? '',
+      deferredInterestDue:
+        this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Deferred_Interest_Due__c')) ?? '',
+      projectedAccruedInterest:
+        this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__ProjectedAccruedInterest__c')) ?? '',
+      nextPaymentInterestDue:
+        this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Next_Payment_Interest_Due__c')) ?? '',
       numberOfRepayments: repayments ?? '',
       repaymentEvery: frequency.every,
       repaymentFrequencyType: frequency.label,
@@ -4112,9 +5028,36 @@ export class ViewBulkImportComponent implements OnInit {
   /**
    * Determines whether a source loan row should be approved and disbursed.
    * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
    */
-  private shouldApproveAndDisburseIvyTekLoan(row: any) {
-    return !!this.ivyTekLoanImportForm.get('approveAndDisburse').value && this.isIvyTekSourceLoanRecord(row);
+  private shouldApproveAndDisburseIvyTekLoan(row: any, balanceNow: number | null) {
+    return (
+      !!this.ivyTekLoanImportForm.get('approveAndDisburse').value &&
+      this.isIvyTekSourceLoanRecord(row) &&
+      !this.shouldKeepIvyTekLoanUndisbursed(balanceNow)
+    );
+  }
+
+  /**
+   * Keeps overpaid historical loans out of automatic disbursement until overpayment migration is explicit.
+   * @param {number | null} balanceNow IvyTek current balance.
+   */
+  private shouldKeepIvyTekLoanUndisbursed(balanceNow: number | null) {
+    return balanceNow !== null && balanceNow < 0 && !this.areIvyTekMoneyValuesEqual(balanceNow, 0);
+  }
+
+  /**
+   * Checks whether a historical loan should be closed after disbursement.
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
+   */
+  private shouldCloseIvyTekLoanAfterDisbursement(row: any, balanceNow: number | null) {
+    return (
+      !!this.ivyTekLoanImportForm.get('approveAndDisburse').value &&
+      this.isIvyTekSourceLoanRecord(row) &&
+      balanceNow !== null &&
+      this.areIvyTekMoneyValuesEqual(balanceNow, 0)
+    );
   }
 
   /**
@@ -4134,16 +5077,34 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    * @param {number | null} balanceNow IvyTek current balance.
    * @param {boolean} shouldApproveAndDisburse Whether the importer will activate the loan.
+   * @param {boolean} shouldCloseAfterDisbursement Whether this zero-balance loan will be closed immediately.
+   * @param {string} payloadLoanDate Date sent to Fineract for submission/disbursement.
    */
-  private getIvyTekLoanLifecycleMessage(row: any, balanceNow: number | null, shouldApproveAndDisburse: boolean) {
+  private getIvyTekLoanLifecycleMessage(
+    row: any,
+    balanceNow: number | null,
+    shouldApproveAndDisburse: boolean,
+    shouldCloseAfterDisbursement: boolean,
+    payloadLoanDate: string
+  ) {
     if (shouldApproveAndDisburse) {
-      if (balanceNow && balanceNow > 0) {
-        return `Approved and disbursed using IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)} as the payload principal. Historical transactions are validation/export only and are not posted to the loan account.`;
+      if (shouldCloseAfterDisbursement) {
+        return (
+          `Approved, disbursed, repaid, and closed as a zero-balance historical loan. IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}. ` +
+          'Interest rate is set to 0 for the closeout so Fineract does not manufacture payoff interest.'
+        );
       }
-      return `Approved and disbursed because the IvyTek source row is a loan record. IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}; historical transactions are validation/export only and are not posted to the loan account.`;
+      return (
+        `Approved and disbursed on ${payloadLoanDate} using IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)} as the payload principal. ` +
+        'Source interest rate is preserved, and the migration date prevents Fineract from adding historical accrued interest. ' +
+        'Historical transactions are validation/export only and are not posted to the loan account.'
+      );
     }
 
     if (this.ivyTekLoanImportForm.get('approveAndDisburse').value) {
+      if (this.isIvyTekSourceLoanRecord(row) && this.shouldKeepIvyTekLoanUndisbursed(balanceNow)) {
+        return `Created or updated without disbursement because IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}. Overpaid historical loans need a separate overpayment migration rule.`;
+      }
       return `Created or updated without disbursement because this row was not recognized as an IvyTek loan record. IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}.`;
     }
 
@@ -4158,6 +5119,8 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} productDetails Loan product details.
    * @param {number} principal Principal amount.
    * @param {number} repayments Number of repayments.
+   * @param {number} interestRatePercent Annual interest rate sent to Fineract.
+   * @param {string} loanDate Loan date sent to Fineract.
    */
   private getIvyTekLoanPayload(
     row: any,
@@ -4165,13 +5128,13 @@ export class ViewBulkImportComponent implements OnInit {
     product: any,
     productDetails: any,
     principal: number,
-    repayments: number
+    repayments: number,
+    interestRatePercent: number,
+    loanDate: string = this.getIvyTekLoanDate(row)
   ) {
     const dateFormat = this.settingsService.dateFormat;
     const locale = this.settingsService.language.code;
-    const loanDate = this.getIvyTekLoanDate(row);
     const frequency = this.getIvyTekRepaymentFrequency(row);
-    const rate = this.getIvyTekLoanInterestRatePercent(row);
     const loanExternalId = this.getIvyTekLoanExternalId(row);
     const loanOfficerId = this.parseIvyTekInteger(this.ivyTekLoanImportForm.get('loanOfficerId').value);
 
@@ -4188,7 +5151,7 @@ export class ViewBulkImportComponent implements OnInit {
       numberOfRepayments: repayments,
       repaymentEvery: frequency.every,
       repaymentFrequencyType: frequency.type,
-      interestRatePerPeriod: rate,
+      interestRatePerPeriod: interestRatePercent,
       interestRateFrequencyType: this.ivyTekAnnualInterestRateFrequencyType,
       amortizationType: productDetails?.amortizationType?.id || 1,
       interestType: productDetails?.interestType?.id || 1,
@@ -4238,27 +5201,43 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} loanId Mifos loan id.
    * @param {any} loan Existing loan response.
    * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
    * @param {boolean} shouldApproveAndDisburse Whether import should activate loans.
+   * @param {string} loanDate Loan date to use for approval/disbursement.
    */
   private async transitionIvyTekExistingLoanLifecycle(
     loanId: string,
     loan: any,
     row: any,
-    shouldApproveAndDisburse: boolean
+    balanceNow: number | null,
+    shouldApproveAndDisburse: boolean,
+    loanDate: string = this.getIvyTekLoanDate(row)
   ): Promise<string> {
-    if (!loanId || !shouldApproveAndDisburse || this.isIvyTekLoanDisbursedOrClosed(loan)) {
+    if (!loanId) {
       return '';
     }
 
-    const loanDate = this.getIvyTekLoanDate(row);
+    if (!shouldApproveAndDisburse) {
+      return '';
+    }
+
+    if (this.isIvyTekLoanClosed(loan)) {
+      return '';
+    }
+
+    const messages: string[] = [];
     try {
       if (this.isIvyTekLoanApproved(loan)) {
         await this.disburseIvyTekLoan(loanId, loanDate);
-        return `Existing approved loan was disbursed on ${loanDate}.`;
-      }
-      if (this.canUpdateExistingIvyTekLoan(loan)) {
+        messages.push(`Existing approved loan was disbursed on ${loanDate}.`);
+      } else if (this.canUpdateExistingIvyTekLoan(loan)) {
         await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
-        return `Existing pending loan was approved and disbursed on ${loanDate}.`;
+        messages.push(`Existing pending loan was approved and disbursed on ${loanDate}.`);
+      }
+
+      const closeMessage = await this.settleAndCloseIvyTekZeroBalanceLoan(loanId, row, balanceNow, loanDate);
+      if (closeMessage) {
+        messages.push(closeMessage);
       }
     } catch (error: any) {
       if (this.isIvyTekLoanCurrentStateError(error)) {
@@ -4267,7 +5246,7 @@ export class ViewBulkImportComponent implements OnInit {
       throw error;
     }
 
-    return '';
+    return this.joinIvyTekMessages(messages);
   }
 
   /**
@@ -4275,17 +5254,27 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} loan Loan response.
    */
   private isIvyTekLoanDisbursedOrClosed(loan: any) {
+    return this.isIvyTekLoanActiveOrOverpaid(loan) || this.isIvyTekLoanClosed(loan);
+  }
+
+  /**
+   * Checks whether a loan is closed.
+   * @param {any} loan Loan response.
+   */
+  private isIvyTekLoanClosed(loan: any) {
     const status = loan?.status || {};
     const statusText = this.normalizeIvyTekText(status.value || status.code || status);
-    return (
-      status.active ||
-      status.overpaid ||
-      status.closed ||
-      status.closedObligationsMet ||
-      statusText.includes('active') ||
-      statusText.includes('overpaid') ||
-      statusText.includes('closed')
-    );
+    return status.closed || status.closedObligationsMet || statusText.includes('closed');
+  }
+
+  /**
+   * Checks whether a loan is active or overpaid.
+   * @param {any} loan Loan response.
+   */
+  private isIvyTekLoanActiveOrOverpaid(loan: any) {
+    const status = loan?.status || {};
+    const statusText = this.normalizeIvyTekText(status.value || status.code || status);
+    return status.active || status.overpaid || statusText.includes('active') || statusText.includes('overpaid');
   }
 
   /**
@@ -4332,6 +5321,128 @@ export class ViewBulkImportComponent implements OnInit {
         ...commandData,
         actualDisbursementDate: loanDate
       })
+    );
+  }
+
+  /**
+   * Posts the payoff transaction and closes a zero-balance historical IvyTek loan.
+   * @param {string} loanId Mifos loan id.
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current balance.
+   */
+  private async settleAndCloseIvyTekZeroBalanceLoan(
+    loanId: string,
+    row: any,
+    balanceNow: number | null,
+    minimumLoanDate: string = this.getIvyTekLoanDate(row)
+  ): Promise<string> {
+    if (!loanId || !this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow)) {
+      return '';
+    }
+
+    const closeDate = this.getIvyTekHistoricalLoanCloseDate(row, minimumLoanDate);
+    const existingLoan = await this.getIvyTekLoanForLifecycle(loanId);
+    if (this.isIvyTekLoanClosed(existingLoan)) {
+      return 'Zero-balance historical loan was already closed.';
+    }
+
+    const payoffMessage = await this.repayIvyTekLoanForHistoricalClose(loanId, closeDate);
+    const closeMessage = await this.closeIvyTekHistoricalLoan(loanId, closeDate);
+    return this.joinIvyTekMessages([
+      payoffMessage,
+      closeMessage
+    ]);
+  }
+
+  /**
+   * Posts the payoff amount needed before closing a zero-balance historical loan.
+   * @param {string} loanId Mifos loan id.
+   * @param {string} transactionDate Payoff transaction date.
+   */
+  private async repayIvyTekLoanForHistoricalClose(loanId: string, transactionDate: string): Promise<string> {
+    const template: any = await firstValueFrom(
+      this.loansService.getLoanPrepayLoanActionTemplate(loanId, transactionDate)
+    );
+    const transactionAmount = this.getIvyTekLoanPayoffAmount(template);
+    if (!transactionAmount || transactionAmount <= 0) {
+      return 'No payoff repayment was needed before closing the zero-balance historical loan.';
+    }
+
+    await firstValueFrom(
+      this.loansService.submitLoanActionButton(
+        loanId,
+        {
+          transactionDate,
+          transactionAmount,
+          dateFormat: this.settingsService.dateFormat,
+          locale: this.settingsService.language.code,
+          note: 'IvyTek import: payoff transaction for zero-balance historical loan close.'
+        },
+        'repayment'
+      )
+    );
+    return `Historical payoff repayment of ${this.formatIvyTekNumber(transactionAmount)} was posted on ${transactionDate}.`;
+  }
+
+  /**
+   * Closes a historical loan after its payoff transaction.
+   * @param {string} loanId Mifos loan id.
+   * @param {string} transactionDate Close transaction date.
+   */
+  private async closeIvyTekHistoricalLoan(loanId: string, transactionDate: string): Promise<string> {
+    try {
+      await firstValueFrom(
+        this.loansService.submitLoanActionButton(
+          loanId,
+          {
+            transactionDate,
+            dateFormat: this.settingsService.dateFormat,
+            locale: this.settingsService.language.code,
+            note: 'IvyTek import: closing zero-balance historical loan.'
+          },
+          'close'
+        )
+      );
+      return `Zero-balance historical loan was closed on ${transactionDate}.`;
+    } catch (error: any) {
+      const loan = await this.getIvyTekLoanForLifecycle(loanId);
+      if (this.isIvyTekLoanClosed(loan)) {
+        return `Zero-balance historical loan was already closed on or before ${transactionDate}.`;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Gets a loan response for lifecycle checks.
+   * @param {string} loanId Mifos loan id.
+   */
+  private async getIvyTekLoanForLifecycle(loanId: string) {
+    try {
+      return await firstValueFrom(this.loansService.getLoanAccountResource(loanId, 'all'));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Gets the payoff amount from a repayment/prepay template.
+   * @param {any} template Loan transaction template.
+   */
+  private getIvyTekLoanPayoffAmount(template: any): number | null {
+    return (
+      [
+        template?.amount,
+        template?.transactionAmount,
+        template?.totalOutstanding,
+        template?.totalOutstandingBalance,
+        template?.summary?.totalOutstanding,
+        template?.summary?.totalOutstandingBalance,
+        template?.repaymentSchedule?.totalOutstanding,
+        template?.repaymentSchedule?.totalOutstandingBalance
+      ]
+        .map((value: any) => this.parseIvyTekDecimal((value ?? '').toString()))
+        .find((value: number | null) => !!value && value > 0) || null
     );
   }
 
@@ -4446,11 +5557,55 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Gets the current business date in the active Mifos date format.
+   */
+  private getIvyTekBusinessDate(): string {
+    return this.dateUtils.formatDate(this.settingsService.businessDate, this.settingsService.dateFormat);
+  }
+
+  /**
+   * Gets the raw IvyTek source loan date for result review/export.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekSourceLoanDate(row: any): string {
+    return this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c') || this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c');
+  }
+
+  /**
+   * Gets the historical payoff/close date for a zero-balance IvyTek loan.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekHistoricalLoanCloseDate(row: any, minimumLoanDate: string = this.getIvyTekLoanDate(row)): string {
+    const loanDate = this.parseIvyTekDate(minimumLoanDate);
+    const sourceCloseDate = this.parseIvyTekDate(
+      this.getFirstCsvValue(row, [
+        'IvytekTestPkg__Paid_Out_Date__c',
+        'IvytekTestPkg__PaidOutDate__c',
+        'Paid_Out_Date__c',
+        'Paid Out Date',
+        'IvytekTestPkg__DateStatusChanged__c',
+        'IvytekTestPkg__StatusChangeEffDate__c',
+        'DateStatusChanged',
+        'Status Change Effective Date'
+      ])
+    );
+    const safeCloseDate =
+      this.getIvyTekOfficeSafeDate(sourceCloseDate || loanDate || this.settingsService.businessDate) ||
+      this.settingsService.businessDate;
+    const closeDate = loanDate && safeCloseDate < loanDate ? loanDate : safeCloseDate;
+    return this.dateUtils.formatDate(closeDate, this.settingsService.dateFormat);
+  }
+
+  /**
    * Gets a positive repayment count from IvyTek payment count or term fields.
    * @param {any} row IvyTek loan row.
    */
-  private getIvyTekNumberOfRepayments(row: any): number | null {
-    return this.getFirstIvyTekPositiveInteger(row, [
+  private getIvyTekNumberOfRepayments(
+    row: any,
+    principal: number | null = null,
+    balanceNow: number | null = null
+  ): number | null {
+    const sourceRepayments = this.getFirstIvyTekPositiveInteger(row, [
       'IvytekTestPkg__Number_of_Payments__c',
       'IvytekTestPkg__NumberOfPayments__c',
       'Number_of_Payments__c',
@@ -4464,6 +5619,17 @@ export class ViewBulkImportComponent implements OnInit {
       'Loan Term',
       'term'
     ]);
+    if (sourceRepayments) {
+      return sourceRepayments;
+    }
+
+    const fixedPaymentAmount = this.getIvyTekFixedEmiAmount(row);
+    const scheduleAmount = balanceNow && balanceNow > 0 ? balanceNow : principal;
+    if (fixedPaymentAmount && fixedPaymentAmount > 0 && scheduleAmount && scheduleAmount > 0) {
+      return Math.max(1, Math.ceil(scheduleAmount / fixedPaymentAmount));
+    }
+
+    return null;
   }
 
   /**
@@ -4525,7 +5691,13 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string[]} identifiers Candidate identifiers.
    */
   private getUniqueIvyTekIdentifiers(identifiers: string[]): string[] {
-    return Array.from(new Set(identifiers.filter((identifier: string) => !!identifier)));
+    return Array.from(
+      new Set(
+        identifiers
+          .map((identifier: string) => (identifier || '').toString().trim())
+          .filter((identifier: string) => !!identifier)
+      )
+    );
   }
 
   /**
@@ -4683,6 +5855,18 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Gets comparable lookup keys for Salesforce ids and legacy external ids.
+   * @param {string} value Source identifier.
+   */
+  private getIvyTekIdentifierLookupKeys(value: string): string[] {
+    const trimmed = (value || '').toString().trim();
+    return this.getUniqueIvyTekIdentifiers([
+      trimmed.toLowerCase(),
+      ...this.getSalesforceIdKeys(trimmed)
+    ]);
+  }
+
+  /**
    * Normalizes text for dictionary matching.
    * @param {string} value Raw text.
    */
@@ -4707,6 +5891,47 @@ export class ViewBulkImportComponent implements OnInit {
       .split(/[,\s]+/)
       .filter(
         (token: string) => !!token && ![
+            'jr',
+            'sr',
+            'ii',
+            'iii',
+            'iv',
+            'v'
+          ].includes(token) && !/^\d+$/.test(token)
+      )
+      .sort()
+      .join('');
+  }
+
+  /**
+   * Normalizes source Contact names while preserving suffixes that distinguish related people.
+   * @param {string} value Raw name.
+   */
+  private normalizeIvyTekSourceContactName(value: string): string {
+    return (value || '')
+      .toString()
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[^a-z0-9, ]+/g, ' ')
+      .split(/[,\s]+/)
+      .filter((token: string) => !!token && !/^\d+$/.test(token))
+      .sort()
+      .join('');
+  }
+
+  /**
+   * Normalizes names while ignoring middle initials for source-file-only borrower matching.
+   * @param {string} value Raw name.
+   */
+  private normalizeIvyTekNameWithoutMiddleInitials(value: string): string {
+    return (value || '')
+      .toString()
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[^a-z0-9, ]+/g, ' ')
+      .split(/[,\s]+/)
+      .filter(
+        (token: string) => !!token && token.length > 1 && ![
             'jr',
             'sr',
             'ii',

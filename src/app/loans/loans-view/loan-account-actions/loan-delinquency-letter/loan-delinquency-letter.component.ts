@@ -17,7 +17,11 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { LoanAccountActionsBaseComponent } from '../loan-account-actions-base.component';
 import { LoanDelinquencyLetterDocxService } from './loan-delinquency-letter-docx.service';
-import { DelinquencyLetterData, DelinquencyLetterType } from './loan-delinquency-letter.model';
+import {
+  DelinquencyLetterData,
+  DelinquencyLetterParagraph,
+  DelinquencyLetterType
+} from './loan-delinquency-letter.model';
 
 interface DelinquencyLetterTypeOption {
   value: DelinquencyLetterType;
@@ -41,7 +45,10 @@ export class LoanDelinquencyLetterComponent extends LoanAccountActionsBaseCompon
 
   letterForm: UntypedFormGroup;
   isLoadingClientData = false;
-  previewLines: string[] = [];
+  isGeneratingLetter = false;
+  previewParagraphs: DelinquencyLetterParagraph[] = [];
+  readonly letterheadImagePath = this.letterDocxService.letterheadImagePath;
+  readonly letterheadContactLine = this.letterDocxService.letterheadContactLine;
   readonly letterTypes: DelinquencyLetterTypeOption[] = [
     {
       value: 'collections',
@@ -89,15 +96,39 @@ export class LoanDelinquencyLetterComponent extends LoanAccountActionsBaseCompon
     return letterType === 'collections' || letterType === 'oneTwentyDay';
   }
 
-  downloadLetter(): void {
+  async downloadLetter(): Promise<void> {
     if (this.letterForm.invalid) {
       this.letterForm.markAllAsTouched();
       return;
     }
 
     const letterData = this.getLetterData();
-    const documentBlob = this.letterDocxService.createDocx(letterData);
-    this.downloadBlob(documentBlob, this.letterDocxService.buildFileName(letterData));
+    this.isGeneratingLetter = true;
+
+    try {
+      const documentBlob = await this.letterDocxService.createDocx(letterData);
+      this.downloadBlob(documentBlob, this.letterDocxService.buildFileName(letterData));
+    } finally {
+      this.isGeneratingLetter = false;
+    }
+  }
+
+  async downloadAllLetters(): Promise<void> {
+    if (this.letterForm.invalid) {
+      this.letterForm.markAllAsTouched();
+      return;
+    }
+
+    const letterData = this.getLetterData();
+    const letterTypes = this.letterTypes.map((letterType: DelinquencyLetterTypeOption) => letterType.value);
+    this.isGeneratingLetter = true;
+
+    try {
+      const lettersZip = await this.letterDocxService.createLettersZip(letterData, letterTypes);
+      this.downloadBlob(lettersZip, this.letterDocxService.buildZipFileName(letterData));
+    } finally {
+      this.isGeneratingLetter = false;
+    }
   }
 
   private createLetterForm(): void {
@@ -234,7 +265,7 @@ export class LoanDelinquencyLetterComponent extends LoanAccountActionsBaseCompon
     if (!this.letterForm) {
       return;
     }
-    this.previewLines = this.letterDocxService.buildPreviewLines(this.getLetterData());
+    this.previewParagraphs = this.letterDocxService.buildPreviewParagraphs(this.getLetterData());
   }
 
   private getLetterData(): DelinquencyLetterData {

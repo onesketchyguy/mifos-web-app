@@ -40,12 +40,50 @@
   border: 1px solid var(--md-sys-color-outline-variant, rgb(0 0 0 / 12%));
   border-radius: 4px;
   background: var(--md-sys-color-surface-container-low, #fff);
+  font-family: 'Times New Roman', Times, serif;
   line-height: 1.5;
 
   p {
     margin: 0 0 8px;
     white-space: pre-wrap;
   }
+}
+
+.preview-letterhead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.preview-letterhead img {
+  width: 160px;
+  height: 104px;
+  object-fit: fill;
+}
+
+.preview-letterhead-contact {
+  width: 100%;
+  padding-bottom: 4px;
+  border-bottom: 1px solid currentcolor;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.preview-center {
+  text-align: center;
+}
+
+.preview-bold {
+  font-weight: 700;
+}
+
+.preview-notice {
+  margin-bottom: 0;
+  padding: 8px 16px;
+  background: var(--md-sys-color-tertiary-container, #fff2cc);
+  color: var(--md-sys-color-on-tertiary-container, #1d1b20);
 }
 
 .preview-space {

@@ -7,7 +7,11 @@
  */
 
 import { Injectable } from '@angular/core';
-import { DelinquencyLetterData, DelinquencyLetterParagraph } from './loan-delinquency-letter.model';
+import {
+  DelinquencyLetterData,
+  DelinquencyLetterParagraph,
+  DelinquencyLetterType
+} from './loan-delinquency-letter.model';
 
 interface ZipFileEntry {
   name: string;
@@ -18,17 +22,33 @@ interface ZipFileEntry {
   providedIn: 'root'
 })
 export class LoanDelinquencyLetterDocxService {
+  readonly letterheadImagePath = 'assets/images/warm-springs-tribal-credit-letterhead.png';
+  readonly letterheadContactLine =
+    'P.O. Box 1187 ~ 1236 Scouts Dr. - Warm Springs, OR 97761    Phone: (541) 553-3201 ~ Fax: (541) 553-3515';
+
   private readonly docxMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  private readonly zipMimeType = 'application/zip';
+  private readonly bodyFontName = 'Times New Roman';
+  private readonly bodyFontSize = 22;
+  private readonly headerRelationshipId = 'rIdHeader';
+  private readonly letterheadImageRelationshipId = 'rIdLetterhead';
+  private readonly letterheadImageWidthEmu = 1524000;
+  private readonly letterheadImageHeightEmu = 1019175;
+  private readonly paragraphLineSpacing = 276;
+  private readonly noticeHighlightFill = 'FFF2CC';
   private readonly textEncoder = new TextEncoder();
   private readonly crcTable = this.createCrcTable();
+  private letterheadImagePromise: Promise<Uint8Array | null> | null = null;
 
-  createDocx(data: DelinquencyLetterData): Blob {
+  async createDocx(data: DelinquencyLetterData): Promise<Blob> {
     const paragraphs = this.buildLetterParagraphs(data);
+    const letterheadImage = await this.getLetterheadImage();
+    const hasLetterhead = letterheadImage !== null;
     const now = new Date();
-    return this.createStoredZip([
+    const files: ZipFileEntry[] = [
       {
         name: '[Content_Types].xml',
-        content: this.buildContentTypesXml()
+        content: this.buildContentTypesXml(hasLetterhead)
       },
       {
         name: '_rels/.rels',
@@ -44,7 +64,7 @@ export class LoanDelinquencyLetterDocxService {
       },
       {
         name: 'word/_rels/document.xml.rels',
-        content: this.buildDocumentRelationshipsXml()
+        content: this.buildDocumentRelationshipsXml(hasLetterhead)
       },
       {
         name: 'word/styles.xml',
@@ -52,19 +72,65 @@ export class LoanDelinquencyLetterDocxService {
       },
       {
         name: 'word/document.xml',
-        content: this.buildDocumentXml(paragraphs)
+        content: this.buildDocumentXml(paragraphs, hasLetterhead)
       }
-    ]);
+    ];
+
+    if (letterheadImage) {
+      files.push(
+        {
+          name: 'word/header1.xml',
+          content: this.buildHeaderXml()
+        },
+        {
+          name: 'word/_rels/header1.xml.rels',
+          content: this.buildHeaderRelationshipsXml()
+        },
+        {
+          name: 'word/media/letterhead.png',
+          content: letterheadImage
+        }
+      );
+    }
+
+    return this.createStoredZip(files);
+  }
+
+  async createLettersZip(data: DelinquencyLetterData, letterTypes: DelinquencyLetterType[]): Promise<Blob> {
+    const letterFiles = await Promise.all(
+      letterTypes.map(async (letterType: DelinquencyLetterType) => {
+        const letterData: DelinquencyLetterData = {
+          ...data,
+          letterType
+        };
+        const documentBlob = await this.createDocx(letterData);
+        return {
+          name: this.buildFileName(letterData),
+          content: new Uint8Array(await documentBlob.arrayBuffer())
+        };
+      })
+    );
+
+    return this.createStoredZip(letterFiles, this.zipMimeType);
   }
 
   buildPreviewLines(data: DelinquencyLetterData): string[] {
     return this.buildLetterParagraphs(data).map((paragraph: DelinquencyLetterParagraph) => paragraph.text);
   }
 
+  buildPreviewParagraphs(data: DelinquencyLetterData): DelinquencyLetterParagraph[] {
+    return this.buildLetterParagraphs(data);
+  }
+
   buildFileName(data: DelinquencyLetterData): string {
     const letterName = this.getLetterName(data.letterType).replace(/\s+/g, '-').toLowerCase();
     const loanNumber = this.sanitizeFileName(data.loanNumber || 'loan');
     return `${letterName}-${loanNumber}.docx`;
+  }
+
+  buildZipFileName(data: DelinquencyLetterData): string {
+    const loanNumber = this.sanitizeFileName(data.loanNumber || 'loan');
+    return `delinquency-letters-${loanNumber}.zip`;
   }
 
   buildLetterParagraphs(data: DelinquencyLetterData): DelinquencyLetterParagraph[] {
@@ -224,12 +290,14 @@ export class LoanDelinquencyLetterDocxService {
     paragraphs.push({ text: data.officerName, spacingAfter: 0 });
     paragraphs.push({ text: data.officerTitle, spacingAfter: 240 });
     paragraphs.push({ text: `CC: Loan File #${loanFileNumber}`, spacingAfter: 320 });
-    paragraphs.push({ text: '- NOTICE -', alignment: 'center', bold: true, spacingAfter: 120 });
+    paragraphs.push({ text: '- NOTICE -', alignment: 'center', bold: true, highlight: true, spacingAfter: 0 });
     paragraphs.push({
       text:
         'This letter is an attempt to collect debt. Any and all results forthwith may be used in a Court of law in the ' +
         'event this debt needs to be litigated in the future.',
-      alignment: 'center'
+      alignment: 'center',
+      highlight: true,
+      spacingAfter: 160
     });
   }
 
@@ -296,14 +364,35 @@ export class LoanDelinquencyLetterDocxService {
     return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'loan';
   }
 
-  private buildDocumentXml(paragraphs: DelinquencyLetterParagraph[]): string {
+  private async getLetterheadImage(): Promise<Uint8Array | null> {
+    if (!this.letterheadImagePromise) {
+      this.letterheadImagePromise = this.loadLetterheadImage();
+    }
+    return this.letterheadImagePromise;
+  }
+
+  private async loadLetterheadImage(): Promise<Uint8Array | null> {
+    try {
+      const response = await fetch(this.letterheadImagePath);
+      if (!response.ok) {
+        return null;
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    } catch {
+      return null;
+    }
+  }
+
+  private buildDocumentXml(paragraphs: DelinquencyLetterParagraph[], includeLetterhead: boolean): string {
+    const topMargin = includeLetterhead ? 2520 : 1440;
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     ${paragraphs.map((paragraph: DelinquencyLetterParagraph) => this.renderParagraph(paragraph)).join('\n')}
     <w:sectPr>
+      ${includeLetterhead ? `<w:headerReference w:type="default" r:id="${this.headerRelationshipId}"/>` : ''}
       <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgMar w:top="${topMargin}" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
   </w:body>
 </w:document>`;
@@ -312,9 +401,20 @@ export class LoanDelinquencyLetterDocxService {
   private renderParagraph(paragraph: DelinquencyLetterParagraph): string {
     const spacingAfter = paragraph.spacingAfter ?? 120;
     const justification = paragraph.alignment ? `<w:jc w:val="${paragraph.alignment}"/>` : '';
-    const runProperties = paragraph.bold ? '<w:rPr><w:b/></w:rPr>' : '';
+    const shading = paragraph.highlight
+      ? `<w:shd w:val="clear" w:color="auto" w:fill="${this.noticeHighlightFill}"/>`
+      : '';
+    const runProperties = this.renderRunProperties(paragraph);
     const text = paragraph.text ? this.renderText(paragraph.text) : '';
-    return `<w:p><w:pPr><w:spacing w:after="${spacingAfter}" w:line="276" w:lineRule="auto"/>${justification}</w:pPr><w:r>${runProperties}${text}</w:r></w:p>`;
+    return `<w:p><w:pPr><w:spacing w:after="${spacingAfter}" w:line="${this.paragraphLineSpacing}" w:lineRule="auto"/>${justification}${shading}</w:pPr><w:r>${runProperties}${text}</w:r></w:p>`;
+  }
+
+  private renderRunProperties(paragraph: DelinquencyLetterParagraph): string {
+    const properties = [
+      paragraph.bold ? '<w:b/>' : '',
+      paragraph.highlight ? '<w:highlight w:val="yellow"/>' : ''
+    ].join('');
+    return properties ? `<w:rPr>${properties}</w:rPr>` : '';
   }
 
   private renderText(text: string): string {
@@ -327,13 +427,44 @@ export class LoanDelinquencyLetterDocxService {
       .join('');
   }
 
-  private buildContentTypesXml(): string {
+  private buildHeaderXml(): string {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  ${this.renderLetterheadImageParagraph()}
+  <w:p>
+    <w:pPr>
+      <w:spacing w:after="0" w:line="240" w:lineRule="auto"/>
+      <w:jc w:val="center"/>
+      <w:ind w:left="-720" w:right="-720"/>
+      <w:pBdr>
+        <w:bottom w:val="single" w:sz="4" w:space="1" w:color="auto"/>
+      </w:pBdr>
+    </w:pPr>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Agency FB" w:hAnsi="Agency FB" w:cs="Agency FB"/>
+        <w:sz w:val="18"/>
+        <w:szCs w:val="18"/>
+      </w:rPr>
+      <w:t xml:space="preserve">${this.escapeXml(this.letterheadContactLine)}</w:t>
+    </w:r>
+  </w:p>
+</w:hdr>`;
+  }
+
+  private renderLetterheadImageParagraph(): string {
+    return `<w:p><w:pPr><w:spacing w:after="0"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${this.letterheadImageWidthEmu}" cy="${this.letterheadImageHeightEmu}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="Warm Springs Tribal Credit Enterprise Letterhead"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="letterhead.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${this.letterheadImageRelationshipId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${this.letterheadImageWidthEmu}" cy="${this.letterheadImageHeightEmu}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  }
+
+  private buildContentTypesXml(includeLetterhead: boolean): string {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  ${includeLetterhead ? '<Default Extension="png" ContentType="image/png"/>' : ''}
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  ${includeLetterhead ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>`;
@@ -348,9 +479,18 @@ export class LoanDelinquencyLetterDocxService {
 </Relationships>`;
   }
 
-  private buildDocumentRelationshipsXml(): string {
+  private buildDocumentRelationshipsXml(includeLetterhead: boolean): string {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${includeLetterhead ? `<Relationship Id="${this.headerRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>` : ''}
+</Relationships>`;
+  }
+
+  private buildHeaderRelationshipsXml(): string {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="${this.letterheadImageRelationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/letterhead.png"/>
+</Relationships>`;
   }
 
   private buildCorePropertiesXml(now: Date): string {
@@ -379,15 +519,15 @@ export class LoanDelinquencyLetterDocxService {
     <w:name w:val="Normal"/>
     <w:qFormat/>
     <w:rPr>
-      <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
-      <w:sz w:val="22"/>
-      <w:szCs w:val="22"/>
+      <w:rFonts w:ascii="${this.bodyFontName}" w:hAnsi="${this.bodyFontName}" w:cs="${this.bodyFontName}"/>
+      <w:sz w:val="${this.bodyFontSize}"/>
+      <w:szCs w:val="${this.bodyFontSize}"/>
     </w:rPr>
   </w:style>
 </w:styles>`;
   }
 
-  private createStoredZip(files: ZipFileEntry[]): Blob {
+  private createStoredZip(files: ZipFileEntry[], mimeType: string = this.docxMimeType): Blob {
     const localParts: Uint8Array[] = [];
     const centralParts: Uint8Array[] = [];
     let offset = 0;
@@ -414,7 +554,7 @@ export class LoanDelinquencyLetterDocxService {
     ]);
     const zipBuffer = new ArrayBuffer(zipBytes.byteLength);
     new Uint8Array(zipBuffer).set(zipBytes);
-    return new Blob([zipBuffer], { type: this.docxMimeType });
+    return new Blob([zipBuffer], { type: mimeType });
   }
 
   private createLocalFileHeader(
