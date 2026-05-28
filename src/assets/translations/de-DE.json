@@ -2271,6 +2271,7 @@
       "Loan Id": "Kredit-ID",
       "Loan Officer": "Kreditsachbearbeiter",
       "Loan Originator": "Kreditvermittler",
+      "Loan Origination Date": "Datum der Kreditvergabe",
       "Loan Outstanding Amount": "Ausstehender Kreditbetrag",
       "Loan Outstanding Percentage": "Prozentsatz der ausstehenden Kredite",
       "Loan Parameters": "Kreditparameter",

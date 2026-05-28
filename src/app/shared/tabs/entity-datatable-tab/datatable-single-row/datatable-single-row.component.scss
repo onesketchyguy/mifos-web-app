@@ -24,15 +24,15 @@
 }
 
 .data-grid {
-  display: grid;
-  gap: 20px;
-  padding: 12px 0;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(220px, 220px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 0;
 }
 
 .data-item {
   display: flex;
+  flex: 1 1 224px;
   flex-direction: column;
   padding: 16px;
   background-color: rgb(0 0 0 / 2%);
@@ -118,15 +118,14 @@
 }
 
 @media (width <= 768px) {
-  .data-grid {
-    grid-template-columns: 100%;
-    gap: 16px;
-    grid-auto-flow: initial;
-    grid-auto-columns: initial;
+  .data-item {
+    flex-basis: 100%;
   }
 }
 
 .table-scroll-wrapper {
-  overflow-x: auto;
   width: 100%;
+  max-height: 60vh;
+  overflow: hidden auto;
+  padding-right: 8px;
 }

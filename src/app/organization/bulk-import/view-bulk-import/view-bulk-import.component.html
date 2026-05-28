@@ -116,6 +116,9 @@
           <div class="ivytek-run-summary-header">
             <strong>{{ 'labels.heading.IvyTek Import Status' | translate }}</strong>
             <div class="ivytek-run-summary-actions">
+              <button mat-button type="button" [disabled]="!canRetryIvyTekPipeline" (click)="retryIvyTekPipelineRun()">
+                <i class="fa fa-repeat"></i>&nbsp;&nbsp;{{ 'labels.buttons.Retry' | translate }}
+              </button>
               <button
                 mat-button
                 type="button"
@@ -168,15 +171,8 @@
       }
 
       <form [formGroup]="ivyTekImportForm">
-        <mat-card-content class="layout-row responsive-column gap-2percent">
-          <mat-form-field class="flex-fill">
-            <mat-label>{{ 'labels.inputs.Target Entity' | translate }}</mat-label>
-            <mat-select required formControlName="targetEntity">
-              <mat-option value="clients">{{ 'labels.heading.Clients' | translate }}</mat-option>
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field class="flex-fill">
+        <mat-card-content class="ivytek-start-stage-row">
+          <mat-form-field>
             <mat-label>{{ 'labels.inputs.Start Stage' | translate }}</mat-label>
             <mat-select required formControlName="startStage">
               <mat-option value="clients">{{ 'labels.heading.Stage 1 Clients' | translate }}</mat-option>
@@ -184,56 +180,7 @@
               <mat-option value="transactions">{{ 'labels.heading.Stage 3 Transactions' | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
-
-          <mat-form-field class="flex-fill">
-            <mat-label>{{ 'labels.inputs.Office' | translate }}</mat-label>
-            <mat-select [required]="ivyTekStartStage !== 'transactions'" formControlName="officeId">
-              @for (office of officeData; track office) {
-                <mat-option [value]="office.id">
-                  {{ office.name }}
-                </mat-option>
-              }
-            </mat-select>
-            <mat-hint>{{ 'labels.text.Required when IvyTek import creates new clients.' | translate }}</mat-hint>
-          </mat-form-field>
         </mat-card-content>
-      </form>
-
-      <form [formGroup]="ivyTekLoanImportForm">
-        <mat-card-content class="layout-row responsive-column gap-2percent">
-          <mat-form-field class="flex-fill">
-            <mat-label>{{ 'labels.inputs.Loan Officer ID' | translate }}</mat-label>
-            <input matInput formControlName="loanOfficerId" />
-            <mat-hint>{{ 'labels.text.Optional for IvyTek loan import.' | translate }}</mat-hint>
-          </mat-form-field>
-
-          <mat-form-field class="flex-fill">
-            <mat-label>{{ 'labels.inputs.Charge Name' | translate }}</mat-label>
-            <mat-select formControlName="chargeName">
-              <mat-option value="">{{ 'labels.inputs.No Charge' | translate }}</mat-option>
-              @for (charge of ivyTekLoanChargeOptions; track charge.id) {
-                <mat-option [value]="charge.name">{{ charge.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field class="flex-fill">
-            <mat-label>{{ 'labels.inputs.Charge Amount Source' | translate }}</mat-label>
-            <mat-select required formControlName="chargeAmountSource">
-              <mat-option value="amount_financed">{{ 'labels.inputs.Amount Financed' | translate }}</mat-option>
-              <mat-option value="balance_now">{{ 'labels.inputs.Balance Now' | translate }}</mat-option>
-              <mat-option value="payoff_amount">{{ 'labels.inputs.Payoff Amount' | translate }}</mat-option>
-            </mat-select>
-          </mat-form-field>
-        </mat-card-content>
-
-        <mat-checkbox formControlName="preserveHistoricalDates">
-          {{ 'labels.inputs.Preserve Historical Dates' | translate }}
-        </mat-checkbox>
-
-        <mat-checkbox formControlName="approveAndDisburse">
-          {{ 'labels.inputs.Approve and Disburse Loans' | translate }}
-        </mat-checkbox>
       </form>
 
       <div class="ivytek-file-grid">
