@@ -66,15 +66,23 @@
                           }
                         </td>
                       </tr>
-                      @if (loanDetailsData.externalId) {
+                      @if (
+                        loanDetailsData.timeline?.actualDisbursementDate || loanDetailsData.timeline?.submittedOnDate
+                      ) {
                         <tr>
-                          <td>{{ 'labels.inputs.External Id' | translate }}:</td>
+                          <td>{{ 'labels.inputs.Loan Origination Date' | translate }}:</td>
                           <td>
-                            <mifosx-external-identifier
-                              [externalId]="loanDetailsData.externalId"
-                              [completed]="false"
-                            ></mifosx-external-identifier>
+                            {{
+                              loanDetailsData.timeline?.actualDisbursementDate ||
+                                loanDetailsData.timeline?.submittedOnDate | dateFormat
+                            }}
                           </td>
+                        </tr>
+                      }
+                      @if (currentDueDate) {
+                        <tr>
+                          <td>{{ 'labels.inputs.Current Due Date' | translate }}:</td>
+                          <td>{{ currentDueDate | dateFormat }}</td>
                         </tr>
                       }
                     </tbody>
@@ -537,7 +545,7 @@
         }
       </nav>
       <mat-tab-nav-panel #tabPanel>
-        <div class="datatable-scroll-x">
+        <div class="datatable-scroll-y">
           <router-outlet></router-outlet>
         </div>
       </mat-tab-nav-panel>

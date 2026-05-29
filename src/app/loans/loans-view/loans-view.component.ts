@@ -32,7 +32,6 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { NgClass, CurrencyPipe } from '@angular/common';
 import { LongTextComponent } from '../../shared/long-text/long-text.component';
 import { AccountNumberComponent } from '../../shared/account-number/account-number.component';
-import { ExternalIdentifierComponent } from '../../shared/external-identifier/external-identifier.component';
 import { MatIconButton } from '@angular/material/button';
 import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
 import { MatIcon } from '@angular/material/icon';
@@ -45,6 +44,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanProducts } from 'app/products/loan-products/loan-products';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
+import { SettingsService } from 'app/settings/settings.service';
 
 @Component({
   selector: 'mifosx-loans-view',
@@ -60,7 +60,6 @@ import { accountFeatures } from 'app/shared/account-features/account-features.co
     NgClass,
     LongTextComponent,
     AccountNumberComponent,
-    ExternalIdentifierComponent,
     MatIconButton,
     MatMenuTrigger,
     MatIcon,
@@ -82,10 +81,13 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
   private route = inject(ActivatedRoute);
   loansService = inject(LoansService);
   private translateService = inject(TranslateService);
+  private settingsService = inject(SettingsService);
   dialog = inject(MatDialog);
 
   /** Loan Details Data */
   loanDetailsData: any;
+  /** Current due date */
+  currentDueDate: any;
   /** Loan Datatables */
   loanDatatables: any;
   /** Whether datatable filtering has completed */
@@ -122,6 +124,7 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
     this.route.data.subscribe(
       (data: { loanDetailsData: any; loanDatatables: any; loanArrearsDelinquencyConfig: any }) => {
         this.loanDetailsData = data.loanDetailsData;
+        this.currentDueDate = this.getCurrentDueDate(this.loanDetailsData);
         if (!this.loanDetailsData.loanProductName) {
           this.loanDetailsData.loanProductName = this.loanDetailsData.product.name;
         }
@@ -589,6 +592,63 @@ export class LoansViewComponent extends LoanProductBaseComponent implements OnIn
         });
       }
     });
+  }
+
+  private getCurrentDueDate(loan: any): any {
+    const duePeriods = this.getOutstandingSchedulePeriods(loan);
+    const currentDuePeriod = duePeriods.find((period: any) => this.getDateSortValue(period.dueDate) <= this.getToday());
+    return (
+      loan.currentDueDate ||
+      loan.nextDueDate ||
+      loan.nextRepaymentDate ||
+      loan.dueDate ||
+      loan.summary?.overdueSinceDate ||
+      currentDuePeriod?.dueDate ||
+      duePeriods[0]?.dueDate
+    );
+  }
+
+  private getOutstandingSchedulePeriods(loan: any): any[] {
+    return (loan?.repaymentSchedule?.periods || [])
+      .filter((period: any) => period.dueDate && !period.complete && this.getPeriodOutstanding(period) > 0)
+      .sort((firstPeriod: any, secondPeriod: any) => {
+        return this.getDateSortValue(firstPeriod.dueDate) - this.getDateSortValue(secondPeriod.dueDate);
+      });
+  }
+
+  private getPeriodOutstanding(period: any): number {
+    if (period.totalOutstandingForPeriod !== undefined && period.totalOutstandingForPeriod !== null) {
+      return period.totalOutstandingForPeriod;
+    }
+
+    const outstandingBreakdown =
+      (period.principalOutstanding || 0) +
+      (period.interestOutstanding || 0) +
+      (period.feeChargesOutstanding || 0) +
+      (period.penaltyChargesOutstanding || 0);
+
+    return outstandingBreakdown || period.totalDueForPeriod || 0;
+  }
+
+  private getToday(): number {
+    return this.getDateSortValue(this.settingsService.businessDate || new Date());
+  }
+
+  private getDateSortValue(value: any): number {
+    if (!value) {
+      return 0;
+    }
+
+    if (Array.isArray(value)) {
+      const [
+        year,
+        month,
+        day
+      ] = value;
+      return new Date(year, month - 1, day).getTime();
+    }
+
+    return new Date(value).getTime() || 0;
   }
 
   private isContractTermination(substatus: OptionData): boolean {

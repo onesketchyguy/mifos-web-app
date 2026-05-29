@@ -11,6 +11,7 @@ import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatPaginator, PageEvent } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
+import { MatIcon } from '@angular/material/icon';
 import {
   MatTable,
   MatTableDataSource,
@@ -32,10 +33,16 @@ import { catchError, map } from 'rxjs/operators';
 /** Custom Services */
 import { LoansService } from './loans.service';
 import { SettingsService } from 'app/settings/settings.service';
+import { OrganizationService } from 'app/organization/organization.service';
 
 /** Custom Imports */
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+
+interface LoanFilterOption {
+  value: string;
+  label: string;
+}
 
 /**
  * Loans component.
@@ -60,6 +67,7 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     MatPaginator,
     MatSort,
     MatSortHeader,
+    MatIcon,
     FormatNumberPipe
   ]
 })
@@ -68,9 +76,12 @@ export class LoansComponent implements OnInit {
   private router = inject(Router);
   private loansService = inject(LoansService);
   private settingsService = inject(SettingsService);
+  private organizationService = inject(OrganizationService);
 
   /** Loans data. */
   loans: any[] = [];
+  /** Full loan index used for filtered pagination. */
+  allLoans: any[] = [];
   /** Data source for loans table. */
   dataSource = new MatTableDataSource<any>([]);
   /** Columns to be displayed in loans table. */
@@ -84,7 +95,8 @@ export class LoansComponent implements OnInit {
     'interestRate',
     'amountLast',
     'maturityDate',
-    'daysLate'
+    'daysLate',
+    'company'
   ];
 
   /** Sorter for loans table. */
@@ -107,6 +119,24 @@ export class LoansComponent implements OnInit {
   totalRecords = 0;
   /** Current loan enrichment request id. */
   enrichmentRequest = 0;
+  /** Current filter index request id. */
+  filterRequest = 0;
+  /** Whether full loan index is loaded for filters. */
+  allLoansLoaded = false;
+  /** Text filter value. */
+  textFilter = '';
+  /** Status filter value. */
+  statusFilter = '';
+  /** Company filter value. */
+  companyFilter = '';
+  /** Loan status filter options. */
+  statusOptions: string[] = [];
+  /** Loan company filter options. */
+  companyOptions: LoanFilterOption[] = [];
+  /** Office lookup values from m_office. */
+  officeOptions: LoanFilterOption[] = [];
+  /** Office names by office id. */
+  officeNameById = new Map<string, string>();
 
   /**
    * Retrieves the loans data from `resolve`.
@@ -121,26 +151,13 @@ export class LoansComponent implements OnInit {
    * Initializes sorting and filtering for the loans table.
    */
   ngOnInit(): void {
+    this.loadOfficeOptions();
     this.dataSource.sortingDataAccessor = (loan: any, column: string) => {
       return this.getSortValue(loan, column);
     };
     this.dataSource.filterPredicate = (loan: any, filter: string) => {
-      const searchData = [
-        this.getLoanIdentifier(loan),
-        this.getBorrowerName(loan),
-        this.getCurrentDueDate(loan),
-        this.getBalanceNow(loan),
-        this.getAmountNowDue(loan),
-        this.getProjectedAccruedInterest(loan),
-        this.getInterestRate(loan),
-        this.getAmountLast(loan),
-        this.getMaturityDate(loan),
-        this.getDaysLate(loan)
-      ]
-        .filter((value: any) => value !== undefined && value !== null)
-        .join(' ')
-        .toLowerCase();
-      return searchData.includes(filter);
+      const filters = JSON.parse(filter || '{}');
+      return this.matchesLoanFilters(loan, filters);
     };
   }
 
@@ -149,7 +166,29 @@ export class LoansComponent implements OnInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string = '') {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    this.textFilter = filterValue.trim().toLowerCase();
+    this.currentPage = 0;
+    this.applyLoanFilters();
+  }
+
+  /**
+   * Filters data in loans table based on selected status.
+   * @param {string} status Status filter.
+   */
+  applyStatusFilter(status: string = '') {
+    this.statusFilter = status;
+    this.currentPage = 0;
+    this.applyLoanFilters();
+  }
+
+  /**
+   * Filters data in loans table based on selected company.
+   * @param {string} company Company filter.
+   */
+  applyCompanyFilter(company: string = '') {
+    this.companyFilter = company;
+    this.currentPage = 0;
+    this.applyLoanFilters();
   }
 
   /**
@@ -159,7 +198,11 @@ export class LoansComponent implements OnInit {
   changePaging(event: PageEvent) {
     this.currentPage = event.pageIndex;
     this.pageSize = event.pageSize;
-    this.getLoans();
+    if (this.hasActiveFilters()) {
+      this.applyFilteredLoans();
+    } else {
+      this.getLoans();
+    }
   }
 
   /**
@@ -178,6 +221,64 @@ export class LoansComponent implements OnInit {
    */
   getBorrowerName(loan: any): string {
     return loan.clientName || loan.group?.name || loan.groupName || '';
+  }
+
+  /**
+   * Returns loan status display value.
+   * @param {any} loan Loan data.
+   * @returns {string} Loan status.
+   */
+  getLoanStatus(loan: any): string {
+    return loan.status?.value || loan.status?.code || '';
+  }
+
+  /**
+   * Returns company or office display value.
+   * @param {any} loan Loan data.
+   * @returns {string} Loan company.
+   */
+  getLoanCompany(loan: any): string {
+    const officeValue = this.getLoanCompanyFilterValue(loan);
+    return (
+      this.officeNameById.get(officeValue) ||
+      this.getAttributeDisplayValue(loan.m_office) ||
+      this.getAttributeDisplayValue(loan.attributes?.m_office) ||
+      this.getAttributeDisplayValue(loan.datatables?.m_office) ||
+      this.getAttributeDisplayValue(loan.dataTables?.m_office) ||
+      loan.companyName ||
+      loan.company?.name ||
+      loan.clientOfficeName ||
+      loan.officeName ||
+      loan.office?.name ||
+      loan.group?.officeName ||
+      ''
+    );
+  }
+
+  /**
+   * Returns the company or office filter value.
+   * @param {any} loan Loan data.
+   * @returns {string} Loan company filter value.
+   */
+  getLoanCompanyFilterValue(loan: any): string {
+    return this.normalizeOptionValue(
+      this.getAttributeFilterValue(loan.m_office) ||
+        this.getAttributeFilterValue(loan.attributes?.m_office) ||
+        this.getAttributeFilterValue(loan.datatables?.m_office) ||
+        this.getAttributeFilterValue(loan.dataTables?.m_office) ||
+        loan.officeId ||
+        loan.clientOfficeId ||
+        loan.group?.officeId ||
+        loan.office?.id ||
+        loan.companyId ||
+        loan.company?.id ||
+        loan.companyName ||
+        loan.clientOfficeName ||
+        loan.officeName ||
+        loan.office?.name ||
+        loan.group?.officeName ||
+        ''
+    );
   }
 
   /**
@@ -357,6 +458,7 @@ export class LoansComponent implements OnInit {
     if (this.sort) {
       this.dataSource.sort = this.sort;
     }
+    this.updateFilterOptions();
     this.enrichLoans(enrichmentRequest);
   }
 
@@ -384,6 +486,7 @@ export class LoansComponent implements OnInit {
       if (this.sort) {
         this.dataSource.sort = this.sort;
       }
+      this.updateFilterOptions();
     });
   }
 
@@ -393,6 +496,10 @@ export class LoansComponent implements OnInit {
         return this.normalizeString(this.getLoanIdentifier(loan));
       case 'borrower':
         return this.normalizeString(this.getBorrowerName(loan));
+      case 'status':
+        return this.normalizeString(this.getLoanStatus(loan));
+      case 'company':
+        return this.normalizeString(this.getLoanCompany(loan));
       case 'currentDueDate':
         return this.getDateSortValue(this.getCurrentDueDate(loan));
       case 'balanceNow':
@@ -416,6 +523,180 @@ export class LoansComponent implements OnInit {
 
   private normalizeString(value: any): string {
     return value === undefined || value === null ? '' : value.toString().toLowerCase();
+  }
+
+  private loadOfficeOptions() {
+    this.organizationService.getOffices().subscribe((officesData: any) => {
+      const offices = officesData?.pageItems || officesData || [];
+      this.officeOptions = this.getUniqueFilterOptions(
+        offices.map((office: any) => ({
+          value: this.normalizeOptionValue(office.id || office.officeId || office.name),
+          label: office.name || office.displayName || office.officeName || office.id?.toString() || ''
+        }))
+      );
+      this.officeNameById = new Map(
+        this.officeOptions.map((office: LoanFilterOption) => [
+          office.value,
+          office.label
+        ])
+      );
+      this.updateFilterOptions();
+    });
+  }
+
+  private getAttributeDisplayValue(value: any): string {
+    if (value === undefined || value === null) {
+      return '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((entry: any) => this.getAttributeDisplayValue(entry)).find((entry: string) => entry) || '';
+    }
+
+    if (typeof value === 'object') {
+      return (
+        value.displayName || value.name || value.officeName || value.label || value.value || value.id?.toString() || ''
+      );
+    }
+
+    return value.toString();
+  }
+
+  private getAttributeFilterValue(value: any): string {
+    if (value === undefined || value === null) {
+      return '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((entry: any) => this.getAttributeFilterValue(entry)).find((entry: string) => entry) || '';
+    }
+
+    if (typeof value === 'object') {
+      return (
+        value.id?.toString() ||
+        value.officeId?.toString() ||
+        value.value?.toString() ||
+        value.name ||
+        value.displayName ||
+        value.officeName ||
+        ''
+      );
+    }
+
+    return value.toString();
+  }
+
+  private applyLoanFilters() {
+    if (!this.hasActiveFilters()) {
+      this.getLoans();
+      return;
+    }
+
+    if (this.allLoansLoaded) {
+      this.applyFilteredLoans();
+      return;
+    }
+
+    const filterRequest = ++this.filterRequest;
+    const limit = Math.max(this.totalRecords, this.pageSize);
+    this.loansService.getLoans(0, limit).subscribe((loansData: any) => {
+      if (filterRequest !== this.filterRequest) {
+        return;
+      }
+      this.allLoans = loansData?.pageItems || [];
+      this.allLoansLoaded = true;
+      this.updateFilterOptions(this.allLoans);
+      this.applyFilteredLoans();
+    });
+  }
+
+  private applyFilteredLoans() {
+    const filteredLoans = this.allLoans.filter((loan: any) =>
+      this.matchesLoanFilters(loan, {
+        search: this.textFilter,
+        status: this.statusFilter,
+        company: this.companyFilter
+      })
+    );
+    this.totalRecords = filteredLoans.length;
+    this.loans = filteredLoans.slice(this.currentPage * this.pageSize, (this.currentPage + 1) * this.pageSize);
+    this.dataSource.data = this.loans;
+    if (this.sort) {
+      this.dataSource.sort = this.sort;
+    }
+    this.enrichLoans(++this.enrichmentRequest);
+  }
+
+  private hasActiveFilters(): boolean {
+    return Boolean(this.textFilter || this.statusFilter || this.companyFilter);
+  }
+
+  private matchesLoanFilters(loan: any, filters: any): boolean {
+    const searchData = [
+      this.getLoanIdentifier(loan),
+      this.getBorrowerName(loan),
+      this.getLoanStatus(loan),
+      this.getLoanCompany(loan),
+      this.getCurrentDueDate(loan),
+      this.getBalanceNow(loan),
+      this.getAmountNowDue(loan),
+      this.getProjectedAccruedInterest(loan),
+      this.getInterestRate(loan),
+      this.getAmountLast(loan),
+      this.getMaturityDate(loan),
+      this.getDaysLate(loan)
+    ]
+      .filter((value: any) => value !== undefined && value !== null)
+      .join(' ')
+      .toLowerCase();
+    const matchesText = !filters.search || searchData.includes(filters.search);
+    const matchesStatus = !filters.status || this.getLoanStatus(loan) === filters.status;
+    const matchesCompany =
+      !filters.company ||
+      this.getLoanCompanyFilterValue(loan) === filters.company ||
+      this.normalizeString(this.getLoanCompany(loan)) ===
+        this.normalizeString(this.getCompanyOptionLabel(filters.company));
+    return matchesText && matchesStatus && matchesCompany;
+  }
+
+  private updateFilterOptions(loans: any[] = this.allLoansLoaded ? this.allLoans : this.loans) {
+    this.statusOptions = this.getUniqueOptions(loans.map((loan: any) => this.getLoanStatus(loan)));
+    const loanCompanyOptions = this.getUniqueFilterOptions(
+      loans.map((loan: any) => {
+        const value = this.getLoanCompanyFilterValue(loan);
+        return {
+          value: value,
+          label: this.getLoanCompany(loan) || this.getCompanyOptionLabel(value)
+        };
+      })
+    );
+    this.companyOptions = this.officeOptions.length ? this.officeOptions : loanCompanyOptions;
+  }
+
+  private getUniqueOptions(options: string[]): string[] {
+    return Array.from(new Set(options.filter((option: string) => option))).sort((first: string, second: string) =>
+      first.localeCompare(second)
+    );
+  }
+
+  private getUniqueFilterOptions(options: LoanFilterOption[]): LoanFilterOption[] {
+    const optionMap = new Map<string, LoanFilterOption>();
+    options
+      .filter((option: LoanFilterOption) => option.value && option.label)
+      .forEach((option: LoanFilterOption) => {
+        optionMap.set(option.value, option);
+      });
+    return Array.from(optionMap.values()).sort((first: LoanFilterOption, second: LoanFilterOption) =>
+      first.label.localeCompare(second.label)
+    );
+  }
+
+  private normalizeOptionValue(value: any): string {
+    return value === undefined || value === null ? '' : value.toString();
+  }
+
+  private getCompanyOptionLabel(value: string): string {
+    return this.companyOptions.find((option: LoanFilterOption) => option.value === value)?.label || '';
   }
 
   private getOutstandingSchedulePeriods(loan: any): any[] {

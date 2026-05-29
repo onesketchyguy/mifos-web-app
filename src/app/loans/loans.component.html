@@ -7,10 +7,42 @@
 -->
 
 <div class="container">
-  <div class="layout-row gap-20px">
+  <div class="loan-actions">
+    <button
+      mat-raised-button
+      color="primary"
+      [routerLink]="['tribal-payments']"
+      *mifosxHasPermission="'REPAYMENT_LOAN'"
+    >
+      <mat-icon aria-hidden="true">payments</mat-icon>
+      {{ 'labels.heading.Tribal Loan Payments' | translate }}
+    </button>
+  </div>
+
+  <div class="layout-row gap-20px responsive-column">
     <mat-form-field class="flex-fill">
       <mat-label>{{ 'labels.inputs.Filter' | translate }}</mat-label>
       <input matInput (keyup)="applyFilter($event.target.value)" />
+    </mat-form-field>
+
+    <mat-form-field class="filter-field">
+      <mat-label>{{ 'labels.inputs.Loan Status' | translate }}</mat-label>
+      <mat-select [value]="statusFilter" (selectionChange)="applyStatusFilter($event.value)">
+        <mat-option value="">{{ 'labels.inputs.All Statuses' | translate }}</mat-option>
+        @for (status of statusOptions; track status) {
+          <mat-option [value]="status">{{ status }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field class="filter-field">
+      <mat-label>{{ 'labels.inputs.Company' | translate }}</mat-label>
+      <mat-select [value]="companyFilter" (selectionChange)="applyCompanyFilter($event.value)">
+        <mat-option value="">{{ 'labels.inputs.All Companies' | translate }}</mat-option>
+        @for (company of companyOptions; track company.value) {
+          <mat-option [value]="company.value">{{ company.label }}</mat-option>
+        }
+      </mat-select>
     </mat-form-field>
   </div>
 
@@ -77,6 +109,11 @@
         <ng-container matColumnDef="daysLate">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Days Late' | translate }}</th>
           <td mat-cell *matCellDef="let loan">{{ getDaysLate(loan) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="company">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Company Code' | translate }}</th>
+          <td mat-cell *matCellDef="let loan">{{ getLoanCompany(loan) }}</td>
         </ng-container>
 
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>

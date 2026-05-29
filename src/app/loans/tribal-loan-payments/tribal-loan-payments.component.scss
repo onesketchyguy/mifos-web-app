@@ -1,0 +1,134 @@
+/**
+ * Copyright since 2025 Mifos Initiative
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+.tribal-loan-payments {
+  .section-card {
+    margin-top: 16px;
+  }
+
+  .controls-grid {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .controls-grid mat-form-field {
+    flex: 1 1 240px;
+  }
+
+  .notes-field {
+    flex-basis: 100%;
+  }
+
+  .actions-row {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .actions-row button {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .section-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+  }
+
+  .section-toolbar button {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .summary-grid {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .summary-item {
+    flex: 1 1 160px;
+    border: 1px solid rgb(0 0 0 / 12%);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .summary-grid.compact .summary-item {
+    flex-basis: 192px;
+  }
+
+  .summary-label,
+  .summary-value {
+    display: block;
+  }
+
+  .summary-label {
+    font-size: 12px;
+  }
+
+  .summary-value {
+    margin-top: 8px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .total-item {
+    border-width: 2px;
+  }
+
+  .table-container {
+    overflow: auto;
+    margin-top: 16px;
+  }
+
+  table {
+    width: 100%;
+  }
+
+  .amount-cell {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .reason-cell {
+    min-width: 192px;
+  }
+
+  .subsection-title {
+    margin: 24px 0 0;
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  .validation-row {
+    margin-top: 16px;
+  }
+
+  .loading-panel {
+    margin-top: 16px;
+    border: 1px solid rgb(0 0 0 / 12%);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .loading-message {
+    margin-top: 8px;
+    color: rgb(0 0 0 / 60%);
+  }
+
+  .m-t-16 {
+    margin-top: 16px;
+  }
+}

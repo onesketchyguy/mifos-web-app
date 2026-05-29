@@ -1508,11 +1508,13 @@ export class ViewBulkImportComponent implements OnInit {
         shouldCloseAfterDisbursement,
         historicalRepaymentSummary
       );
+      const migrationTransactionDate = this.getIvyTekMigrationTransactionDate(row, payloadLoanDate);
       result.mappedValues = {
         ...result.mappedValues,
         payloadPrincipal,
         principalSnapshotAdjustment: principalSnapshotAdjustment ?? '',
         migrationPrincipalPaid: migrationPrincipalPaid ?? '',
+        migrationTransactionDate,
         payloadInterestRatePercent,
         payloadLoanDate,
         payloadInterestChargedFromDate,
@@ -1659,7 +1661,7 @@ export class ViewBulkImportComponent implements OnInit {
                 row,
                 payloadPrincipal,
                 balanceNow,
-                payloadInterestChargedFromDate || createdLoanDate,
+                this.getIvyTekMigrationTransactionDate(row, createdLoanDate),
                 shouldApproveAndDisburse,
                 shouldCloseAfterDisbursement,
                 historicalRepaymentSummary
@@ -5512,15 +5514,7 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean,
     historicalRepaymentSummary: any = null
   ): number {
-    if (
-      this.isIvyTekLoanInterestAccrualSuppressed(
-        row,
-        balanceNow,
-        shouldApproveAndDisburse,
-        shouldCloseAfterDisbursement,
-        historicalRepaymentSummary
-      )
-    ) {
+    if (shouldCloseAfterDisbursement) {
       return 0;
     }
 
@@ -5550,19 +5544,7 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean,
     historicalRepaymentSummary: any = null
   ): string {
-    if (
-      !this.shouldUseIvyTekMigrationDateForLoan(
-        row,
-        balanceNow,
-        shouldApproveAndDisburse,
-        shouldCloseAfterDisbursement,
-        historicalRepaymentSummary
-      )
-    ) {
-      return '';
-    }
-
-    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || this.getIvyTekBusinessDate();
+    return '';
   }
 
   /**
@@ -5572,6 +5554,15 @@ export class ViewBulkImportComponent implements OnInit {
   private getIvyTekLoanInterestSnapshotStartDateText(row: any): string {
     const interestStartDate = this.getIvyTekLoanInterestSnapshotStartDate(row);
     return interestStartDate ? this.dateUtils.formatDate(interestStartDate, this.settingsService.dateFormat) : '';
+  }
+
+  /**
+   * Gets the migration transaction date used for balance-setting adjustments.
+   * @param {any} row IvyTek loan row.
+   * @param {string} fallbackDate Fallback transaction date.
+   */
+  private getIvyTekMigrationTransactionDate(row: any, fallbackDate: string = ''): string {
+    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || fallbackDate || this.getIvyTekBusinessDate();
   }
 
   /**
@@ -5637,16 +5628,7 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean,
     historicalRepaymentSummary: any = null
   ) {
-    return (
-      shouldCloseAfterDisbursement ||
-      this.shouldUseIvyTekMigrationDateForLoan(
-        row,
-        balanceNow,
-        shouldApproveAndDisburse,
-        shouldCloseAfterDisbursement,
-        historicalRepaymentSummary
-      )
-    );
+    return shouldCloseAfterDisbursement;
   }
 
   /**
@@ -6149,9 +6131,7 @@ export class ViewBulkImportComponent implements OnInit {
               ? ` and the IvyTek interest snapshot date is recorded as ${interestChargedFromDate}`
               : ''
           } to prevent Fineract from generating schedule interest that changes the IvyTek opening balance.`
-        : this.shouldPostIvyTekHistoricalRepayments(historicalRepaymentSummary)
-          ? `Source interest rate ${this.formatIvyTekNumber(this.getIvyTekLoanInterestRatePercent(row))}% is sent to Fineract so the provided IvyTek payment history can drive principal and interest allocation.`
-          : `Source interest rate ${this.formatIvyTekNumber(this.getIvyTekLoanInterestRatePercent(row))}% is sent to Fineract with interest charged from ${interestChargedFromDate} so interest accrues from IvyTek's last-interest snapshot date.`;
+        : `Source interest rate ${this.formatIvyTekNumber(this.getIvyTekLoanInterestRatePercent(row))}% is sent to Fineract so interest can be generated, then waived down to the IvyTek interest snapshot.`;
       return (
         `Approved and disbursed on ${payloadLoanDate} ${payloadPrincipalMessage}` +
         migrationRepaymentMessage +
@@ -6319,7 +6299,7 @@ export class ViewBulkImportComponent implements OnInit {
           row,
           payloadPrincipal,
           balanceNow,
-          this.getIvyTekLoanInterestChargedFromDate(row, balanceNow, true, false) || loanDate
+          this.getIvyTekMigrationTransactionDate(row, loanDate)
         );
         if (migrationRepaymentMessage) {
           messages.push(migrationRepaymentMessage);
@@ -6457,7 +6437,7 @@ export class ViewBulkImportComponent implements OnInit {
       shouldApproveAndDisburse,
       shouldCloseAfterDisbursement
     );
-    if (!loanId || !sourcePrincipalPaid || balanceNow === null) {
+    if (!loanId || balanceNow === null) {
       return '';
     }
 
@@ -6466,36 +6446,45 @@ export class ViewBulkImportComponent implements OnInit {
       return '';
     }
 
-    let transactionAmount = sourcePrincipalPaid;
-    const currentPrincipalOutstanding = this.getIvyTekLoanSummaryPrincipalOutstanding(loan);
-    if (currentPrincipalOutstanding !== null) {
-      if (
-        currentPrincipalOutstanding <= balanceNow ||
-        this.areIvyTekMoneyValuesEqual(currentPrincipalOutstanding, balanceNow)
-      ) {
-        return '';
+    const messages: string[] = [];
+
+    if (sourcePrincipalPaid) {
+      let transactionAmount = sourcePrincipalPaid;
+      const currentPrincipalOutstanding = this.getIvyTekLoanSummaryPrincipalOutstanding(loan);
+      if (currentPrincipalOutstanding !== null) {
+        if (
+          currentPrincipalOutstanding > balanceNow &&
+          !this.areIvyTekMoneyValuesEqual(currentPrincipalOutstanding, balanceNow)
+        ) {
+          transactionAmount = this.roundIvyTekMoney(currentPrincipalOutstanding - balanceNow);
+        } else {
+          transactionAmount = 0;
+        }
       }
-      transactionAmount = this.roundIvyTekMoney(currentPrincipalOutstanding - balanceNow);
+
+      if (transactionAmount && transactionAmount > 0) {
+        await firstValueFrom(
+          this.loansService.submitLoanActionButton(
+            loanId,
+            {
+              transactionDate,
+              transactionAmount,
+              dateFormat: this.settingsService.dateFormat,
+              locale: this.settingsService.language.code,
+              note: 'IvyTek import: migration repayment to carry over historical principal paid and preserve BalanceNow.'
+            },
+            'repayment'
+          )
+        );
+        messages.push(
+          `Migration repayment of ${this.formatIvyTekNumber(transactionAmount)} was posted on ${transactionDate} to carry IvyTek historical principal paid and land principal outstanding on IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)}.`
+        );
+      }
     }
 
-    if (!transactionAmount || transactionAmount <= 0) {
-      return '';
-    }
-
-    await firstValueFrom(
-      this.loansService.submitLoanActionButton(
-        loanId,
-        {
-          transactionDate,
-          transactionAmount,
-          dateFormat: this.settingsService.dateFormat,
-          locale: this.settingsService.language.code,
-          note: 'IvyTek import: migration repayment to carry over historical principal paid and preserve BalanceNow.'
-        },
-        'repayment'
-      )
-    );
-    return `Migration repayment of ${this.formatIvyTekNumber(transactionAmount)} was posted on ${transactionDate} to carry IvyTek historical principal paid and land principal outstanding on IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)}.`;
+    messages.push(await this.alignIvyTekLoanOutstandingInterest(loanId, row, transactionDate));
+    messages.push(await this.getIvyTekPostRepaymentBalanceMessage(loanId, row, balanceNow));
+    return this.joinIvyTekMessages(messages);
   }
 
   /**
@@ -6584,8 +6573,12 @@ export class ViewBulkImportComponent implements OnInit {
       return '';
     }
 
-    if (currentInterest <= targetInterest || this.areIvyTekMoneyValuesEqual(currentInterest, targetInterest)) {
-      return `Fineract interest outstanding is ${this.formatIvyTekNumber(currentInterest)}, matching or below IvyTek snapshot interest ${this.formatIvyTekNumber(targetInterest)}.`;
+    if (this.areIvyTekMoneyValuesEqual(currentInterest, targetInterest)) {
+      return `Fineract interest outstanding landed on IvyTek snapshot ${this.formatIvyTekNumber(targetInterest)}.`;
+    }
+
+    if (currentInterest < targetInterest) {
+      return `Review interest allocation: Fineract interest outstanding is ${this.formatIvyTekNumber(currentInterest)}, below IvyTek snapshot interest ${this.formatIvyTekNumber(targetInterest)}.`;
     }
 
     const waiverAmount = this.roundIvyTekMoney(currentInterest - targetInterest);

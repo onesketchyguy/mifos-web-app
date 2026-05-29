@@ -39,6 +39,7 @@ import { GlimAccountComponent } from './glim-account/glim-account.component';
 import { CreateGlimAccountComponent } from './glim-account/create-glim-account/create-glim-account.component';
 import { LoanBuyDownFeesTabComponent } from './loans-view/loan-buy-down-fees-tab/loan-buy-down-fees-tab.component';
 import { LoanAccountDashboardComponent } from './loans-view/loan-account-dashboard/loan-account-dashboard.component';
+import { TribalLoanPaymentsComponent } from './tribal-loan-payments/tribal-loan-payments.component';
 
 /** Custom Resolvers */
 import { LoansResolver } from './common-resolvers/loans.resolver';
@@ -104,6 +105,11 @@ const routes: Routes = [
           loansAccountTemplate: LoansAccountTemplateResolver,
           loanProductsBasicDetails: LoanProductsResolver
         }
+      },
+      {
+        path: 'tribal-payments',
+        data: { title: 'Tribal Loan Payments', breadcrumb: 'Tribal Loan Payments' },
+        component: TribalLoanPaymentsComponent
       },
       {
         path: ':loanId',

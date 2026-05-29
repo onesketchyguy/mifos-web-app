@@ -11,6 +11,22 @@
   overflow: auto;
 }
 
+.filter-field {
+  min-width: 192px;
+}
+
+.loan-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.loan-actions button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
 table {
   width: 100%;
 }
