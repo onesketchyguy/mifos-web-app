@@ -36,6 +36,7 @@ import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatAutocompleteTrigger, MatAutocomplete, MatOption } from '@angular/material/autocomplete';
 import { AsyncPipe } from '@angular/common';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Closing entries component.
@@ -131,7 +132,7 @@ export class ClosingEntriesComponent implements OnInit, AfterViewInit {
    */
   applyFilter() {
     this.officeName.valueChanges.subscribe((filterValue: string) => {
-      this.dataSource.filter = filterValue.trim().toLowerCase();
+      applyFuzzyTableFilter(this.dataSource, filterValue);
     });
   }
 

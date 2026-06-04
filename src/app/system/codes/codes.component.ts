@@ -31,6 +31,7 @@ import { ConfigurationWizardService } from '../../configuration-wizard/configura
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatTooltip } from '@angular/material/tooltip';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 @Component({
   selector: 'mifosx-codes',
@@ -119,7 +120,7 @@ export class CodesComponent implements OnInit, AfterViewInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

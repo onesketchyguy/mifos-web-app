@@ -48,6 +48,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { DatetimeFormatPipe } from '../../../pipes/datetime-format.pipe';
 import { YesnoPipe } from '../../../pipes/yesno.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Manage scheduler jobs component.
@@ -147,7 +148,7 @@ export class ManageSchedulerJobsComponent implements OnInit, AfterViewInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

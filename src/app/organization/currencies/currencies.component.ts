@@ -33,6 +33,7 @@ import { PopoverService } from '../../configuration-wizard/popover/popover.servi
 import { ConfigurationWizardService } from '../../configuration-wizard/configuration-wizard.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Currencies component.
@@ -107,7 +108,7 @@ export class CurrenciesComponent implements OnInit, AfterViewInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

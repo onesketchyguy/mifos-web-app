@@ -44,6 +44,7 @@ import { MatSort, MatSortHeader } from '@angular/material/sort';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { ExternalIdentifierComponent } from '../../shared/external-identifier/external-identifier.component';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Manage Funds component.
@@ -131,7 +132,7 @@ export class ManageFundsComponent implements OnInit, AfterViewInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

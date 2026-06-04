@@ -30,6 +30,7 @@ import { PopoverService } from '../../configuration-wizard/popover/popover.servi
 import { ConfigurationWizardService } from '../../configuration-wizard/configuration-wizard.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 @Component({
   selector: 'mifosx-share-products',
@@ -98,7 +99,7 @@ export class ShareProductsComponent implements OnInit, AfterViewInit {
   }
 
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

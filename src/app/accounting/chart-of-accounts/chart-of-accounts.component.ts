@@ -52,6 +52,7 @@ import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatTooltip } from '@angular/material/tooltip';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Chart of accounts component.
@@ -199,7 +200,7 @@ export class ChartOfAccountsComponent implements AfterViewInit, OnInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.tableDataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.tableDataSource, filterValue);
   }
 
   /**

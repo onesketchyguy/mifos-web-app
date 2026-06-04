@@ -7,6 +7,7 @@
  */
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DatePipe } from '@angular/common';
 import { of } from 'rxjs';
 import { ClientsComponent, DEBOUNCE_MS } from './clients.component';
 import { ClientsService } from './clients.service';
@@ -15,13 +16,15 @@ import { TranslateModule } from '@ngx-translate/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter } from '@angular/router';
 import { FaIconLibrary } from '@fortawesome/angular-fontawesome';
-import { faDownload, faPlus, faStop } from '@fortawesome/free-solid-svg-icons';
+import { faCog, faDownload, faPlus, faStop } from '@fortawesome/free-solid-svg-icons';
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import { SearchService } from 'app/search/search.service';
 
 describe('ClientsComponent — debounce search', () => {
   let component: ClientsComponent;
   let fixture: ComponentFixture<ClientsComponent>;
   let clientsService: jest.Mocked<ClientsService>;
+  let searchService: jest.Mocked<SearchService>;
 
   const emptyPage = { content: [] as any[], totalElements: 0, numberOfElements: 0 };
 
@@ -29,7 +32,12 @@ describe('ClientsComponent — debounce search', () => {
     jest.useFakeTimers();
 
     clientsService = {
-      searchByText: jest.fn(() => of(emptyPage))
+      searchByText: jest.fn(() => of(emptyPage)),
+      getClientData: jest.fn((clientId: string) => of({ id: Number(clientId), displayName: `Client ${clientId}` })),
+      getClientDatatables: jest.fn(() => of([]))
+    } as any;
+    searchService = {
+      getSearchResults: jest.fn(() => of([]))
     } as any;
 
     const authService = { getCredentials: jest.fn(() => ({ permissions: ['ALL_FUNCTIONS'] })) } as any;
@@ -41,13 +49,15 @@ describe('ClientsComponent — debounce search', () => {
       ],
       providers: [
         { provide: ClientsService, useValue: clientsService },
+        { provide: SearchService, useValue: searchService },
         { provide: AuthenticationService, useValue: authService },
+        DatePipe,
         provideAnimationsAsync(),
         provideRouter([])
       ]
     }).compileComponents();
 
-    TestBed.inject(FaIconLibrary).addIcons(faDownload, faPlus, faStop);
+    TestBed.inject(FaIconLibrary).addIcons(faCog, faDownload, faPlus, faStop);
 
     fixture = TestBed.createComponent(ClientsComponent);
     component = fixture.componentInstance;
@@ -97,6 +107,68 @@ describe('ClientsComponent — debounce search', () => {
     component.search('bob');
     expect(clientsService.searchByText).toHaveBeenCalledTimes(1);
     expect(clientsService.searchByText).toHaveBeenCalledWith('bob', 0, expect.any(Number), '', '');
+  });
+
+  it('should merge global client search results when paginated client search returns no results', () => {
+    searchService.getSearchResults.mockReturnValueOnce(
+      of([
+        {
+          entityType: 'CLIENT',
+          entityId: 7
+        },
+        {
+          entityType: 'CLIENTIDENTIFIER',
+          parentId: 8
+        }
+      ] as any[])
+    );
+    clientsService.getClientData.mockImplementation((clientId: string) =>
+      of({ id: Number(clientId), displayName: clientId === '7' ? 'John Smith' : 'Jane Smith' })
+    );
+
+    component.search('jhon');
+
+    expect(searchService.getSearchResults).toHaveBeenCalledWith('jhon', 'clients,clientIdentifiers', true);
+    expect(component.dataSource.data.map((client: any) => client.displayName)).toEqual([
+      'John Smith',
+      'Jane Smith'
+    ]);
+    expect(component.totalRows).toBe(2);
+  });
+
+  it('should merge global client search results when paginated client search returns partial results', () => {
+    clientsService.searchByText.mockReturnValueOnce(
+      of({
+        content: [{ id: 6, displayName: 'Jane Smith' }],
+        totalElements: 1,
+        numberOfElements: 1
+      })
+    );
+    searchService.getSearchResults.mockReturnValueOnce(
+      of([
+        {
+          entityType: 'CLIENT',
+          entityId: 6
+        },
+        {
+          entityType: 'CLIENT',
+          entityId: 7
+        }
+      ] as any[])
+    );
+    clientsService.getClientData.mockImplementation((clientId: string) =>
+      of({ id: Number(clientId), displayName: clientId === '7' ? 'John Smith' : 'Jane Smith' })
+    );
+
+    component.search('jhon');
+
+    expect(searchService.getSearchResults).toHaveBeenCalledWith('jhon', 'clients,clientIdentifiers', true);
+    expect(clientsService.getClientData).toHaveBeenCalledWith('7');
+    expect(component.dataSource.data.map((client: any) => client.displayName)).toEqual([
+      'Jane Smith',
+      'John Smith'
+    ]);
+    expect(component.totalRows).toBe(2);
   });
 
   it('should not fire a second request when Enter is pressed while debounce is pending', () => {

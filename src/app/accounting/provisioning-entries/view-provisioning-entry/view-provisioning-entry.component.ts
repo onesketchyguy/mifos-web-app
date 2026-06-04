@@ -35,6 +35,7 @@ import { AsyncPipe } from '@angular/common';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatAutocompleteTrigger, MatAutocomplete, MatOption } from '@angular/material/autocomplete';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { matchesFuzzySearch } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * View provisioning entry component.
@@ -200,9 +201,9 @@ export class ViewProvisioningEntryComponent implements OnInit, AfterViewInit {
    */
   filterPredicate(data: any, filterValue: any) {
     return (
-      data.officeName.toLowerCase().indexOf(filterValue['officeName']) !== -1 &&
-      data.productName.toLowerCase().indexOf(filterValue['productName']) !== -1 &&
-      data.categoryName.toLowerCase().indexOf(filterValue['categoryName']) !== -1
+      matchesFuzzySearch(data.officeName, filterValue['officeName']) &&
+      matchesFuzzySearch(data.productName, filterValue['productName']) &&
+      matchesFuzzySearch(data.categoryName, filterValue['categoryName'])
     );
   }
 

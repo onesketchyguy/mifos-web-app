@@ -26,6 +26,7 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
+import { matchesFuzzySearch, normalizeSearchText } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Reports component.
@@ -103,7 +104,7 @@ export class ReportsComponent implements OnInit {
   applyFilter(filterValue: string) {
     if (filterValue.length) {
       this.setCustomFilterPredicate();
-      this.dataSource.filter = filterValue.trim().toLowerCase();
+      this.dataSource.filter = normalizeSearchText(filterValue);
     } else {
       this.filterReportsByCategory();
     }
@@ -154,24 +155,12 @@ export class ReportsComponent implements OnInit {
    */
   setCustomFilterPredicate() {
     this.dataSource.filterPredicate = (data: any, filter: string) => {
-      /** Transform the data into a lowercase string of all property values. */
-      const dataStr = Object.keys(data)
-        .reduce(function (currentTerm: string, key: string) {
-          /** Use an obscure Unicode character to delimit the words in the concatenated string.
-           * This avoids matches where the values of two columns combined will match the user's query
-           */
-          return currentTerm + /** @type {any} */ data[key] + '◬';
-        }, '')
-        .toLowerCase();
-      /** Transform the filter by converting it to lowercase and removing whitespace. */
-      const transformedFilter = filter.trim().toLowerCase();
-      /* Seperates filter for All reports page.*/
-
-      if (this.filter) {
-        return dataStr.indexOf(transformedFilter) !== -1 && data.reportCategory === this.filter;
-      } else {
-        return dataStr.indexOf(transformedFilter) !== -1;
-      }
+      const matchesText = matchesFuzzySearch(
+        Object.keys(data).map((key: string) => data[key]),
+        filter
+      );
+      const matchesCategory = !this.filter || data.reportCategory === this.filter;
+      return matchesText && matchesCategory;
     };
   }
 

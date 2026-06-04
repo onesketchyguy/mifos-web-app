@@ -38,6 +38,7 @@ import { NextStepDialogComponent } from '../../configuration-wizard/next-step-di
 import { MatTooltip } from '@angular/material/tooltip';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Recurring Deposit Products component.
@@ -114,7 +115,7 @@ export class RecurringDepositProductsComponent implements OnInit, AfterViewInit 
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

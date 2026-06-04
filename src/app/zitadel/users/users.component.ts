@@ -19,6 +19,7 @@ import { PopoverService } from '../../configuration-wizard/popover/popover.servi
 import { ConfigurationWizardService } from '../../configuration-wizard/configuration-wizard.service';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Users component.
@@ -91,9 +92,8 @@ export class UsersComponent implements OnInit, AfterViewInit {
 
   /** Filter tables */
   applyFilter(filterValue: string) {
-    const filter = filterValue.trim().toLowerCase();
-    this.dataSource.filter = filter;
-    this.dataSourceZitadel.filter = filter;
+    applyFuzzyTableFilter(this.dataSource, filterValue);
+    applyFuzzyTableFilter(this.dataSourceZitadel, filterValue);
   }
 
   /** Show popover */

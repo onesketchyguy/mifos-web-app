@@ -42,6 +42,7 @@ import { SettingsService } from 'app/settings/settings.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatProgressBar } from '@angular/material/progress-bar';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { SearchService } from 'app/search/search.service';
 
 export const DEBOUNCE_MS = 500;
 
@@ -74,6 +75,7 @@ export const DEBOUNCE_MS = 500;
 export class ClientsComponent implements OnInit, OnDestroy {
   private clientService = inject(ClientsService);
   private formBuilder = inject(UntypedFormBuilder);
+  private searchService = inject(SearchService);
   private dateUtils = inject(Dates);
   private settingsService = inject(SettingsService);
   private snackBar = inject(MatSnackBar);
@@ -203,9 +205,33 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.clientsRequestSub = this.clientService
       .searchByText(this.filterText, this.currentPage, this.pageSize, this.sortAttribute, this.sortDirection)
-      .subscribe(
-        (data: any) => {
+      .pipe(
+        switchMap((data: any) => {
           const clients = data.content || [];
+          if (!this.filterText.trim()) {
+            return of({
+              data,
+              clients
+            });
+          }
+
+          return this.getGlobalClientSearchResults(this.filterText, clients).pipe(
+            map((globalClients: any[]) => {
+              const mergedClients = this.mergeClientSearchResults(clients, globalClients);
+              return {
+                data: {
+                  ...data,
+                  totalElements: Math.max(data.totalElements || 0, mergedClients.length),
+                  numberOfElements: mergedClients.length
+                },
+                clients: mergedClients
+              };
+            })
+          );
+        })
+      )
+      .subscribe(
+        ({ data, clients }: { data: any; clients: any[] }) => {
           this.dataSource.data = clients;
           this.refreshDuplicateClientGroups();
 
@@ -220,6 +246,67 @@ export class ClientsComponent implements OnInit, OnDestroy {
           this.isLoading = false;
         }
       );
+  }
+
+  private getGlobalClientSearchResults(query: string, existingClients: any[] = []): Observable<any[]> {
+    const existingClientIds = this.getClientIds(existingClients);
+    return this.searchService.getSearchResults(query, 'clients,clientIdentifiers', true).pipe(
+      map((searchResults: any[]) =>
+        this.getClientIdsFromSearchResults(searchResults)
+          .filter((clientId: string) => !existingClientIds.has(clientId))
+          .slice(0, this.pageSize)
+      ),
+      switchMap((clientIds: string[]) => {
+        if (!clientIds.length) {
+          return of([]);
+        }
+
+        return forkJoin(
+          clientIds.map((clientId: string) =>
+            this.clientService.getClientData(clientId).pipe(catchError(() => of(null)))
+          )
+        );
+      }),
+      map((clients: any[]) => clients.filter((client: any) => !!client)),
+      catchError(() => of([]))
+    );
+  }
+
+  private getClientIdsFromSearchResults(searchResults: any[]): string[] {
+    const clientIds = new Set<string>();
+
+    (searchResults || []).forEach((result: any) => {
+      const entityType = (result.entityType || '').toUpperCase().replace(/[_\s-]/g, '');
+      const clientId =
+        entityType === 'CLIENTIDENTIFIER' ? result.parentId : entityType === 'CLIENT' ? result.entityId : null;
+      if (clientId) {
+        clientIds.add(clientId.toString());
+      }
+    });
+
+    return Array.from(clientIds);
+  }
+
+  private mergeClientSearchResults(clients: any[], globalClients: any[]): any[] {
+    const clientsById = new Map<string, any>();
+
+    [
+      ...clients,
+      ...globalClients
+    ].forEach((client: any) => {
+      const clientId = this.getClientId(client);
+      clientsById.set(clientId || `client-${clientsById.size}`, client);
+    });
+
+    return Array.from(clientsById.values());
+  }
+
+  private getClientIds(clients: any[]): Set<string> {
+    return new Set(clients.map((client: any) => this.getClientId(client)).filter((clientId: string) => !!clientId));
+  }
+
+  private getClientId(client: any): string {
+    return (client?.id || client?.clientId || client?.entityId || '').toString();
   }
 
   getLoanOfficer(client: any): string {

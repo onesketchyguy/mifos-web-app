@@ -28,6 +28,7 @@ import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { DatetimeFormatPipe } from '../../../../pipes/datetime-format.pipe';
 import { FormatNumberPipe } from '../../../../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * View Survey component.
@@ -117,6 +118,6 @@ export class ViewSurveyComponent implements OnInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 }

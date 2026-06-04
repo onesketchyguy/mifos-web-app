@@ -46,6 +46,7 @@ import { UntypedFormControl } from '@angular/forms';
 import { LOAN_PRODUCT_TYPE, PRODUCT_TYPES } from './models/loan-product.model';
 import { LoanProductBaseComponent } from './common/loan-product-base.component';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 @Component({
   selector: 'mifosx-loan-products',
@@ -135,7 +136,7 @@ export class LoanProductsComponent extends LoanProductBaseComponent implements O
   }
 
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

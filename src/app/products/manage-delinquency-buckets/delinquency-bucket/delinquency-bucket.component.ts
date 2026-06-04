@@ -26,6 +26,7 @@ import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { MatMenu, MatMenuTrigger, MatMenuItem } from '@angular/material/menu';
 import { DelinquencyBucketBaseComponent } from '../delinquency-base.component';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 @Component({
   selector: 'mifosx-delinquency-bucket',
@@ -83,7 +84,7 @@ export class DelinquencyBucketComponent extends DelinquencyBucketBaseComponent i
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

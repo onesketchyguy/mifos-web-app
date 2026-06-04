@@ -36,6 +36,7 @@ import { TranslateService } from '@ngx-translate/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconButton } from '@angular/material/button';
 import { ExternalIdentifierComponent } from 'app/shared/external-identifier/external-identifier.component';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Loan Originators component.
@@ -108,7 +109,7 @@ export class LoanOriginatorsComponent implements OnInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

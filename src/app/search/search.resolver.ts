@@ -31,6 +31,6 @@ export class SearchResolver {
   resolve(route: ActivatedRouteSnapshot): Observable<any> {
     const query = route.queryParams['query'];
     const resource = route.queryParams['resource'];
-    return this.searchService.getSearchResults(query, resource);
+    return this.searchService.getSearchResults(query, resource, true);
   }
 }

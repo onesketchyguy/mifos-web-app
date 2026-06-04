@@ -38,6 +38,9 @@ import { OrganizationService } from 'app/organization/organization.service';
 /** Custom Imports */
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { matchesFuzzySearch, normalizeSearchText } from 'app/shared/utils/fuzzy-search.util';
+import { SearchData } from 'app/search/search.model';
+import { SearchService } from 'app/search/search.service';
 
 interface LoanFilterOption {
   value: string;
@@ -75,6 +78,7 @@ export class LoansComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private loansService = inject(LoansService);
+  private searchService = inject(SearchService);
   private settingsService = inject(SettingsService);
   private organizationService = inject(OrganizationService);
 
@@ -123,6 +127,8 @@ export class LoansComponent implements OnInit {
   filterRequest = 0;
   /** Whether full loan index is loaded for filters. */
   allLoansLoaded = false;
+  /** Raw text query used for API-backed search fallbacks. */
+  textFilterQuery = '';
   /** Text filter value. */
   textFilter = '';
   /** Status filter value. */
@@ -137,6 +143,12 @@ export class LoansComponent implements OnInit {
   officeOptions: LoanFilterOption[] = [];
   /** Office names by office id. */
   officeNameById = new Map<string, string>();
+  /** Loan ids returned by global search for the active text filter. */
+  globalLoanSearchIds = new Set<string>();
+  /** Loan account numbers returned by global search for the active text filter. */
+  globalLoanSearchAccountNumbers = new Set<string>();
+  /** Loan external ids returned by global search for the active text filter. */
+  globalLoanSearchExternalIds = new Set<string>();
 
   /**
    * Retrieves the loans data from `resolve`.
@@ -166,7 +178,8 @@ export class LoansComponent implements OnInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string = '') {
-    this.textFilter = filterValue.trim().toLowerCase();
+    this.textFilterQuery = filterValue;
+    this.textFilter = normalizeSearchText(filterValue);
     this.currentPage = 0;
     this.applyLoanFilters();
   }
@@ -587,27 +600,42 @@ export class LoansComponent implements OnInit {
   }
 
   private applyLoanFilters() {
+    const filterRequest = ++this.filterRequest;
     if (!this.hasActiveFilters()) {
+      this.clearGlobalLoanSearchResults();
       this.getLoans();
       return;
     }
 
-    if (this.allLoansLoaded) {
-      this.applyFilteredLoans();
-      return;
-    }
-
-    const filterRequest = ++this.filterRequest;
     const limit = Math.max(this.totalRecords, this.pageSize);
-    this.loansService.getLoans(0, limit).subscribe((loansData: any) => {
-      if (filterRequest !== this.filterRequest) {
-        return;
+    const loansRequest = this.allLoansLoaded
+      ? of(this.allLoans)
+      : this.loansService.getLoans(0, limit).pipe(map((loansData: any) => loansData?.pageItems || []));
+    const globalSearchRequest = this.textFilterQuery.trim()
+      ? this.searchService.getSearchResults(this.textFilterQuery, 'loans', true).pipe(catchError(() => of([])))
+      : of([]);
+
+    forkJoin([
+      loansRequest,
+      globalSearchRequest
+    ]).subscribe(
+      ([
+        loans,
+        searchResults
+      ]: [
+        any[],
+        SearchData[]
+      ]) => {
+        if (filterRequest !== this.filterRequest) {
+          return;
+        }
+        this.allLoans = loans;
+        this.allLoansLoaded = true;
+        this.setGlobalLoanSearchResults(searchResults);
+        this.updateFilterOptions(this.allLoans);
+        this.applyFilteredLoans();
       }
-      this.allLoans = loansData?.pageItems || [];
-      this.allLoansLoaded = true;
-      this.updateFilterOptions(this.allLoans);
-      this.applyFilteredLoans();
-    });
+    );
   }
 
   private applyFilteredLoans() {
@@ -645,11 +673,9 @@ export class LoansComponent implements OnInit {
       this.getAmountLast(loan),
       this.getMaturityDate(loan),
       this.getDaysLate(loan)
-    ]
-      .filter((value: any) => value !== undefined && value !== null)
-      .join(' ')
-      .toLowerCase();
-    const matchesText = !filters.search || searchData.includes(filters.search);
+    ];
+    const matchesText =
+      !filters.search || matchesFuzzySearch(searchData, filters.search) || this.matchesGlobalLoanSearchResult(loan);
     const matchesStatus = !filters.status || this.getLoanStatus(loan) === filters.status;
     const matchesCompany =
       !filters.company ||
@@ -697,6 +723,46 @@ export class LoansComponent implements OnInit {
 
   private getCompanyOptionLabel(value: string): string {
     return this.companyOptions.find((option: LoanFilterOption) => option.value === value)?.label || '';
+  }
+
+  private setGlobalLoanSearchResults(searchResults: SearchData[]) {
+    this.clearGlobalLoanSearchResults();
+
+    (searchResults || []).forEach((result: SearchData) => {
+      if ((result.entityType || '').toUpperCase() !== 'LOAN') {
+        return;
+      }
+
+      this.addSearchKey(this.globalLoanSearchIds, result.entityId);
+      this.addSearchKey(this.globalLoanSearchAccountNumbers, result.entityAccountNo);
+      this.addSearchKey(this.globalLoanSearchExternalIds, result.entityExternalId);
+    });
+  }
+
+  private clearGlobalLoanSearchResults() {
+    this.globalLoanSearchIds.clear();
+    this.globalLoanSearchAccountNumbers.clear();
+    this.globalLoanSearchExternalIds.clear();
+  }
+
+  private matchesGlobalLoanSearchResult(loan: any): boolean {
+    return (
+      this.globalLoanSearchIds.has(this.normalizeSearchKey(loan.id)) ||
+      this.globalLoanSearchAccountNumbers.has(this.normalizeSearchKey(loan.accountNo)) ||
+      this.globalLoanSearchAccountNumbers.has(this.normalizeSearchKey(this.getLoanIdentifier(loan))) ||
+      this.globalLoanSearchExternalIds.has(this.normalizeSearchKey(loan.externalId))
+    );
+  }
+
+  private addSearchKey(searchKeys: Set<string>, value: any) {
+    const searchKey = this.normalizeSearchKey(value);
+    if (searchKey) {
+      searchKeys.add(searchKey);
+    }
+  }
+
+  private normalizeSearchKey(value: any): string {
+    return value === undefined || value === null ? '' : value.toString().trim().toLowerCase();
   }
 
   private getOutstandingSchedulePeriods(loan: any): any[] {

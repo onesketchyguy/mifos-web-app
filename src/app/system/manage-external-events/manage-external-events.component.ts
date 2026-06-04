@@ -27,6 +27,7 @@ import { SystemService } from '../system.service';
 import { MatSlideToggle } from '@angular/material/slide-toggle';
 import { ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 @Component({
   selector: 'mifosx-manage-external-events',
@@ -105,7 +106,7 @@ export class ManageExternalEventsComponent implements OnInit {
    * Filter using the event type value
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

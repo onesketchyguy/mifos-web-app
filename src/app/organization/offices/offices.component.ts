@@ -54,6 +54,7 @@ import { MatTabGroup, MatTab } from '@angular/material/tabs';
 import { ExternalIdentifierComponent } from '../../shared/external-identifier/external-identifier.component';
 import { DateFormatPipe } from '../../pipes/date-format.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Offices component.
@@ -167,7 +168,7 @@ export class OfficesComponent implements OnInit, AfterViewInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.trim().toLowerCase();
+    applyFuzzyTableFilter(this.dataSource, filterValue);
   }
 
   /**

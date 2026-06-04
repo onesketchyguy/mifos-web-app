@@ -26,6 +26,7 @@ import {
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { matchesFuzzySearch, normalizeSearchText } from 'app/shared/utils/fuzzy-search.util';
 
 /**
  * Account Number Preferences Component.
@@ -94,8 +95,7 @@ export class AccountNumberPreferencesComponent implements OnInit {
       return accountNumberPreference.accountType.value;
     };
     this.dataSource.sort = this.sort;
-    this.dataSource.filterPredicate = (data: any, filter: string) =>
-      data.accountType.value.toLowerCase().indexOf(filter) !== -1;
+    this.dataSource.filterPredicate = (data: any, filter: string) => matchesFuzzySearch(data.accountType.value, filter);
   }
 
   /**
@@ -103,6 +103,6 @@ export class AccountNumberPreferencesComponent implements OnInit {
    * @param {string} filterValue Value to filter data.
    */
   applyFilter(filterValue: string) {
-    this.dataSource.filter = filterValue.toLowerCase().trim();
+    this.dataSource.filter = normalizeSearchText(filterValue);
   }
 }
