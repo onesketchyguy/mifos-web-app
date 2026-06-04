@@ -46,6 +46,15 @@ import { Dates } from 'app/core/utils/dates';
 import { AlertService } from 'app/core/alert/alert.service';
 import { SystemService } from 'app/system/system.service';
 import { OrganizationService } from '../../organization.service';
+import { IvyTekCsvParserService } from '../ivytek-import/ivytek-csv-parser.service';
+import { IvyTekFieldMappingService } from '../ivytek-import/ivytek-field-mapping.service';
+import {
+  IvyTekCsvRow,
+  IvyTekDatatableColumnReference,
+  IvyTekSourceFileType,
+  IvyTekSourceFileRows,
+  IvyTekUnmappedFieldWarning
+} from '../ivytek-import/ivytek-import.models';
 import { BulkImports } from './bulk-imports';
 import { MatFormField, MatLabel, MatHint } from '@angular/material/form-field';
 import { MatButton, MatIconButton } from '@angular/material/button';
@@ -95,8 +104,9 @@ export class ViewBulkImportComponent implements OnInit {
   private readonly ivyTekPipelineRunStorageKey = 'mifosx.ivyTekImportPipelineRun';
   private readonly ivyTekImportConcurrency = 10;
   private readonly ivyTekAnnualInterestRateFrequencyType = 3;
+  private readonly ivyTekStaticSnapshotImport = true;
   private readonly ivyTekPostHistoricalRepaymentsToFineract = false;
-  private readonly ivyTekDefaultChargeName = 'Disbursement Charge';
+  private readonly ivyTekDefaultChargeName = '';
   private readonly ivyTekDefaultChargeAmountSource = 'amount_financed';
   private readonly ivyTekImportNames = [
     'IvyTek Import',
@@ -116,9 +126,13 @@ export class ViewBulkImportComponent implements OnInit {
   private dateUtils = inject(Dates);
   private alertService = inject(AlertService);
   private systemService = inject(SystemService);
+  private ivyTekCsvParser = inject(IvyTekCsvParserService);
+  private ivyTekFieldMapping = inject(IvyTekFieldMappingService);
   private ivyTekClientAddressTemplate: any = null;
   private ivyTekClientAddressTemplateUnavailable = false;
   private ivyTekLoanTribalDatatableColumns: any[] = [];
+  private ivyTekEntityDatatableDefinitionsByAppTable = new Map<string, any[]>();
+  private ivyTekDatatableColumnsByAppTable = new Map<string, IvyTekDatatableColumnReference[]>();
 
   /** offices Data */
   officeData: any;
@@ -155,6 +169,10 @@ export class ViewBulkImportComponent implements OnInit {
   /** IvyTek result groups. */
   ivyTekResultGroups = [
     {
+      status: 'labels.inputs.Warning',
+      title: 'labels.inputs.Warning'
+    },
+    {
       status: 'labels.inputs.Failed',
       title: 'labels.inputs.Failed'
     },
@@ -186,6 +204,10 @@ export class ViewBulkImportComponent implements OnInit {
   /** IvyTek loan result groups. */
   ivyTekLoanResultGroups = [
     {
+      status: 'labels.inputs.Warning',
+      title: 'labels.inputs.Warning'
+    },
+    {
       status: 'labels.inputs.Failed',
       title: 'labels.inputs.Failed'
     },
@@ -212,8 +234,14 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekTransactionTotalRecords = 0;
   /** IvyTek transaction validation results. */
   ivyTekTransactionImportResults: any[] = [];
+  /** IvyTek transaction rows preserved for export/runbook. */
+  ivyTekTransactionExportResults: any[] = [];
   /** IvyTek transaction result groups. */
   ivyTekTransactionResultGroups = [
+    {
+      status: 'labels.inputs.Warning',
+      title: 'labels.inputs.Warning'
+    },
     {
       status: 'labels.inputs.Failed',
       title: 'labels.inputs.Failed'
@@ -292,7 +320,8 @@ export class ViewBulkImportComponent implements OnInit {
     return (
       !!this.ivyTekImportResults.length ||
       !!this.ivyTekLoanImportResults.length ||
-      !!this.ivyTekTransactionImportResults.length
+      !!this.ivyTekTransactionImportResults.length ||
+      !!this.ivyTekTransactionExportResults.length
     );
   }
 
@@ -713,6 +742,49 @@ export class ViewBulkImportComponent implements OnInit {
         this.ivyTekTransactionFile && (shouldRunLoans || shouldRunTransactions)
           ? this.parseCsv(await this.readFileAsText(this.ivyTekTransactionFile))
           : [];
+      await this.addIvyTekPreflightWarnings([
+        ...(contactRows.length
+          ? [
+              {
+                type: 'contacts' as const,
+                displayName: 'Contact CSV',
+                rows: contactRows
+              }
+            ]
+          : []),
+        ...(applicationRows.length
+          ? [
+              {
+                type: 'applications' as const,
+                displayName: 'Application CSV',
+                rows: applicationRows
+              }
+            ]
+          : []),
+        ...(contactApplicationRows.length
+          ? [
+              {
+                type: 'contactApplications' as const,
+                displayName: 'ContactApplication CSV',
+                rows: contactApplicationRows
+              }
+            ]
+          : []),
+        {
+          type: 'loans' as const,
+          displayName: 'Loans CSV',
+          rows: loanRows
+        },
+        ...(transactionRows.length
+          ? [
+              {
+                type: 'transactions' as const,
+                displayName: 'Transactions CSV',
+                rows: transactionRows
+              }
+            ]
+          : [])
+      ]);
 
       if (shouldRunClients) {
         const clientRows = this.buildIvyTekClientRows(contactRows, loanContactLinkRows, loanRows);
@@ -795,6 +867,41 @@ export class ViewBulkImportComponent implements OnInit {
       const transactionRows = this.ivyTekTransactionFile
         ? this.parseCsv(await this.readFileAsText(this.ivyTekTransactionFile))
         : [];
+      await this.addIvyTekPreflightWarnings([
+        {
+          type: 'contacts',
+          displayName: 'Contact CSV',
+          rows: contactRows
+        },
+        ...(applicationRows.length
+          ? [
+              {
+                type: 'applications' as const,
+                displayName: 'Application CSV',
+                rows: applicationRows
+              }
+            ]
+          : []),
+        {
+          type: 'contactApplications',
+          displayName: 'ContactApplication CSV',
+          rows: contactApplicationRows
+        },
+        {
+          type: 'loans',
+          displayName: 'Loans CSV',
+          rows: loanRows
+        },
+        ...(transactionRows.length
+          ? [
+              {
+                type: 'transactions' as const,
+                displayName: 'Transactions CSV',
+                rows: transactionRows
+              }
+            ]
+          : [])
+      ]);
       await this.uploadIvyTekLoanRows(
         loanRows,
         contactRows,
@@ -818,8 +925,21 @@ export class ViewBulkImportComponent implements OnInit {
     }
 
     this.ivyTekTransactionImportResults = [];
+    this.ivyTekTransactionExportResults = [];
     const transactionRows = this.parseCsv(await this.readFileAsText(this.ivyTekTransactionFile));
     const loanRows = this.parseCsv(await this.readFileAsText(this.ivyTekLoanFile));
+    await this.addIvyTekPreflightWarnings([
+      {
+        type: 'loans',
+        displayName: 'Loans CSV',
+        rows: loanRows
+      },
+      {
+        type: 'transactions',
+        displayName: 'Transactions CSV',
+        rows: transactionRows
+      }
+    ]);
     this.validateIvyTekTransactionRows(transactionRows, loanRows);
   }
 
@@ -928,6 +1048,7 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekTransactionImporting = true;
     this.ivyTekTransactionProcessedRecords = 0;
     this.ivyTekTransactionTotalRecords = transactionRows.length;
+    this.ivyTekTransactionExportResults = [];
     this.updateIvyTekPipelineRun({
       activeStage: 'labels.heading.Stage 3 Transactions',
       transactionsProcessed: this.ivyTekTransactionProcessedRecords,
@@ -943,6 +1064,7 @@ export class ViewBulkImportComponent implements OnInit {
 
       for (const row of transactionRows) {
         const result = this.validateIvyTekTransaction(row, bridgeRowsByLoanId);
+        this.ivyTekTransactionExportResults.push(result);
         if (result.status === 'labels.inputs.Ready') {
           readyCount += 1;
         } else if (result.historicalIgnored) {
@@ -970,6 +1092,7 @@ export class ViewBulkImportComponent implements OnInit {
           disbursementCount
         )
       );
+      this.ivyTekTransactionExportResults.unshift(this.ivyTekTransactionImportResults[0]);
     } finally {
       this.ivyTekTransactionImporting = false;
       this.updateIvyTekPipelineRun({
@@ -980,6 +1103,444 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Adds warning rows for non-empty source fields that do not map to native or custom fields.
+   * @param {IvyTekSourceFileRows[]} sourceFiles Uploaded IvyTek source files.
+   */
+  private async addIvyTekPreflightWarnings(sourceFiles: IvyTekSourceFileRows[]) {
+    const [
+      clientColumns,
+      loanColumns
+    ] = await Promise.all([
+      this.getIvyTekEntityDatatableColumnReferences('m_client'),
+      this.getIvyTekEntityDatatableColumnReferences('m_loan')
+    ]);
+
+    this.addIvyTekJoinPreflightWarnings(sourceFiles);
+
+    sourceFiles.forEach((sourceFile: IvyTekSourceFileRows) => {
+      const datatableColumns = sourceFile.type === 'contacts' ? clientColumns : loanColumns;
+      const coverage = this.ivyTekFieldMapping.getCoverage(
+        sourceFile,
+        this.getIvyTekNativeMappedFields(sourceFile.type),
+        datatableColumns
+      );
+      coverage.warnings.forEach((warning: IvyTekUnmappedFieldWarning) => {
+        this.addIvyTekUnmappedFieldWarning(warning, sourceFile.type);
+      });
+    });
+  }
+
+  /**
+   * Appends a warning result to the relevant stage.
+   * @param {IvyTekUnmappedFieldWarning} warning Unmapped field warning.
+   * @param {string} sourceType Source file type.
+   */
+  private addIvyTekUnmappedFieldWarning(warning: IvyTekUnmappedFieldWarning, sourceType: string) {
+    const result = {
+      name: `${warning.sourceFile}: ${warning.sourceColumn}`,
+      externalId: warning.rowIdentifier,
+      entityId: '',
+      legacyLoanId: warning.rowIdentifier,
+      row: {
+        sourceFile: warning.sourceFile,
+        sourceColumn: warning.sourceColumn,
+        rowIdentifier: warning.rowIdentifier,
+        sampleValue: warning.sampleValue
+      },
+      mappedValues: {},
+      status: 'labels.inputs.Warning',
+      message: `${warning.reason} Sample row ${warning.rowIdentifier || '(unknown)'} has value "${warning.sampleValue}".`
+    };
+
+    if (sourceType === 'contacts') {
+      this.ivyTekImportResults.push(result);
+    } else if (sourceType === 'transactions') {
+      this.ivyTekTransactionImportResults.push(result);
+      this.ivyTekTransactionExportResults.push(result);
+    } else {
+      this.ivyTekLoanImportResults.push(result);
+    }
+  }
+
+  /**
+   * Adds warnings for source rows whose historical joins cannot be resolved from the uploaded CSVs.
+   * @param {IvyTekSourceFileRows[]} sourceFiles Uploaded IvyTek source files.
+   */
+  private addIvyTekJoinPreflightWarnings(sourceFiles: IvyTekSourceFileRows[]) {
+    const rowsByType = new Map<IvyTekSourceFileType, IvyTekCsvRow[]>();
+    sourceFiles.forEach((sourceFile: IvyTekSourceFileRows) => {
+      rowsByType.set(sourceFile.type, sourceFile.rows);
+    });
+    const contactRows = rowsByType.get('contacts') || [];
+    const applicationRows = rowsByType.get('applications') || [];
+    const contactApplicationRows = rowsByType.get('contactApplications') || [];
+    const loanRows = rowsByType.get('loans') || [];
+    const transactionRows = rowsByType.get('transactions') || [];
+
+    const contactIds = this.buildIvyTekPreflightIdentifierSet(contactRows, (row: IvyTekCsvRow) => [
+      this.getIvyTekContactSourceId(row),
+      this.getIvyTekContactExternalId(row),
+      this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c'),
+      this.getIvyTekEntityId(row)
+    ]);
+    const applicationIds = this.buildIvyTekPreflightIdentifierSet(applicationRows, (row: IvyTekCsvRow) => [
+      this.getCsvValue(row, 'Id'),
+      this.getCsvValue(row, 'IvytekTestPkg__Application__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c')
+    ]);
+    const loanIds = this.buildIvyTekPreflightIdentifierSet(loanRows, (row: IvyTekCsvRow) => [
+      this.getCsvValue(row, 'Id'),
+      this.getCsvValue(row, 'IvytekTestPkg__Application__c'),
+      this.getIvyTekLoanExternalId(row),
+      this.getIvyTekLegacyLoanId(row),
+      this.getCsvValue(row, 'IvytekTestPkg__LoanID__c')
+    ]);
+    const contactApplicationsByLoanId = this.buildIvyTekContactApplicationsByLoanId(contactApplicationRows);
+
+    contactApplicationRows.forEach((row: IvyTekCsvRow) => {
+      const rowIdentifier = this.getIvyTekPreflightRowIdentifier(row);
+      const loanIdentifier = this.getCsvValue(row, 'IvytekTestPkg__Loan__c');
+      if (loanIdentifier && loanRows.length && !this.hasIvyTekPreflightIdentifier(loanIds, loanIdentifier)) {
+        this.addIvyTekPreflightWarning(
+          'contactApplications',
+          'ContactApplication loan join',
+          rowIdentifier,
+          `ContactApplication ${rowIdentifier || '(unknown)'} references loan ${loanIdentifier}, but no Loans CSV row matched that identifier.`
+        );
+      }
+
+      const applicationIdentifier = this.getCsvValue(row, 'IvytekTestPkg__Application__c');
+      if (
+        applicationIdentifier &&
+        applicationRows.length &&
+        !this.hasIvyTekPreflightIdentifier(applicationIds, applicationIdentifier)
+      ) {
+        this.addIvyTekPreflightWarning(
+          'contactApplications',
+          'ContactApplication application join',
+          rowIdentifier,
+          `ContactApplication ${rowIdentifier || '(unknown)'} references application ${applicationIdentifier}, but no Application CSV row matched that identifier.`
+        );
+      }
+
+      const contactIdentifier = this.getCsvValue(row, 'IvytekTestPkg__Contact__c');
+      if (
+        contactIdentifier &&
+        contactRows.length &&
+        !this.hasIvyTekPreflightIdentifier(contactIds, contactIdentifier)
+      ) {
+        this.addIvyTekPreflightWarning(
+          'contactApplications',
+          'ContactApplication contact join',
+          rowIdentifier,
+          `ContactApplication ${rowIdentifier || '(unknown)'} references contact ${contactIdentifier}, but no Contact CSV row matched that identifier.`
+        );
+      }
+    });
+
+    if (contactApplicationRows.length) {
+      loanRows.forEach((row: IvyTekCsvRow) => {
+        const loanIdentifier = this.getIvyTekPreflightRowIdentifier(row);
+        const hasBorrowerJoin = this.getUniqueIvyTekIdentifiers([
+          this.getCsvValue(row, 'Id'),
+          this.getCsvValue(row, 'IvytekTestPkg__Application__c'),
+          this.getIvyTekLoanExternalId(row)
+        ])
+          .flatMap((identifier: string) => this.getIvyTekIdentifierLookupKeys(identifier))
+          .some((key: string) => !!contactApplicationsByLoanId.get(key)?.length);
+        if (!hasBorrowerJoin) {
+          this.addIvyTekPreflightWarning(
+            'loans',
+            'Loan borrower join',
+            loanIdentifier,
+            `Loan ${loanIdentifier || '(unknown)'} has no borrower ContactApplication match in the uploaded CSVs. Exact client matching may be impossible for this loan.`
+          );
+        }
+      });
+    }
+
+    transactionRows.forEach((row: IvyTekCsvRow) => {
+      const rowIdentifier = this.getIvyTekPreflightRowIdentifier(row);
+      const loanIdentifier = this.getIvyTekTransactionLoanId(row);
+      if (!loanIdentifier) {
+        this.addIvyTekPreflightWarning(
+          'transactions',
+          'Transaction loan join',
+          rowIdentifier,
+          `Transaction ${rowIdentifier || '(unknown)'} does not contain a loan identifier.`
+        );
+        return;
+      }
+      if (loanRows.length && !this.hasIvyTekPreflightIdentifier(loanIds, loanIdentifier)) {
+        this.addIvyTekPreflightWarning(
+          'transactions',
+          'Transaction loan join',
+          rowIdentifier,
+          `Transaction ${rowIdentifier || '(unknown)'} references loan ${loanIdentifier}, but no Loans CSV row matched that identifier.`
+        );
+      }
+    });
+  }
+
+  /**
+   * Builds lookup keys for source identifiers.
+   * @param {IvyTekCsvRow[]} rows Source rows.
+   * @param {(row: IvyTekCsvRow) => string[]} identifiersForRow Identifier selector.
+   */
+  private buildIvyTekPreflightIdentifierSet(
+    rows: IvyTekCsvRow[],
+    identifiersForRow: (row: IvyTekCsvRow) => string[]
+  ): Set<string> {
+    const identifiers = new Set<string>();
+    rows.forEach((row: IvyTekCsvRow) => {
+      identifiersForRow(row).forEach((identifier: string) => {
+        this.getIvyTekIdentifierLookupKeys(identifier).forEach((key: string) => identifiers.add(key));
+      });
+    });
+    return identifiers;
+  }
+
+  /**
+   * Checks whether a source identifier appears in a preflight lookup set.
+   * @param {Set<string>} identifiers Lookup keys.
+   * @param {string} identifier Source identifier.
+   */
+  private hasIvyTekPreflightIdentifier(identifiers: Set<string>, identifier: string): boolean {
+    return this.getIvyTekIdentifierLookupKeys(identifier).some((key: string) => identifiers.has(key));
+  }
+
+  /**
+   * Gets the most useful row identifier for preflight messages.
+   * @param {IvyTekCsvRow} row Source row.
+   */
+  private getIvyTekPreflightRowIdentifier(row: IvyTekCsvRow): string {
+    return (
+      this.getIvyTekLegacyLoanId(row) ||
+      this.getCsvValue(row, 'IvytekTestPkg__LoanID__c') ||
+      this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c') ||
+      this.getCsvValue(row, 'Id') ||
+      this.getCsvValue(row, 'Name')
+    );
+  }
+
+  /**
+   * Appends a preflight warning row to the relevant result set.
+   * @param {IvyTekSourceFileType} sourceType Source file type.
+   * @param {string} name Warning category.
+   * @param {string} rowIdentifier Source row identifier.
+   * @param {string} message Warning message.
+   */
+  private addIvyTekPreflightWarning(
+    sourceType: IvyTekSourceFileType,
+    name: string,
+    rowIdentifier: string,
+    message: string
+  ) {
+    const result = {
+      name,
+      externalId: rowIdentifier,
+      entityId: '',
+      legacyLoanId: rowIdentifier,
+      row: {
+        rowIdentifier
+      },
+      mappedValues: {},
+      status: 'labels.inputs.Warning',
+      message
+    };
+
+    if (sourceType === 'contacts') {
+      this.ivyTekImportResults.push(result);
+    } else if (sourceType === 'transactions') {
+      this.ivyTekTransactionImportResults.push(result);
+      this.ivyTekTransactionExportResults.push(result);
+    } else {
+      this.ivyTekLoanImportResults.push(result);
+    }
+  }
+
+  /**
+   * Gets source fields already handled by native payloads or hard-coded mappings.
+   * @param {string} sourceType Source file type.
+   */
+  private getIvyTekNativeMappedFields(sourceType: string): string[] {
+    const commonFields = [
+      '_',
+      'Id',
+      'Name',
+      'CreatedDate',
+      'IvytekTestPkg__ExternalID__c'
+    ];
+    const clientFields = [
+      ...commonFields,
+      'FirstName',
+      'First Name',
+      'firstname',
+      'LastName',
+      'Last Name',
+      'lastname',
+      'MiddleName',
+      'Middle Name',
+      'Salutation',
+      'Suffix',
+      'MailingStreet',
+      'MailingCity',
+      'MailingState',
+      'MailingStateCode',
+      'MailingPostalCode',
+      'MailingCountry',
+      'MailingCountryCode',
+      'IvytekTestPkg__Address_Type__c',
+      'IvytekTestPkg__Apartment__c',
+      'IvytekTestPkg__Other_Apartment__c',
+      'IvytekTestPkg__City__c',
+      'IvytekTestPkg__Country__c',
+      'IvytekTestPkg__State__c',
+      'IvytekTestPkg__Street_Direction__c',
+      'IvytekTestPkg__Street_Name__c',
+      'IvytekTestPkg__Street_Number__c',
+      'IvytekTestPkg__Street_Type__c',
+      'IvytekTestPkg__Zip__c',
+      'Phone',
+      'MobilePhone',
+      'HomePhone',
+      'OtherPhone',
+      'Email',
+      'Birthdate',
+      'WS_EntityID__c',
+      'IvytekTestPkg__SSN__c',
+      'IvytekTestPkg__WorkPhone__c',
+      'IvytekTestPkg__Credit_Report_Address__c',
+      'IvytekTestPkg__Deceased__c',
+      'IvytekTestPkg__Differently_Abled__c',
+      'IvytekTestPkg__DirectDeposit__c',
+      'IvytekTestPkg__Has_Opted_out_of_SMS__c',
+      'IvytekTestPkg__HasOptedOutOfEmail__c',
+      'HasOptedOutOfEmail',
+      'DoNotCall',
+      'IvytekTestPkg__LGBTQIA__c',
+      'IvytekTestPkg__Race_African_or_African_American__c',
+      'IvytekTestPkg__Race_American_Indian_or_Alaska_Native__c',
+      'IvytekTestPkg__Race_Asian__c',
+      'IvytekTestPkg__Race_Black_or_African_American__c',
+      'IvytekTestPkg__Race_Caucasian__c',
+      'IvytekTestPkg__Race_Multi_racial__c',
+      'IvytekTestPkg__Race_Native_Hawaiian_Other_Pacific_Isl__c',
+      'IvytekTestPkg__Race_White__c',
+      'IvytekTestPkg__Service_Disabled_Veteran__c',
+      'IvytekTestPkg__Veteran__c'
+    ];
+    const loanFields = [
+      ...commonFields,
+      'IvytekTestPkg__Customer_Name__c',
+      'IvytekTestPkg__Customer_Name_Text__c',
+      'IvytekTestPkg__Borrower_Name__c',
+      'IvytekTestPkg__Borrower_Name_Text__c',
+      'IvytekTestPkg__Application__c',
+      'IvytekTestPkg__AccountStatusCode__c',
+      'IvytekTestPkg__AmtFinanced__c',
+      'IvytekTestPkg__RequestAmount__c',
+      'IvytekTestPkg__Approved_Amount__c',
+      'IvytekTestPkg__Principle__c',
+      'IvytekTestPkg__BalanceNow__c',
+      'IvytekTestPkg__AmtNowDueAll__c',
+      'AmtNowDueAll',
+      'Amount Now Due All',
+      'Amount Now Due',
+      'IvytekTestPkg__AccruedInterestAll__c',
+      'IvytekTestPkg__BackInterestDue__c',
+      'IvytekTestPkg__Deferred_Interest_Due__c',
+      'IvytekTestPkg__ProjectedAccruedInterest__c',
+      'IvytekTestPkg__Next_Payment_Interest_Due__c',
+      'IvytekTestPkg__ContractRate__c',
+      'IvytekTestPkg__Margin_Rate__c',
+      'IvytekTestPkg__Per_Diem_Interest_Rate__c',
+      'IvytekTestPkg__Per_Diem_Amount__c',
+      'Per_Diem_Amount',
+      'PerDiemAmount',
+      'Per Diem Amount',
+      'IvytekTestPkg__LoanDate__c',
+      'IvytekTestPkg__SetUpDate__c',
+      'IvytekTestPkg__MatDate__c',
+      'IvytekTestPkg__FirstDueDate__c',
+      'IvytekTestPkg__CurrentDueDate__c',
+      'IvytekTestPkg__LastInterestDate__c',
+      'IvytekTestPkg__Next_Payment_Date__c',
+      'IvytekTestPkg__Paid_Out_Date__c',
+      'IvytekTestPkg__StatusChangeEffDate__c',
+      'IvytekTestPkg__Number_of_Payments__c',
+      'IvytekTestPkg__Term__c',
+      'IvytekTestPkg__Payment_Frequency__c',
+      'IvytekTestPkg__Note__c',
+      'IvytekTestPkg__Next_Payment_Note__c',
+      'IvytekTestPkg__RunningMinDue__c',
+      'IvytekTestPkg__FirstPayAmount__c',
+      'IvytekTestPkg__Payoff_Amount__c',
+      'IvytekTestPkg__Legacy_Loan_ID__c',
+      'CompanyWS__c',
+      'Company__c',
+      'IvytekTestPkg__CompanyWS__c',
+      'IvytekTestPkg__Company__c',
+      'Mortgage_Code__c',
+      'IvytekTestPkg__Mortgage_Code__c',
+      'Loan_GroupWS__c',
+      'IvytekTestPkg__Loan_GroupWS__c',
+      'Family__c',
+      'Per_Capita_WS__c',
+      'PerCapita',
+      'Percapita',
+      'Per Capita',
+      'Pension_WS__c',
+      'Payroll_Deduction_WS__c',
+      'IvytekTestPkg__Statement_Street__c',
+      'IvytekTestPkg__Statement_City__c',
+      'IvytekTestPkg__Statement_State_Province__c',
+      'IvytekTestPkg__Statement_PostalCode__c',
+      'IvytekTestPkg__Statement_Postal_Code__c'
+    ];
+    const contactApplicationFields = [
+      ...commonFields,
+      'IvytekTestPkg__Loan__c',
+      'IvytekTestPkg__Contact__c',
+      'IvytekTestPkg__Application__c',
+      'IvytekTestPkg__ReferenceType__c',
+      'IvytekTestPkg__Borrower_Name__c',
+      'IvytekTestPkg__Borrower_Name_Text__c',
+      'IvytekTestPkg__Customer_Name__c',
+      'IvytekTestPkg__Customer_Name_Text__c',
+      'IvytekTestPkg__Full_Name__c'
+    ];
+    const transactionFields = [
+      ...commonFields,
+      'IvytekTestPkg__LoanID__c',
+      'IvytekTestPkg__Loan__c',
+      'IvytekTestPkg__AmountPaid__c',
+      'IvytekTestPkg__PrinciplePaid__c',
+      'IvytekTestPkg__PrincipalPaid__c',
+      'IvytekTestPkg__InterestPaid__c',
+      'IvytekTestPkg__BackInterestPaid__c',
+      'IvytekTestPkg__DeferredInterestPaid__c',
+      'IvytekTestPkg__DatePaid__c',
+      'IvytekTestPkg__DateLastPaid__c',
+      'IvytekTestPkg__Description__c',
+      'IvytekTestPkg__TypPay__c',
+      'IvytekTestPkg__SpecialTransCode__c',
+      'IvytekTestPkg__Voided_Transaction__c'
+    ];
+
+    if (sourceType === 'contacts') {
+      return clientFields;
+    }
+    if (sourceType === 'contactApplications') {
+      return contactApplicationFields;
+    }
+    if (sourceType === 'transactions') {
+      return transactionFields;
+    }
+    return loanFields;
+  }
+
+  /**
    * Resets all IvyTek staged import results.
    */
   private resetIvyTekPipelineResults() {
@@ -987,6 +1548,7 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekImportResults = [];
     this.ivyTekLoanImportResults = [];
     this.ivyTekTransactionImportResults = [];
+    this.ivyTekTransactionExportResults = [];
     this.selectedIvyTekResult = null;
     this.ivyTekProcessedRecords = 0;
     this.ivyTekLoanProcessedRecords = 0;
@@ -1477,7 +2039,9 @@ export class ViewBulkImportComponent implements OnInit {
 
       const productDetails = await this.getIvyTekLoanProductDetails(product.id, productDetailsCache);
       const shouldApproveAndDisburse = this.shouldApproveAndDisburseIvyTekLoan(row, balanceNow);
-      const shouldCloseAfterDisbursement = this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow);
+      const shouldCloseAfterDisbursement = this.shouldUseIvyTekStaticLoanSnapshot()
+        ? false
+        : this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow);
       const payloadPrincipal = this.getIvyTekLoanPayloadPrincipal(
         row,
         principal,
@@ -1511,6 +2075,11 @@ export class ViewBulkImportComponent implements OnInit {
       const migrationTransactionDate = this.getIvyTekMigrationTransactionDate(row, payloadLoanDate);
       result.mappedValues = {
         ...result.mappedValues,
+        staticSnapshotMode: this.shouldUseIvyTekStaticLoanSnapshot() ? 'Yes' : 'No',
+        requiresSqlSnapshotImport: this.shouldUseIvyTekStaticLoanSnapshot()
+          ? 'Static snapshot values are authoritative; Fineract engine values are diagnostic.'
+          : '',
+        restLifecycleSuppressed: this.shouldUseIvyTekStaticLoanSnapshot() ? 'Yes' : 'No',
         payloadPrincipal,
         principalSnapshotAdjustment: principalSnapshotAdjustment ?? '',
         migrationPrincipalPaid: migrationPrincipalPaid ?? '',
@@ -1570,7 +2139,8 @@ export class ViewBulkImportComponent implements OnInit {
             row,
             balanceNow,
             shouldApproveAndDisburse,
-            payload.submittedOnDate
+            payload.submittedOnDate,
+            historicalRepaymentSummary
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1583,6 +2153,7 @@ export class ViewBulkImportComponent implements OnInit {
               ])
             )
           );
+          await this.setIvyTekLoanImportedSnapshotResult(result, result.loanId, row);
           this.ivyTekLoanImportResults.push(result);
           return;
         }
@@ -1601,7 +2172,8 @@ export class ViewBulkImportComponent implements OnInit {
             row,
             balanceNow,
             shouldApproveAndDisburse,
-            payload.submittedOnDate
+            payload.submittedOnDate,
+            historicalRepaymentSummary
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1624,7 +2196,8 @@ export class ViewBulkImportComponent implements OnInit {
             row,
             balanceNow,
             shouldApproveAndDisburse,
-            payload.submittedOnDate
+            payload.submittedOnDate,
+            historicalRepaymentSummary
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1638,6 +2211,7 @@ export class ViewBulkImportComponent implements OnInit {
             )
           );
         }
+        await this.setIvyTekLoanImportedSnapshotResult(result, result.loanId, row);
         this.ivyTekLoanImportResults.push(result);
         return;
       }
@@ -1655,11 +2229,10 @@ export class ViewBulkImportComponent implements OnInit {
           await this.approveAndDisburseIvyTekLoan(result.loanId, createdLoanDate);
         }
         const migrationRepaymentMessage =
-          result.loanId && shouldApproveAndDisburse && !shouldCloseAfterDisbursement
+          result.loanId && shouldApproveAndDisburse
             ? await this.repayIvyTekActiveLoanToBalanceNow(
                 result.loanId,
                 row,
-                payloadPrincipal,
                 balanceNow,
                 this.getIvyTekMigrationTransactionDate(row, createdLoanDate),
                 shouldApproveAndDisburse,
@@ -1668,7 +2241,7 @@ export class ViewBulkImportComponent implements OnInit {
               )
             : '';
         const closeMessage = result.loanId
-          ? await this.settleAndCloseIvyTekZeroBalanceLoan(result.loanId, row, balanceNow, createdLoanDate)
+          ? await this.settleAndCloseIvyTekNonActiveLoan(result.loanId, row, balanceNow, createdLoanDate)
           : '';
         this.setIvyTekLoanResultStatus(
           result,
@@ -1704,7 +2277,8 @@ export class ViewBulkImportComponent implements OnInit {
             row,
             balanceNow,
             shouldApproveAndDisburse,
-            payload.submittedOnDate
+            payload.submittedOnDate,
+            historicalRepaymentSummary
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1727,7 +2301,8 @@ export class ViewBulkImportComponent implements OnInit {
             row,
             balanceNow,
             shouldApproveAndDisburse,
-            payload.submittedOnDate
+            payload.submittedOnDate,
+            historicalRepaymentSummary
           );
           this.setIvyTekLoanResultStatus(
             result,
@@ -1746,11 +2321,13 @@ export class ViewBulkImportComponent implements OnInit {
       this.setIvyTekLoanResultStatus(result, 'labels.inputs.Failed', this.getErrorMessage(error));
     }
 
+    await this.setIvyTekLoanImportedSnapshotResult(result, result.loanId, row);
     this.ivyTekLoanImportResults.push(result);
   }
 
   /**
-   * Creates a loan, backdating the matched client's activation date when Fineract rejects the historical loan date.
+   * Creates a loan, backdating the matched client when Fineract requires the client activation date
+   * to be on or before the historical IvyTek loan date.
    * @param {any} row IvyTek loan row.
    * @param {any} client Matched client.
    * @param {any} payload Loan payload.
@@ -1767,18 +2344,17 @@ export class ViewBulkImportComponent implements OnInit {
         throw error;
       }
       const activationMessage = await this.backdateIvyTekLoanClientActivation(client, row);
-      const retryLoanDate = this.getIvyTekClientActivationBackdateDateText(row) || payload.submittedOnDate;
-      const retryPayload = this.getIvyTekLoanPayloadWithDate(row, payload, retryLoanDate);
       return {
-        response: await firstValueFrom(this.loansService.createLoansAccount('loans', retryPayload)),
+        response: await firstValueFrom(this.loansService.createLoansAccount('loans', payload)),
         activationMessage,
-        loanDate: retryLoanDate
+        loanDate: payload.submittedOnDate
       };
     }
   }
 
   /**
-   * Updates a loan, backdating the matched client's activation date when Fineract rejects the historical loan date.
+   * Updates a loan, backdating the matched client when Fineract requires the client activation date
+   * to be on or before the historical IvyTek loan date.
    * @param {any} row IvyTek loan row.
    * @param {any} client Matched client.
    * @param {string} loanId Mifos loan id.
@@ -1793,78 +2369,69 @@ export class ViewBulkImportComponent implements OnInit {
         throw error;
       }
       const activationMessage = await this.backdateIvyTekLoanClientActivation(client, row);
-      const retryLoanDate = this.getIvyTekClientActivationBackdateDateText(row) || payload.submittedOnDate;
-      const retryPayload = this.getIvyTekLoanPayloadWithDate(row, payload, retryLoanDate);
-      await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, retryPayload));
+      await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, payload));
       return activationMessage;
     }
   }
 
   /**
-   * Backdates the matched loan client's activation date to the historical loan date.
+   * Backdates the matched loan client activation date from source-backed IvyTek loan dates.
    * @param {any} client Matched client.
    * @param {any} row IvyTek loan row.
    */
   private async backdateIvyTekLoanClientActivation(client: any, row: any): Promise<string> {
     const clientId = this.getIvyTekClientId(client);
-    const targetActivationDate = this.getIvyTekClientActivationBackdateDate(row);
-    if (!clientId || !targetActivationDate) {
-      return '';
+    if (!clientId) {
+      throw new Error(
+        'Historical IvyTek loan date is earlier than the matched Mifos client activation date, but the matched client id was not returned. Exact historical import stopped before changing loan dates.'
+      );
     }
-    return this.backdateIvyTekClientActivation(clientId, targetActivationDate);
+    return this.backdateIvyTekClientActivationFromRow(clientId, row);
   }
 
   /**
-   * Backdates a client activation date when a source row proves an earlier loan relationship.
+   * Backdates an existing client activation date from an IvyTek source row.
    * @param {string} clientId Client id.
    * @param {any} row IvyTek client or loan row.
    */
   private async backdateIvyTekClientActivationFromRow(clientId: string, row: any): Promise<string> {
     const targetActivationDate = this.getIvyTekClientActivationBackdateDate(row);
     if (!targetActivationDate) {
-      return '';
+      throw new Error(
+        'Historical IvyTek loan date is earlier than the matched Mifos client activation date, but no source-backed IvyTek loan/setup date was available for client backdating. Exact historical import stopped before changing loan dates.'
+      );
     }
     return this.backdateIvyTekClientActivation(clientId, targetActivationDate);
   }
 
   /**
-   * Backdates a client activation date if the current activation date is after the target date.
+   * Updates an existing client activation date without changing the historical loan payload.
    * @param {string} clientId Client id.
    * @param {Date} targetActivationDate Target activation date.
    */
   private async backdateIvyTekClientActivation(clientId: string, targetActivationDate: Date): Promise<string> {
     const clientData: any = await firstValueFrom(this.clientsService.getClientDataAndTemplate(clientId));
-    const safeTargetActivationDate = this.getIvyTekOfficeSafeDate(targetActivationDate, clientData);
-    if (!safeTargetActivationDate) {
-      return '';
-    }
     const currentActivationDate = this.parseIvyTekDateValue(
-      clientData?.timeline?.activatedOnDate || clientData?.activationDate || clientData?.activatedOnDate
+      clientData?.activationDate || clientData?.timeline?.activatedOnDate || clientData?.timeline?.submittedOnDate
     );
-    if (currentActivationDate && safeTargetActivationDate >= currentActivationDate) {
-      return '';
+    const targetActivationDateText = this.dateUtils.formatDate(targetActivationDate, this.settingsService.dateFormat);
+
+    if (currentActivationDate && currentActivationDate.getTime() <= targetActivationDate.getTime()) {
+      return `Matched Mifos client activation date ${this.dateUtils.formatDate(
+        currentActivationDate,
+        this.settingsService.dateFormat
+      )} already supports the IvyTek historical loan date.`;
     }
 
-    const currentSubmittedDate = this.parseIvyTekDateValue(
-      clientData?.timeline?.submittedOnDate || clientData?.submittedOnDate
+    const submittedOnDate = this.dateUtils.formatDate(
+      currentActivationDate && currentActivationDate.getTime() < targetActivationDate.getTime()
+        ? currentActivationDate
+        : targetActivationDate,
+      this.settingsService.dateFormat
     );
-    const submittedOnDate =
-      this.getIvyTekOfficeSafeDate(
-        currentSubmittedDate && currentSubmittedDate < safeTargetActivationDate
-          ? currentSubmittedDate
-          : safeTargetActivationDate,
-        clientData
-      ) || safeTargetActivationDate;
-    const activationDateText = this.dateUtils.formatDate(safeTargetActivationDate, this.settingsService.dateFormat);
-    const submittedOnDateText = this.dateUtils.formatDate(submittedOnDate, this.settingsService.dateFormat);
-
-    await firstValueFrom(
-      this.clientsService.updateClient(
-        clientId,
-        this.getIvyTekClientActivationUpdatePayload(clientData, submittedOnDateText, activationDateText)
-      )
-    );
-    return `Client activation date backed up to ${activationDateText} for historical loan date.`;
+    const payload = this.getIvyTekClientActivationUpdatePayload(clientData, submittedOnDate, targetActivationDateText);
+    await firstValueFrom(this.clientsService.updateClient(clientId, payload));
+    return `Backdated matched Mifos client activation date to ${targetActivationDateText} from IvyTek source loan history before retrying the exact historical loan import.`;
   }
 
   /**
@@ -1881,6 +2448,7 @@ export class ViewBulkImportComponent implements OnInit {
       middlename: clientData?.middlename,
       lastname: clientData?.lastname,
       fullname: clientData?.fullname,
+      accountNo: clientData?.accountNo,
       externalId: clientData?.externalId,
       mobileNo: clientData?.mobileNo,
       emailAddress: clientData?.emailAddress,
@@ -2009,10 +2577,17 @@ export class ViewBulkImportComponent implements OnInit {
     try {
       this.validateIvyTekClientData(row);
       const saveResult = await this.saveIvyTekClientAndTribalData(row);
-      result.mappedValues = this.getIvyTekClientResultMappedValues(row, saveResult.clientId);
-      this.setIvyTekResultStatus(result, saveResult.status);
+      result.mappedValues = this.getIvyTekClientResultMappedValues(
+        row,
+        saveResult.clientId,
+        saveResult.customFieldDatatablesUpdated,
+        saveResult.addressStatus,
+        saveResult.warnings
+      );
+      const warningMessage = this.joinIvyTekMessages(saveResult.warnings);
+      this.setIvyTekResultStatus(result, warningMessage ? 'labels.inputs.Warning' : saveResult.status, warningMessage);
     } catch (error: any) {
-      this.setIvyTekResultStatus(result, 'labels.inputs.Failed', this.getErrorMessage(error));
+      this.setIvyTekResultStatus(result, 'labels.inputs.Failed', this.getIvyTekClientImportErrorMessage(error, row));
     }
     this.ivyTekImportResults.push(result);
   }
@@ -2067,11 +2642,23 @@ export class ViewBulkImportComponent implements OnInit {
       const saveResult = await this.saveIvyTekClientAndTribalData(correctedRow);
       this.selectedIvyTekResult.mappedValues = this.getIvyTekClientResultMappedValues(
         correctedRow,
-        saveResult.clientId
+        saveResult.clientId,
+        saveResult.customFieldDatatablesUpdated,
+        saveResult.addressStatus,
+        saveResult.warnings
       );
-      this.setIvyTekResultStatus(this.selectedIvyTekResult, saveResult.status);
+      const warningMessage = this.joinIvyTekMessages(saveResult.warnings);
+      this.setIvyTekResultStatus(
+        this.selectedIvyTekResult,
+        warningMessage ? 'labels.inputs.Warning' : saveResult.status,
+        warningMessage
+      );
     } catch (error: any) {
-      this.setIvyTekResultStatus(this.selectedIvyTekResult, 'labels.inputs.Failed', this.getErrorMessage(error));
+      this.setIvyTekResultStatus(
+        this.selectedIvyTekResult,
+        'labels.inputs.Failed',
+        this.getIvyTekClientImportErrorMessage(error, correctedRow)
+      );
     } finally {
       this.ivyTekRetrying = false;
     }
@@ -2107,6 +2694,36 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Exports numeric source/imported reconciliation totals from IvyTek results.
+   * @param {string} stage Result stage to reconcile.
+   */
+  exportIvyTekReconciliationResults(stage: string = 'all') {
+    const reconciliationRows = this.getIvyTekReconciliationRows(this.getIvyTekExportStages(stage));
+
+    if (!reconciliationRows.length) {
+      return;
+    }
+
+    const headers = [
+      'Stage',
+      'Outcome',
+      'Comparison Key',
+      'Source Columns',
+      'Imported Columns',
+      'Result Count',
+      'Source Numeric Count',
+      'Imported Numeric Count',
+      'Source Total',
+      'Imported Total',
+      'Difference',
+      'Compared',
+      'Notes'
+    ];
+    const csv = this.buildIvyTekCsv(headers, reconciliationRows);
+    this.downloadIvyTekCsv(`ivytek-${stage}-reconciliation-${this.getIvyTekCsvTimestamp()}.csv`, csv);
+  }
+
+  /**
    * Gets the result stages included in a CSV export.
    * @param {string} stage Result stage.
    */
@@ -2125,10 +2742,463 @@ export class ViewBulkImportComponent implements OnInit {
       {
         key: 'transactions',
         stageName: 'Stage 3 Transactions',
-        results: this.ivyTekTransactionImportResults
+        results: this.ivyTekTransactionExportResults.length
+          ? this.ivyTekTransactionExportResults
+          : this.ivyTekTransactionImportResults
       }
     ];
     return stage === 'all' ? stages : stages.filter((stageResult: any) => stageResult.key === stage);
+  }
+
+  /**
+   * Builds reconciliation rows for numeric source and imported values.
+   * @param {any[]} stageResults Export stage result groups.
+   */
+  private getIvyTekReconciliationRows(stageResults: any[]) {
+    const detailRows = stageResults.flatMap((stageResult: any) => this.getIvyTekStageReconciliationRows(stageResult));
+    return [
+      this.getIvyTekReconciliationSummaryRow(stageResults, detailRows),
+      ...detailRows
+    ];
+  }
+
+  /**
+   * Builds one stage's source/imported numeric total comparison rows.
+   * @param {any} stageResult Export stage result group.
+   */
+  private getIvyTekStageReconciliationRows(stageResult: any) {
+    const totalsByKey = new Map<string, any>();
+
+    stageResult.results.forEach((result: any, index: number) => {
+      const exportRow = this.getIvyTekResultExportRow(stageResult.stageName, result, index);
+      Object.keys(exportRow)
+        .sort()
+        .forEach((header: string) => {
+          const side = this.getIvyTekReconciliationSide(header);
+          if (!side) {
+            return;
+          }
+
+          const numericValue = this.getIvyTekReconciliationNumericValue(header, exportRow[header]);
+          if (numericValue === null) {
+            return;
+          }
+
+          const comparisonKey = this.getIvyTekReconciliationColumnKey(header);
+          if (!comparisonKey) {
+            return;
+          }
+
+          const total = totalsByKey.get(comparisonKey) || {
+            stageName: stageResult.stageName,
+            comparisonKey,
+            sourceColumns: new Set<string>(),
+            importedColumns: new Set<string>(),
+            resultCount: stageResult.results.length,
+            sourceNumericCount: 0,
+            importedNumericCount: 0,
+            sourceTotal: 0,
+            importedTotal: 0,
+            sourceResultIndexes: new Set<number>(),
+            importedResultIndexes: new Set<number>()
+          };
+          const columns = side === 'source' ? total.sourceColumns : total.importedColumns;
+          columns.add(this.getIvyTekReconciliationFieldName(header));
+          const resultIndexes = side === 'source' ? total.sourceResultIndexes : total.importedResultIndexes;
+          if (!this.isIvyTekReconciliationAdditiveKey(comparisonKey, side) && resultIndexes.has(index)) {
+            totalsByKey.set(comparisonKey, total);
+            return;
+          }
+          resultIndexes.add(index);
+          if (side === 'source') {
+            total.sourceNumericCount += 1;
+            total.sourceTotal = this.roundIvyTekReconciliationTotal(total.sourceTotal + numericValue);
+          } else {
+            total.importedNumericCount += 1;
+            total.importedTotal = this.roundIvyTekReconciliationTotal(total.importedTotal + numericValue);
+          }
+          totalsByKey.set(comparisonKey, total);
+        });
+    });
+
+    return Array.from(totalsByKey.values())
+      .sort((first: any, second: any) => first.comparisonKey.localeCompare(second.comparisonKey))
+      .map((total: any) => this.getIvyTekReconciliationExportRow(total));
+  }
+
+  /**
+   * Builds one reconciliation CSV row.
+   * @param {any} total Aggregated total bucket.
+   */
+  private getIvyTekReconciliationExportRow(total: any) {
+    const hasSourceTotal = total.sourceNumericCount > 0;
+    const hasImportedTotal = total.importedNumericCount > 0;
+    const difference =
+      hasSourceTotal && hasImportedTotal
+        ? this.roundIvyTekReconciliationTotal(total.importedTotal - total.sourceTotal)
+        : null;
+    const outcome = this.getIvyTekReconciliationOutcome(hasSourceTotal, hasImportedTotal, difference);
+    return {
+      Stage: total.stageName,
+      Outcome: outcome,
+      'Comparison Key': total.comparisonKey,
+      'Source Columns': Array.from(total.sourceColumns).sort().join('; '),
+      'Imported Columns': Array.from(total.importedColumns).sort().join('; '),
+      'Result Count': total.resultCount,
+      'Source Numeric Count': total.sourceNumericCount || '',
+      'Imported Numeric Count': total.importedNumericCount || '',
+      'Source Total': hasSourceTotal ? this.formatIvyTekReconciliationNumber(total.sourceTotal) : '',
+      'Imported Total': hasImportedTotal ? this.formatIvyTekReconciliationNumber(total.importedTotal) : '',
+      Difference: difference === null ? '' : this.formatIvyTekReconciliationNumber(difference),
+      Compared: hasSourceTotal && hasImportedTotal ? 'Yes' : 'No',
+      Notes: this.getIvyTekReconciliationNotes(hasSourceTotal, hasImportedTotal, difference)
+    };
+  }
+
+  /**
+   * Builds the final reconciliation verdict row for the selected import result stages.
+   * @param {any[]} stageResults Export stage result groups.
+   * @param {any[]} detailRows Reconciliation detail rows.
+   */
+  private getIvyTekReconciliationSummaryRow(stageResults: any[], detailRows: any[]) {
+    const totalResults = stageResults.reduce(
+      (count: number, stageResult: any) => count + (stageResult.results?.length || 0),
+      0
+    );
+    const comparedRows = detailRows.filter((row: any) => row.Compared === 'Yes');
+    const differenceRows = detailRows.filter((row: any) => row.Outcome === 'Difference');
+    const sourceOnlyRows = detailRows.filter(
+      (row: any) => row.Outcome === 'Source Only' && this.hasIvyTekReconciliationNonZeroTotal(row, 'Source Total')
+    );
+    const importedOnlyRows = detailRows.filter(
+      (row: any) => row.Outcome === 'Imported Only' && this.hasIvyTekReconciliationNonZeroTotal(row, 'Imported Total')
+    );
+    const outcome =
+      detailRows.length && comparedRows.length && !differenceRows.length && !importedOnlyRows.length
+        ? 'Success'
+        : 'Failure';
+    const notes = detailRows.length
+      ? `Compared ${comparedRows.length} numeric totals across ${totalResults} import results. Differences: ${differenceRows.length}. Nonzero source-only totals: ${sourceOnlyRows.length}. Nonzero imported-only totals: ${importedOnlyRows.length}.`
+      : `No numeric source/imported totals were available across ${totalResults} import results. Reconciliation could not prove the import matched IvyTek.`;
+
+    return {
+      Stage: 'All Stages',
+      Outcome: outcome,
+      'Comparison Key': 'FINAL_IMPORT_RESULT',
+      'Source Columns': '',
+      'Imported Columns': '',
+      'Result Count': totalResults,
+      'Source Numeric Count': '',
+      'Imported Numeric Count': '',
+      'Source Total': '',
+      'Imported Total': '',
+      Difference: '',
+      Compared: comparedRows.length ? 'Yes' : 'No',
+      Notes: notes
+    };
+  }
+
+  /**
+   * Gets the reconciliation row outcome.
+   * @param {boolean} hasSourceTotal Whether a source total exists.
+   * @param {boolean} hasImportedTotal Whether an imported total exists.
+   * @param {number | null} difference Imported minus source total.
+   */
+  private getIvyTekReconciliationOutcome(
+    hasSourceTotal: boolean,
+    hasImportedTotal: boolean,
+    difference: number | null
+  ) {
+    if (hasSourceTotal && hasImportedTotal) {
+      return Math.abs(difference || 0) <= 0.005 ? 'Matched' : 'Difference';
+    }
+    if (hasSourceTotal) {
+      return 'Source Only';
+    }
+    return 'Imported Only';
+  }
+
+  /**
+   * Checks whether a reconciliation total column has a non-zero value.
+   * @param {any} row Reconciliation export row.
+   * @param {string} column Total column name.
+   */
+  private hasIvyTekReconciliationNonZeroTotal(row: any, column: string) {
+    const value = this.parseIvyTekDecimal(row[column]);
+    return value !== null && Math.abs(value) > 0.005;
+  }
+
+  /**
+   * Gets the reconciliation value side represented by an export column.
+   * @param {string} header Export column header.
+   */
+  private getIvyTekReconciliationSide(header: string): string {
+    if (header.startsWith('source.')) {
+      return 'source';
+    }
+    if (header.startsWith('imported.')) {
+      return 'imported';
+    }
+    return '';
+  }
+
+  /**
+   * Gets a normalized key for comparing source and imported columns.
+   * @param {string} header Export column header.
+   */
+  private getIvyTekReconciliationColumnKey(header: string) {
+    const side = this.getIvyTekReconciliationSide(header);
+    const fieldName = this.getIvyTekReconciliationFieldName(header)
+      .replace(/^IvytekTestPkg__/i, '')
+      .replace(/^IvyTestPkg__/i, '')
+      .replace(/__c$/i, '');
+    const normalized = this.normalizeIvyTekText(fieldName);
+    const sourceAliases: { [key: string]: string } = {
+      accruedinterestall: 'interestoutstanding',
+      backinterestdue: 'interestoutstanding',
+      balancenow: 'principaloutstanding',
+      deferredinterestdue: 'interestoutstanding'
+    };
+    const importedAliases: { [key: string]: string } = {
+      interestoutstanding: 'interestoutstanding',
+      principaloutstanding: 'principaloutstanding'
+    };
+    const aliases: { [key: string]: string } = {
+      amtnowdueall: 'amountnowdueall',
+      amountnowdueall: 'amountnowdueall',
+      amtfinanced: 'principal',
+      approvedamount: 'principal',
+      requestamount: 'principal',
+      payloadprincipal: 'principal',
+      snapshotprincipaloutstanding: 'principaloutstanding',
+      originalprincipal: 'principal',
+      principle: 'principal',
+      principlepaid: 'principalpaid',
+      backinterestpaid: 'interestpaid',
+      deferredinterestpaid: 'interestpaid',
+      contractrate: 'contractratedecimal',
+      marginrate: 'interestratepercent',
+      contractratepercent: 'interestratepercent',
+      payloadinterestratepercent: 'interestratepercent',
+      interestoutstanding: 'interestoutstanding',
+      feechargesoutstanding: 'feesoutstanding',
+      feesoutstanding: 'feesoutstanding',
+      penaltychargesoutstanding: 'penaltiesoutstanding',
+      penaltiesoutstanding: 'penaltiesoutstanding',
+      historicaltransactionamountpaid: 'amountpaid',
+      historicaltransactionprincipalpaid: 'principalpaid',
+      historicaltransactioninterestpaid: 'interestpaid',
+      numberofpayments: 'numberofrepayments',
+      term: 'numberofrepayments',
+      percapita: 'percap',
+      percapitaws: 'percap',
+      percapws: 'percap',
+      tribalpercap: 'percap',
+      payrolldeductionws: 'tribalpayroll',
+      pensionws: 'tribalpension'
+    };
+    if (side === 'source' && sourceAliases[normalized]) {
+      return sourceAliases[normalized];
+    }
+    if (side === 'imported' && importedAliases[normalized]) {
+      return importedAliases[normalized];
+    }
+    return aliases[normalized] || normalized;
+  }
+
+  /**
+   * Checks whether same-key source/import columns should be summed instead of deduplicated per result.
+   * @param {string} comparisonKey Reconciliation comparison key.
+   * @param {string} side Reconciliation side.
+   */
+  private isIvyTekReconciliationAdditiveKey(comparisonKey: string, side: string) {
+    return side === 'source' && [
+        'interestoutstanding',
+        'interestpaid'
+      ].includes(comparisonKey);
+  }
+
+  /**
+   * Gets the source field name from an export header.
+   * @param {string} header Export column header.
+   */
+  private getIvyTekReconciliationFieldName(header: string) {
+    return header.replace(/^(source|mapped|imported)\./, '');
+  }
+
+  /**
+   * Parses a numeric reconciliation value from a CSV export cell.
+   * @param {string} header Export column header.
+   * @param {any} value Export cell value.
+   */
+  private getIvyTekReconciliationNumericValue(header: string, value: any): number | null {
+    if (this.isIvyTekReconciliationExcludedColumn(header)) {
+      return null;
+    }
+
+    const text = this.getIvyTekExportCellValue(value).toString().trim();
+    if (!text || this.isNullLikeCsvValue(text)) {
+      return null;
+    }
+
+    const normalized = text
+      .replace(/^\((.+)\)$/, '-$1')
+      .replace(/[$,%]/g, '')
+      .replace(/,/g, '')
+      .trim();
+    if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+      return null;
+    }
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  /**
+   * Checks whether a column should be excluded from numeric reconciliation totals.
+   * @param {string} header Export column header.
+   */
+  private isIvyTekReconciliationExcludedColumn(header: string) {
+    const side = this.getIvyTekReconciliationSide(header);
+    const normalized = this.normalizeIvyTekText(this.getIvyTekReconciliationFieldName(header));
+    if (side === 'imported' && [
+        'balancenow',
+        'currentbalance',
+        'fineractaccountstatus',
+        'fineractbalancenow',
+        'fineractfeechargesoutstanding',
+        'fineractinterestoutstanding',
+        'fineractpenaltychargesoutstanding',
+        'fineractprincipaloutstanding',
+        'fineracttotaloutstanding',
+        'snapshotstoragemode',
+        'totaloutstanding'
+      ].includes(normalized)) {
+      return true;
+    }
+    const excludedExactNames = [
+      'deceased',
+      'directdeposit',
+      'donotcall',
+      'donotemail',
+      'donotmail',
+      'donotphone',
+      'donottext',
+      'hasoptedoutoffax',
+      'hasoptedoutofemail',
+      'hasoptedoutofsms',
+      'isdeleted',
+      'lgbtqia',
+      'differentlyabled',
+      'bipoc',
+      'raceamericanindianoralaskanative',
+      'raceasian',
+      'raceblackorafricanamerican',
+      'racecaucasian',
+      'racemultiracial',
+      'racenativehawaiianotherpacificisl',
+      'racewhite',
+      'rowidentifier',
+      'samplevalue',
+      'warningcount',
+      'historicaltransactioncount',
+      'historicaltransactionignoredcount',
+      'historicaldisbursementtransactioncount',
+      'historicaltransactionamountpaid',
+      'historicaltransactionprincipalpaid',
+      'historicaltransactioninterestpaid',
+      'repaymentevery'
+    ];
+    const excludedTokens = [
+      'accountid',
+      'accountno',
+      'address',
+      'apartment',
+      'birthdate',
+      'city',
+      'clientid',
+      'code',
+      'contactapplication',
+      'contactid',
+      'country',
+      'created',
+      'date',
+      'description',
+      'document',
+      'email',
+      'entityid',
+      'externalid',
+      'frequency',
+      'group',
+      'checknumber',
+      'legacyloanid',
+      'loanid',
+      'lookupmethod',
+      'message',
+      'mobile',
+      'modified',
+      'name',
+      'note',
+      'officeid',
+      'ownerid',
+      'paymentprocessingtype',
+      'phone',
+      'postal',
+      'recordtypeid',
+      'salutation',
+      'salesforceloanid',
+      'sfloanid',
+      'ssn',
+      'stage',
+      'state',
+      'status',
+      'street',
+      'suffix',
+      'type',
+      'zip'
+    ];
+    return (
+      normalized === 'id' ||
+      excludedExactNames.includes(normalized) ||
+      excludedTokens.some((token: string) => normalized.includes(token))
+    );
+  }
+
+  /**
+   * Rounds reconciliation totals without forcing cents on rates/counts.
+   * @param {number} value Total value.
+   */
+  private roundIvyTekReconciliationTotal(value: number) {
+    return Math.round((value + Number.EPSILON) * 1000000) / 1000000;
+  }
+
+  /**
+   * Formats reconciliation totals without unnecessary trailing zeroes.
+   * @param {number} value Total value.
+   */
+  private formatIvyTekReconciliationNumber(value: number) {
+    return this.roundIvyTekReconciliationTotal(value)
+      .toFixed(6)
+      .replace(/\.?0+$/, '');
+  }
+
+  /**
+   * Gets a short reconciliation note for unmatched or different total sides.
+   * @param {boolean} hasSourceTotal Whether a source total exists.
+   * @param {boolean} hasImportedTotal Whether an imported total exists.
+   * @param {number | null} difference Imported minus source total.
+   */
+  private getIvyTekReconciliationNotes(hasSourceTotal: boolean, hasImportedTotal: boolean, difference: number | null) {
+    if (hasSourceTotal && hasImportedTotal) {
+      if (Math.abs(difference || 0) > 0.005) {
+        return `Imported total differs from source by ${this.formatIvyTekReconciliationNumber(difference || 0)}.`;
+      }
+      return '';
+    }
+    if (hasSourceTotal) {
+      return 'No imported numeric counterpart was found for this source total.';
+    }
+    return 'No source numeric counterpart was found for this imported total.';
   }
 
   /**
@@ -2144,7 +3214,6 @@ export class ViewBulkImportComponent implements OnInit {
       Stage: stageName,
       'Result Number': index + 1,
       Status: this.getIvyTekExportStatus(result.status),
-      'Status Key': result.status || '',
       Message: result.message || '',
       Name: result.name || '',
       'External ID': result.externalId || '',
@@ -2159,6 +3228,12 @@ export class ViewBulkImportComponent implements OnInit {
 
     Object.keys(result.mappedValues || {}).forEach((key: string) => {
       exportRow[`mapped.${key}`] = result.mappedValues[key];
+    });
+    Object.keys(result.importedValues || {}).forEach((key: string) => {
+      exportRow[`imported.${key}`] = result.importedValues[key];
+    });
+    Object.keys(result.validationValues || {}).forEach((key: string) => {
+      exportRow[`validation.${key}`] = result.validationValues[key];
     });
     Object.keys(result.row || {}).forEach((key: string) => {
       exportRow[`source.${key}`] = result.row[key];
@@ -2177,7 +3252,6 @@ export class ViewBulkImportComponent implements OnInit {
       'Stage',
       'Result Number',
       'Status',
-      'Status Key',
       'Message',
       'Name',
       'External ID',
@@ -2192,11 +3266,19 @@ export class ViewBulkImportComponent implements OnInit {
     const mappedHeaders = rows.flatMap((row: any) =>
       Object.keys(row).filter((key: string) => key.startsWith('mapped.'))
     );
+    const importedHeaders = rows.flatMap((row: any) =>
+      Object.keys(row).filter((key: string) => key.startsWith('imported.'))
+    );
+    const validationHeaders = rows.flatMap((row: any) =>
+      Object.keys(row).filter((key: string) => key.startsWith('validation.'))
+    );
     const sourceHeaders = rows.flatMap((row: any) =>
       Object.keys(row).filter((key: string) => key.startsWith('source.'))
     );
     return [
       ...baseHeaders,
+      ...Array.from(new Set(importedHeaders)).sort(),
+      ...Array.from(new Set(validationHeaders)).sort(),
       ...Array.from(new Set(mappedHeaders)).sort(),
       ...Array.from(new Set(sourceHeaders)).sort()
     ];
@@ -2294,15 +3376,25 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek client row.
    * @param {any} clientId Mifos client id returned by the write operation.
    */
-  private getIvyTekClientResultMappedValues(row: any, clientId: any) {
+  private getIvyTekClientResultMappedValues(
+    row: any,
+    clientId: any,
+    customFieldDatatablesUpdated: number = 0,
+    addressStatus: string = '',
+    warnings: string[] = []
+  ) {
     const office = this.getIvyTekOfficeForRow(row);
     return {
       mifosClientId: clientId || '',
       sourceExternalId: this.getIvyTekExternalId(row),
       sourceEntityId: this.getIvyTekEntityId(row),
       sourceCompanyCode: this.getIvyTekCompanyCode(row),
+      sourceMobileNo: this.getIvyTekClientPhone(row),
       targetOfficeId: office?.id || '',
       targetOfficeName: office?.name || '',
+      customFieldDatatablesUpdated,
+      addressStatus,
+      warningCount: warnings.length || '',
       tribalEntityIdWritten: this.getIvyTekEntityId(row) ? 'Yes' : 'No'
     };
   }
@@ -2316,6 +3408,24 @@ export class ViewBulkImportComponent implements OnInit {
   private setIvyTekResultStatus(result: any, status: string, message: string = '') {
     result.status = status;
     result.message = message;
+  }
+
+  /**
+   * Adds source context to client import failures that Fineract reports too generically.
+   * @param {any} error API or runtime error.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekClientImportErrorMessage(error: any, row: any): string {
+    const message = this.getErrorMessage(error);
+    if (!message.toLowerCase().includes('office opening date')) {
+      return message;
+    }
+    const office = this.getIvyTekOfficeForRow(row);
+    return `${message} Source activation date: "${this.getIvyTekClientActivationDate(row)}" from "${
+      this.getCsvValue(row, 'IvyTekClientActivationDateSource') || 'unknown'
+    }". Target office: "${office?.name || this.getCsvValue(row, 'IvyTekClientOfficeName') || '(unknown)'}" (${
+      office?.id || this.getCsvValue(row, 'IvyTekClientOfficeId') || 'no id'
+    }). Exact historical date was not changed; import is blocked until Mifos can store a client activation date before that office opening date.`;
   }
 
   /**
@@ -2373,13 +3483,21 @@ export class ViewBulkImportComponent implements OnInit {
     const existingClient: any = await this.findExistingIvyTekClient(row);
     let clientId: any;
     let status: string;
+    const warnings: string[] = [];
 
     if (existingClient?.id) {
-      await this.updateIvyTekClientWithMobileFallback(existingClient.id, row);
+      const clientWarning = await this.updateIvyTekClientWithMobileFallback(existingClient.id, row);
+      if (clientWarning) {
+        warnings.push(clientWarning);
+      }
       clientId = existingClient.id;
       status = 'labels.inputs.Updated';
     } else {
-      const createdClient: any = await this.createIvyTekClientWithMobileFallback(row);
+      const createResult: any = await this.createIvyTekClientWithMobileFallback(row);
+      const createdClient = createResult.response;
+      if (createResult.warning) {
+        warnings.push(createResult.warning);
+      }
       clientId = createdClient?.resourceId || createdClient?.clientId || createdClient?.id;
       status = 'labels.inputs.Created';
     }
@@ -2389,52 +3507,71 @@ export class ViewBulkImportComponent implements OnInit {
     }
 
     await this.upsertIvyTekClientTribalData(clientId.toString(), row);
-    await this.upsertIvyTekClientIdentifiers(clientId.toString(), row);
-    await this.upsertIvyTekClientAddress(clientId.toString(), row);
+    warnings.push(...(await this.upsertIvyTekClientIdentifiers(clientId.toString(), row)));
+    const addressStatus = await this.upsertIvyTekClientAddress(clientId.toString(), row);
+    if (addressStatus.warning) {
+      warnings.push(addressStatus.warning);
+    }
+    const customFieldDatatablesUpdated = await this.upsertIvyTekMappedCustomFields(
+      'm_client',
+      clientId.toString(),
+      row,
+      [this.ivyTekClientTribalDatatableName]
+    );
     return {
       status,
-      clientId
+      clientId,
+      customFieldDatatablesUpdated,
+      addressStatus: addressStatus.status,
+      warnings
     };
   }
 
   /**
-   * Updates a client, retrying without mobileNo when the tenant requires mobile numbers to be unique.
+   * Updates a client without dropping source mobile numbers to satisfy tenant uniqueness rules.
    * @param {string} clientId Client identifier.
    * @param {any} row IvyTek CSV row.
    */
-  private async updateIvyTekClientWithMobileFallback(clientId: string, row: any) {
-    await this.backdateIvyTekClientActivationFromRow(clientId, row);
+  private async updateIvyTekClientWithMobileFallback(clientId: string, row: any): Promise<string> {
     const payload = this.getIvyTekClientPayload(row);
     try {
       await firstValueFrom(this.clientsService.updateClient(clientId, payload));
+      return '';
     } catch (error: any) {
-      if (!payload.mobileNo || !this.isIvyTekDuplicateMobileNoError(error)) {
-        throw error;
+      if (payload.mobileNo && this.isIvyTekDuplicateMobileNoError(error)) {
+        const retryPayload = this.getIvyTekPayloadWithoutMobileNo(payload);
+        await firstValueFrom(this.clientsService.updateClient(clientId, retryPayload));
+        return `Duplicate mobile number ${payload.mobileNo} cannot be stored in the unique Mifos mobile field. The client was imported and the source mobile number is preserved in the result export for controlled staging/custom-field mapping.`;
       }
-      const retryPayload = this.getIvyTekPayloadWithoutMobileNo(payload);
-      await firstValueFrom(this.clientsService.updateClient(clientId, retryPayload));
+      throw error;
     }
   }
 
   /**
-   * Creates a client, retrying without mobileNo when the tenant requires mobile numbers to be unique.
+   * Creates a client without dropping source mobile numbers to satisfy tenant uniqueness rules.
    * @param {any} row IvyTek CSV row.
    */
   private async createIvyTekClientWithMobileFallback(row: any) {
     const payload = this.getIvyTekClientPayload(row, true, true);
     try {
-      return await firstValueFrom(this.clientsService.createClient(payload));
+      return {
+        response: await firstValueFrom(this.clientsService.createClient(payload)),
+        warning: ''
+      };
     } catch (error: any) {
-      if (!payload.mobileNo || !this.isIvyTekDuplicateMobileNoError(error)) {
-        throw error;
+      if (payload.mobileNo && this.isIvyTekDuplicateMobileNoError(error)) {
+        const retryPayload = this.getIvyTekPayloadWithoutMobileNo(payload);
+        return {
+          response: await firstValueFrom(this.clientsService.createClient(retryPayload)),
+          warning: `Duplicate mobile number ${payload.mobileNo} cannot be stored in the unique Mifos mobile field. The client was imported and the source mobile number is preserved in the result export for controlled staging/custom-field mapping.`
+        };
       }
-      const retryPayload = this.getIvyTekPayloadWithoutMobileNo(payload);
-      return await firstValueFrom(this.clientsService.createClient(retryPayload));
+      throw error;
     }
   }
 
   /**
-   * Removes mobileNo from a payload without mutating the original.
+   * Removes mobileNo from a payload without mutating the original when Fineract uniqueness blocks exact REST storage.
    * @param {any} payload Client payload.
    */
   private getIvyTekPayloadWithoutMobileNo(payload: any) {
@@ -2497,23 +3634,26 @@ export class ViewBulkImportComponent implements OnInit {
   private async upsertIvyTekLoanTribalData(loanId: string, row: any): Promise<boolean> {
     const columns = await this.getIvyTekLoanTribalDatatableColumns(null);
     const payload = this.getIvyTekLoanTribalDataPayload(row, columns);
-    if (!this.hasIvyTekDatatablePayloadValues(payload)) {
-      return false;
+    let tribalDataUpdated = false;
+
+    if (this.hasIvyTekDatatablePayloadValues(payload)) {
+      try {
+        await firstValueFrom(
+          this.loansService.addLoanDatatableEntry(loanId, this.ivyTekLoanTribalDatatableName, payload)
+        );
+      } catch (error: any) {
+        if (!this.isIvyTekDatatableAlreadyExistsError(error)) {
+          throw error;
+        }
+        await firstValueFrom(
+          this.loansService.editLoanDatatableEntry(loanId, this.ivyTekLoanTribalDatatableName, payload)
+        );
+      }
+      tribalDataUpdated = true;
     }
 
-    try {
-      await firstValueFrom(
-        this.loansService.addLoanDatatableEntry(loanId, this.ivyTekLoanTribalDatatableName, payload)
-      );
-    } catch (error: any) {
-      if (!this.isIvyTekDatatableAlreadyExistsError(error)) {
-        throw error;
-      }
-      await firstValueFrom(
-        this.loansService.editLoanDatatableEntry(loanId, this.ivyTekLoanTribalDatatableName, payload)
-      );
-    }
-    return true;
+    await this.upsertIvyTekMappedCustomFields('m_loan', loanId, row, [this.ivyTekLoanTribalDatatableName]);
+    return tribalDataUpdated;
   }
 
   /**
@@ -2588,6 +3728,212 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getIvyTekDatatableColumns(datatable: any): any[] {
     return datatable?.columnHeaders || datatable?.columnHeaderData || datatable?.columns || [];
+  }
+
+  /**
+   * Loads datatable definitions for an app table so IvyTek source fields can map to configured custom fields.
+   * @param {string} appTable Fineract app table name.
+   */
+  private async getIvyTekEntityDatatableDefinitions(appTable: string): Promise<any[]> {
+    if (this.ivyTekEntityDatatableDefinitionsByAppTable.has(appTable)) {
+      return this.ivyTekEntityDatatableDefinitionsByAppTable.get(appTable) || [];
+    }
+
+    let datatables: any[] = [];
+    try {
+      datatables = this.normalizeIvyTekListResponse(
+        await firstValueFrom(this.systemService.getEntityDatatables(appTable))
+      );
+    } catch {
+      datatables =
+        appTable === 'm_client'
+          ? this.normalizeIvyTekListResponse(await firstValueFrom(this.clientsService.getClientDatatables()))
+          : this.normalizeIvyTekListResponse(await firstValueFrom(this.loansService.getLoanDataTables()));
+    }
+
+    const definitions = await Promise.all(
+      datatables.map(async (datatable: any) => {
+        const datatableName = this.getIvyTekDatatableName(datatable);
+        if (!datatableName) {
+          return datatable;
+        }
+        try {
+          return await firstValueFrom(this.systemService.getDataTable(datatableName));
+        } catch {
+          return datatable;
+        }
+      })
+    );
+    this.ivyTekEntityDatatableDefinitionsByAppTable.set(appTable, definitions);
+    return definitions;
+  }
+
+  /**
+   * Gets all custom-field column references configured for an entity.
+   * @param {string} appTable Fineract app table name.
+   */
+  private async getIvyTekEntityDatatableColumnReferences(appTable: string): Promise<IvyTekDatatableColumnReference[]> {
+    if (this.ivyTekDatatableColumnsByAppTable.has(appTable)) {
+      return this.ivyTekDatatableColumnsByAppTable.get(appTable) || [];
+    }
+
+    const definitions = await this.getIvyTekEntityDatatableDefinitions(appTable);
+    const columns = definitions.flatMap((datatable: any) =>
+      this.getIvyTekDatatableColumns(datatable)
+        .filter((column: any) => !this.isIvyTekSystemDatatableColumn(column))
+        .map((column: any) => ({
+          tableName: this.getIvyTekDatatableName(datatable),
+          columnName: column.columnName || column.name,
+          columnDisplayType: column.columnDisplayType || column.type,
+          displayName: column.displayName || column.name
+        }))
+    );
+    this.ivyTekDatatableColumnsByAppTable.set(appTable, columns);
+    return columns;
+  }
+
+  /**
+   * Gets a datatable's registered table name from supported response shapes.
+   * @param {any} datatable Datatable metadata.
+   */
+  private getIvyTekDatatableName(datatable: any): string {
+    return datatable?.registeredTableName || datatable?.datatableName || datatable?.name || '';
+  }
+
+  /**
+   * Checks whether a datatable column is Fineract metadata rather than a custom field.
+   * @param {any} column Datatable column metadata.
+   */
+  private isIvyTekSystemDatatableColumn(column: any): boolean {
+    return [
+      'id',
+      'client_id',
+      'loan_id',
+      'created_at',
+      'updated_at'
+    ].includes((column?.columnName || column?.name || '').toString());
+  }
+
+  /**
+   * Upserts any source fields that match configured custom-field columns on the entity.
+   * @param {string} appTable Fineract app table name.
+   * @param {string} entityId Entity id.
+   * @param {any} row IvyTek source row.
+   * @param {string[]} excludedTableNames Datatables handled by specialized mappers.
+   */
+  private async upsertIvyTekMappedCustomFields(
+    appTable: string,
+    entityId: string,
+    row: any,
+    excludedTableNames: string[] = []
+  ): Promise<number> {
+    if (!entityId) {
+      return 0;
+    }
+
+    const definitions = await this.getIvyTekEntityDatatableDefinitions(appTable);
+    let updatedTables = 0;
+    for (const datatable of definitions) {
+      const datatableName = this.getIvyTekDatatableName(datatable);
+      if (
+        !datatableName ||
+        excludedTableNames
+          .map((tableName: string) => this.normalizeIvyTekText(tableName))
+          .includes(this.normalizeIvyTekText(datatableName))
+      ) {
+        continue;
+      }
+
+      const payload = this.getIvyTekMappedCustomFieldPayload(row, datatable);
+      if (!this.hasIvyTekDatatablePayloadValues(payload)) {
+        continue;
+      }
+
+      await this.upsertIvyTekEntityDatatableEntry(appTable, entityId, datatableName, payload);
+      updatedTables += 1;
+    }
+    return updatedTables;
+  }
+
+  /**
+   * Builds a datatable payload by exact normalized source-column to custom-field-column matching.
+   * @param {any} row IvyTek source row.
+   * @param {any} datatable Datatable metadata.
+   */
+  private getIvyTekMappedCustomFieldPayload(row: any, datatable: any) {
+    const payload: any = {
+      locale: this.settingsService.language.code
+    };
+    let hasDateValue = false;
+    this.getIvyTekDatatableColumns(datatable)
+      .filter((column: any) => !this.isIvyTekSystemDatatableColumn(column))
+      .forEach((column: any) => {
+        const sourceValue = this.getIvyTekSourceValueForDatatableColumn(row, column);
+        if (sourceValue === '') {
+          return;
+        }
+        const payloadValue = this.getIvyTekDatatablePayloadValue(column, sourceValue, [sourceValue]);
+        if (payloadValue === null || payloadValue === undefined || payloadValue === '') {
+          return;
+        }
+        payload[column.columnName || column.name] = payloadValue;
+        if ([
+            'DATE',
+            'DATETIME'
+          ].includes(column.columnDisplayType || column.type)) {
+          hasDateValue = true;
+        }
+      });
+    if (hasDateValue) {
+      payload.dateFormat = this.settingsService.dateFormat;
+    }
+    return payload;
+  }
+
+  /**
+   * Finds a source row value whose column name matches a datatable custom field.
+   * @param {any} row IvyTek source row.
+   * @param {any} column Datatable column metadata.
+   */
+  private getIvyTekSourceValueForDatatableColumn(row: any, column: any): string {
+    const candidateColumnNames = this.getIvyTekDatatableColumnNames(column).map((name: string) =>
+      this.ivyTekFieldMapping.normalize(name)
+    );
+    const sourceColumn = Object.keys(row || {}).find((key: string) =>
+      candidateColumnNames.includes(this.ivyTekFieldMapping.normalize(key))
+    );
+    return sourceColumn ? this.getCsvValue(row, sourceColumn) : '';
+  }
+
+  /**
+   * Adds or edits a matched custom-field datatable row.
+   * @param {string} appTable Fineract app table name.
+   * @param {string} entityId Entity id.
+   * @param {string} datatableName Datatable name.
+   * @param {any} payload Datatable payload.
+   */
+  private async upsertIvyTekEntityDatatableEntry(
+    appTable: string,
+    entityId: string,
+    datatableName: string,
+    payload: any
+  ) {
+    try {
+      if (appTable === 'm_client') {
+        await firstValueFrom(this.clientsService.addClientDatatableEntry(entityId, datatableName, payload));
+      } else {
+        await firstValueFrom(this.loansService.addLoanDatatableEntry(entityId, datatableName, payload));
+      }
+    } catch (error: any) {
+      if (!this.isIvyTekDatatableAlreadyExistsError(error)) {
+        throw error;
+      }
+      if (appTable === 'm_client') {
+        await firstValueFrom(this.clientsService.editClientDatatableEntry(entityId, datatableName, payload));
+      } else {
+        await firstValueFrom(this.loansService.editLoanDatatableEntry(entityId, datatableName, payload));
+      }
+    }
   }
 
   /**
@@ -2932,6 +4278,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private async upsertIvyTekClientIdentifiers(clientId: string, row: any) {
+    const warnings: string[] = [];
     const identifierCandidates = [
       {
         value: this.getIvyTekEntityId(row),
@@ -2956,7 +4303,7 @@ export class ViewBulkImportComponent implements OnInit {
     ].filter((candidate: any) => !!candidate.value);
 
     if (!identifierCandidates.length) {
-      return;
+      return warnings;
     }
 
     let existingIdentifiers: any[] = [];
@@ -2973,7 +4320,7 @@ export class ViewBulkImportComponent implements OnInit {
       identifierTemplate = identifierTemplateResponse;
     } catch (error: any) {
       if (error?.status === 404) {
-        return;
+        return warnings;
       }
       throw error;
     }
@@ -3005,8 +4352,12 @@ export class ViewBulkImportComponent implements OnInit {
         if (!this.isIvyTekDuplicateIdentifierError(error)) {
           throw error;
         }
+        warnings.push(
+          `Skipped duplicate ${candidate.description} identifier ${candidate.value}. Mifos already has this identifier on another client, so this client was imported without adding the duplicate identifier.`
+        );
       }
     }
+    return warnings;
   }
 
   /**
@@ -3015,39 +4366,75 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private async upsertIvyTekClientAddress(clientId: string, row: any) {
-    const addressPayload = await this.getIvyTekClientAddressPayload(row);
-    if (!addressPayload) {
-      return;
-    }
-
-    let existingAddresses: any[] = [];
     try {
-      existingAddresses = this.normalizeIvyTekListResponse(
-        await firstValueFrom(this.clientsService.getClientAddressData(clientId))
-      );
-    } catch (error: any) {
-      if (error?.status === 404) {
-        return;
+      const addressPayload = await this.getIvyTekClientAddressPayload(row);
+      if (!addressPayload) {
+        const hasAddressSource = this.hasIvyTekClientAddressSource(row);
+        return {
+          status: hasAddressSource ? 'Needs staging' : 'No source address',
+          warning: hasAddressSource
+            ? `IvyTek address source values exist, but no Mifos client address payload could be built. ${this.getIvyTekAddressSourceSummary(row)} Source address values are preserved in the result export for controlled staging.`
+            : ''
+        };
       }
-      throw error;
-    }
 
-    const existingAddress = existingAddresses.find((address: any) => {
-      const addressTypeId = address.addressTypeId || address.addressType?.id || address.addressType;
-      return addressTypeId?.toString() === addressPayload.addressTypeId.toString();
-    });
+      let existingAddresses: any[] = [];
+      try {
+        existingAddresses = this.normalizeIvyTekListResponse(
+          await firstValueFrom(this.clientsService.getClientAddressData(clientId))
+        );
+      } catch (error: any) {
+        if (error?.status === 404) {
+          return {
+            status: 'Needs staging',
+            warning:
+              'Mifos client address API/template is not available for this tenant. Source address values are preserved in the result export for controlled staging.'
+          };
+        }
+        throw error;
+      }
 
-    if (existingAddress) {
+      const existingAddress = existingAddresses.find((address: any) => {
+        const addressTypeId = address.addressTypeId || address.addressType?.id || address.addressType;
+        return addressTypeId?.toString() === addressPayload.addressTypeId.toString();
+      });
+
+      if (existingAddress) {
+        await firstValueFrom(
+          this.clientsService.editClientAddress(
+            clientId,
+            addressPayload.addressTypeId,
+            this.getIvyTekClientAddressRequestPayload({
+              ...addressPayload,
+              addressId: existingAddress.addressId || existingAddress.id
+            })
+          )
+        );
+        return {
+          status: 'Updated',
+          warning: ''
+        };
+      }
+
       await firstValueFrom(
-        this.clientsService.editClientAddress(clientId, addressPayload.addressTypeId, {
-          ...addressPayload,
-          addressId: existingAddress.addressId || existingAddress.id
-        })
+        this.clientsService.createClientAddress(
+          clientId,
+          addressPayload.addressTypeId,
+          this.getIvyTekClientAddressRequestPayload(addressPayload)
+        )
       );
-    } else {
-      await firstValueFrom(
-        this.clientsService.createClientAddress(clientId, addressPayload.addressTypeId, addressPayload)
-      );
+      return {
+        status: 'Created',
+        warning: ''
+      };
+    } catch (error: any) {
+      if (!this.hasIvyTekClientAddressSource(row)) {
+        throw error;
+      }
+      return {
+        status: 'Needs staging',
+        warning: `IvyTek address was not written to m_client_address. ${this.getErrorMessage(error)} ${this.getIvyTekAddressSourceSummary(row)} Source address values are preserved in the result export for controlled staging.`
+      };
     }
   }
 
@@ -3056,17 +4443,20 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private async getIvyTekClientAddressPayload(row: any) {
+    const street = this.getFirstCsvValue(row, [
+      'IvytekTestPkg__Statement_Street__c',
+      'Statement Street',
+      'MailingStreet',
+      'Street',
+      'Address',
+      'Address Line 1',
+      'address_line_1'
+    ]);
     const addressValues = {
-      street: this.getFirstCsvValue(row, [
-        'IvytekTestPkg__Statement_Street__c',
-        'Statement Street',
-        'MailingStreet',
-        'Street',
-        'Address',
-        'Address Line 1',
-        'address_line_1'
-      ]),
+      street: street || this.buildIvyTekStreetAddress(row),
       addressLine2: this.getFirstCsvValue(row, [
+        'IvytekTestPkg__Apartment__c',
+        'IvytekTestPkg__Other_Apartment__c',
         'MailingAddressLine2',
         'Address Line 2',
         'address_line_2'
@@ -3075,6 +4465,7 @@ export class ViewBulkImportComponent implements OnInit {
         'IvytekTestPkg__Statement_City__c',
         'Statement City',
         'MailingCity',
+        'IvytekTestPkg__City__c',
         'City',
         'city'
       ]),
@@ -3082,6 +4473,8 @@ export class ViewBulkImportComponent implements OnInit {
         'IvytekTestPkg__Statement_State_Province__c',
         'Statement State',
         'MailingState',
+        'MailingStateCode',
+        'IvytekTestPkg__State__c',
         'State',
         'state'
       ]),
@@ -3090,33 +4483,88 @@ export class ViewBulkImportComponent implements OnInit {
         'IvytekTestPkg__Statement_Postal_Code__c',
         'Statement Postal Code',
         'MailingPostalCode',
+        'IvytekTestPkg__Zip__c',
         'PostalCode',
         'Zip',
         'ZIP',
         'postal_code'
       ]),
       country: this.getFirstCsvValue(row, [
+        'MailingCountryCode',
+        'IvytekTestPkg__Statement_Country__c',
+        'Statement Country',
         'MailingCountry',
+        'IvytekTestPkg__Country__c',
         'Country',
         'country'
       ])
     };
 
-    if (!Object.values(addressValues).some((value: string) => !!value)) {
+    if (!this.hasIvyTekClientAddressSource(row)) {
       return null;
     }
 
     const addressTemplate = await this.getIvyTekClientAddressTemplate();
     const addressTypeOptions = addressTemplate?.addressTypeIdOptions || [];
-    const addressTypeId =
-      this.findIvyTekOptionId(addressTypeOptions, [
-        'Home',
-        'Residential',
-        'Permanent',
-        'Mailing'
-      ]) || addressTypeOptions[0]?.id;
+    const addressType = this.getFirstCsvValue(row, [
+      'IvytekTestPkg__Address_Type__c',
+      'IvytekTestPkg__Credit_Report_Address__c',
+      'IvytekTestPkg__Statement_Address_Type__c',
+      'Address Type',
+      'address_type'
+    ]);
+    const addressTypeCandidates = this.getIvyTekAddressTypeCandidates();
+    const addressTypeId = this.findIvyTekOptionId(addressTypeOptions, addressTypeCandidates);
     if (!addressTypeId) {
-      return null;
+      if (!addressTypeOptions.length) {
+        throw new Error(
+          `Mifos client address template and ADDRESS_TYPE code values returned no address type options. The importer cannot create m_client_address through REST because the address API requires an address type id in the type query parameter. Configure a Mifos address type code value named Mailing, or route these preserved address values through controlled staging SQL. ${this.getIvyTekAddressTemplateShapeSummary(
+            addressTemplate
+          )}`
+        );
+      }
+      throw new Error(
+        `Unable to map IvyTek address type to a Mifos client address type. ${this.getIvyTekAddressOptionErrorDetails(
+          addressType,
+          addressTypeCandidates,
+          addressTypeOptions,
+          'address type'
+        )}`
+      );
+    }
+    const stateProvinceCandidates = [
+      addressValues.stateProvince,
+      this.getCsvValue(row, 'MailingState'),
+      this.getCsvValue(row, 'MailingStateCode')
+    ];
+    const stateProvinceOptions = addressTemplate?.stateProvinceIdOptions || [];
+    const stateProvinceId = this.findIvyTekOptionId(stateProvinceOptions, stateProvinceCandidates);
+    if (addressValues.stateProvince && stateProvinceOptions.length && !stateProvinceId) {
+      throw new Error(
+        `Unable to map IvyTek address state/province to Mifos. ${this.getIvyTekAddressOptionErrorDetails(
+          addressValues.stateProvince,
+          stateProvinceCandidates,
+          stateProvinceOptions,
+          'state/province'
+        )}`
+      );
+    }
+    const countryCandidates = [
+      addressValues.country,
+      this.getCsvValue(row, 'MailingCountry'),
+      this.getCsvValue(row, 'MailingCountryCode')
+    ];
+    const countryOptions = addressTemplate?.countryIdOptions || [];
+    const countryId = this.findIvyTekOptionId(countryOptions, countryCandidates);
+    if (addressValues.country && countryOptions.length && !countryId) {
+      throw new Error(
+        `Unable to map IvyTek address country to Mifos. ${this.getIvyTekAddressOptionErrorDetails(
+          addressValues.country,
+          countryCandidates,
+          countryOptions,
+          'country'
+        )}`
+      );
     }
 
     const payload: any = {
@@ -3126,15 +4574,8 @@ export class ViewBulkImportComponent implements OnInit {
       addressLine2: addressValues.addressLine2,
       city: addressValues.city,
       postalCode: addressValues.postalCode,
-      stateProvinceId: this.findIvyTekOptionId(addressTemplate?.stateProvinceIdOptions || [], [
-        addressValues.stateProvince
-      ]),
-      countryId: this.findIvyTekOptionId(addressTemplate?.countryIdOptions || [], [
-        addressValues.country,
-        'United States',
-        'USA',
-        'US'
-      ]),
+      stateProvinceId,
+      countryId,
       isActive: true
     };
 
@@ -3147,6 +4588,144 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Removes route-only and tenant-disabled fields before sending an address body to Fineract.
+   * @param {any} addressPayload Address payload with route metadata.
+   */
+  private getIvyTekClientAddressRequestPayload(addressPayload: any) {
+    const requestPayload = {
+      ...addressPayload
+    };
+    delete requestPayload.addressTypeId;
+    delete requestPayload.street;
+    return requestPayload;
+  }
+
+  /**
+   * Builds a street line from IvyTek's component address fields when no complete street line exists.
+   * @param {any} row IvyTek CSV row.
+   */
+  private buildIvyTekStreetAddress(row: any) {
+    return [
+      this.getCsvValue(row, 'IvytekTestPkg__Street_Number__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Street_Direction__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Street_Name__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Street_Type__c')
+    ]
+      .filter((value: string) => !!value)
+      .join(' ');
+  }
+
+  /**
+   * Gets Mifos address type names for IvyTek mailing addresses.
+   */
+  private getIvyTekAddressTypeCandidates(): string[] {
+    const candidates = [
+      'Mailing',
+      'Mailing Address',
+      'Mail',
+      'Mail Address'
+    ];
+    return Array.from(new Set(candidates.filter((candidate: string) => !!candidate)));
+  }
+
+  /**
+   * Describes option matching failures with source values and tenant option names.
+   * @param {string} sourceValue Source value that failed to map.
+   * @param {string[]} candidates Candidate names attempted.
+   * @param {any[]} options Available Mifos options.
+   * @param {string} optionLabel Option label for the message.
+   */
+  private getIvyTekAddressOptionErrorDetails(
+    sourceValue: string,
+    candidates: string[],
+    options: any[],
+    optionLabel: string
+  ) {
+    const candidateText = candidates.filter((candidate: string) => !!candidate).join(', ') || 'none';
+    return `Source ${optionLabel} value: "${sourceValue || '(blank)'}". Candidates tried: ${candidateText}. Available Mifos ${optionLabel} options: ${this.getIvyTekOptionListForMessage(options)}.`;
+  }
+
+  /**
+   * Summarizes populated IvyTek address source fields for warning rows.
+   * @param {any} row IvyTek CSV row.
+   */
+  private getIvyTekAddressSourceSummary(row: any) {
+    const sourceFields = [
+      'IvytekTestPkg__Address_Type__c',
+      'IvytekTestPkg__Credit_Report_Address__c',
+      'MailingStreet',
+      'MailingCity',
+      'MailingState',
+      'MailingStateCode',
+      'MailingPostalCode',
+      'MailingCountry',
+      'MailingCountryCode',
+      'IvytekTestPkg__Street_Number__c',
+      'IvytekTestPkg__Street_Direction__c',
+      'IvytekTestPkg__Street_Name__c',
+      'IvytekTestPkg__Street_Type__c',
+      'IvytekTestPkg__Apartment__c',
+      'IvytekTestPkg__City__c',
+      'IvytekTestPkg__State__c',
+      'IvytekTestPkg__Zip__c',
+      'IvytekTestPkg__Country__c'
+    ]
+      .map((field: string) => {
+        const value = this.getCsvValue(row, field);
+        return value ? `${field}="${value}"` : '';
+      })
+      .filter((field: string) => !!field);
+    return `Address source fields: ${sourceFields.length ? sourceFields.join('; ') : 'none populated'}.`;
+  }
+
+  /**
+   * Checks whether the source row carries address data that must be preserved.
+   * @param {any} row IvyTek CSV row.
+   */
+  private hasIvyTekClientAddressSource(row: any) {
+    return [
+      'IvytekTestPkg__Statement_Street__c',
+      'Statement Street',
+      'MailingStreet',
+      'Street',
+      'Address',
+      'Address Line 1',
+      'address_line_1',
+      'IvytekTestPkg__Street_Number__c',
+      'IvytekTestPkg__Street_Direction__c',
+      'IvytekTestPkg__Street_Name__c',
+      'IvytekTestPkg__Street_Type__c',
+      'IvytekTestPkg__Apartment__c',
+      'IvytekTestPkg__Other_Apartment__c',
+      'MailingAddressLine2',
+      'Address Line 2',
+      'address_line_2',
+      'IvytekTestPkg__Statement_City__c',
+      'Statement City',
+      'MailingCity',
+      'IvytekTestPkg__City__c',
+      'City',
+      'city',
+      'IvytekTestPkg__Statement_State_Province__c',
+      'Statement State',
+      'MailingState',
+      'MailingStateCode',
+      'IvytekTestPkg__State__c',
+      'State',
+      'state',
+      'IvytekTestPkg__Statement_PostalCode__c',
+      'IvytekTestPkg__Statement_Postal_Code__c',
+      'Statement Postal Code',
+      'MailingPostalCode',
+      'IvytekTestPkg__Zip__c',
+      'PostalCode',
+      'Zip',
+      'ZIP',
+      'postal_code'
+    ].some((key: string) => !!this.getCsvValue(row, key));
+  }
+
+  /**
    * Loads and caches the client address template.
    */
   private async getIvyTekClientAddressTemplate() {
@@ -3154,7 +4733,12 @@ export class ViewBulkImportComponent implements OnInit {
       return this.ivyTekClientAddressTemplate;
     }
     try {
-      this.ivyTekClientAddressTemplate = await firstValueFrom(this.clientsService.getClientAddressTemplate());
+      this.ivyTekClientAddressTemplate = this.normalizeIvyTekClientAddressTemplate(
+        await firstValueFrom(this.clientsService.getClientAddressTemplate())
+      );
+      if (!this.ivyTekClientAddressTemplate.addressTypeIdOptions.length) {
+        this.ivyTekClientAddressTemplate.addressTypeIdOptions = await this.getIvyTekAddressTypeCodeValueOptions();
+      }
     } catch (error: any) {
       if (error?.status !== 404) {
         throw error;
@@ -3165,13 +4749,136 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Loads address type code values directly when the address template omits them.
+   */
+  private async getIvyTekAddressTypeCodeValueOptions(): Promise<any[]> {
+    try {
+      const codes = this.normalizeIvyTekListResponse(await firstValueFrom(this.systemService.getCodes()));
+      const addressTypeCode = codes.find((code: any) => {
+        const names = [
+          code?.name,
+          code?.codeName,
+          code?.systemDefinedName,
+          code?.displayName
+        ].map((name: string) => this.normalizeIvyTekText(name));
+        return names.some((name: string) =>
+          [
+            'addresstype',
+            'address type',
+            'address_type'
+          ]
+            .map((candidate: string) => this.normalizeIvyTekText(candidate))
+            .includes(name)
+        );
+      });
+      if (!addressTypeCode?.id) {
+        return [];
+      }
+      return this.normalizeIvyTekListResponse(
+        await firstValueFrom(this.systemService.getCodeValues(addressTypeCode.id))
+      )
+        .filter((codeValue: any) => codeValue?.isActive !== false)
+        .map((codeValue: any) => ({
+          ...codeValue,
+          name: codeValue.name || codeValue.value || codeValue.label
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Normalizes known Fineract address template shapes into the option names the importer uses.
+   * @param {any} rawTemplate Raw address template response.
+   */
+  private normalizeIvyTekClientAddressTemplate(rawTemplate: any) {
+    const template = rawTemplate || {};
+    return {
+      ...template,
+      addressTypeIdOptions: this.getFirstIvyTekNestedArray(template, [
+        'addressTypeIdOptions',
+        'addressTypeOptions',
+        'addressTypeOptionsData'
+      ]),
+      stateProvinceIdOptions: this.getFirstIvyTekNestedArray(template, [
+        'stateProvinceIdOptions',
+        'stateProvinceOptions',
+        'stateOptions',
+        'stateIdOptions'
+      ]),
+      countryIdOptions: this.getFirstIvyTekNestedArray(template, [
+        'countryIdOptions',
+        'countryOptions',
+        'countryOptionsData'
+      ]),
+      rawTemplateKeys: this.getIvyTekObjectKeysForMessage(template)
+    };
+  }
+
+  /**
+   * Finds the first nested array for one of the expected template option keys.
+   * @param {any} source Object to search.
+   * @param {string[]} keys Candidate option keys.
+   */
+  private getFirstIvyTekNestedArray(source: any, keys: string[]): any[] {
+    const queue = [source];
+    const visited = new Set<any>();
+    let emptyCandidate: any[] = [];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || visited.has(current)) {
+        continue;
+      }
+      visited.add(current);
+      for (const key of keys) {
+        if (Array.isArray(current[key])) {
+          if (current[key].length) {
+            return current[key];
+          }
+          emptyCandidate = current[key];
+        }
+      }
+      Object.keys(current).forEach((key: string) => {
+        const value = current[key];
+        if (value && typeof value === 'object') {
+          if (Array.isArray(value)) {
+            value.forEach((item: any) => queue.push(item));
+          } else {
+            queue.push(value);
+          }
+        }
+      });
+    }
+    return emptyCandidate;
+  }
+
+  /**
+   * Summarizes the address template response shape for diagnostics.
+   * @param {any} addressTemplate Normalized address template.
+   */
+  private getIvyTekAddressTemplateShapeSummary(addressTemplate: any) {
+    const rawTemplateKeys = addressTemplate?.rawTemplateKeys || this.getIvyTekObjectKeysForMessage(addressTemplate);
+    return `Address template keys seen: ${rawTemplateKeys || 'none'}.`;
+  }
+
+  /**
+   * Gets top-level keys from an object for diagnostics.
+   * @param {any} value Object to summarize.
+   */
+  private getIvyTekObjectKeysForMessage(value: any) {
+    if (!value || typeof value !== 'object') {
+      return '';
+    }
+    return Object.keys(value).join(', ');
+  }
+
+  /**
    * Builds the Fineract client payload from an IvyTek CSV row.
    * @param {any} row IvyTek CSV row.
    */
   private getIvyTekClientPayload(row: any, isNewClient: boolean = false, includeDatatables: boolean = false) {
     const dateFormat = this.settingsService.dateFormat;
     const locale = this.settingsService.language.code;
-    const importDate = this.dateUtils.formatDate(this.settingsService.businessDate, dateFormat);
     const payload: any = {
       legalFormId: LegalFormId.PERSON,
       firstname: this.getIvyTekFirstName(row),
@@ -3184,7 +4891,12 @@ export class ViewBulkImportComponent implements OnInit {
       locale
     };
     if (isNewClient) {
-      const activationDate = this.getIvyTekClientActivationDate(row) || importDate;
+      const activationDate = this.getIvyTekClientActivationDate(row);
+      if (!activationDate) {
+        throw new Error(
+          'Missing historical client activation/submission date. Exact IvyTek import will not use the current business date as a fallback.'
+        );
+      }
       payload.officeId = this.getIvyTekOfficeIdForRow(row);
       payload.active = true;
       payload.submittedOnDate = activationDate;
@@ -3365,22 +5077,19 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek CSV row.
    */
   private getIvyTekClientActivationDate(row: any): string {
-    const safeActivationDate = this.getIvyTekOfficeSafeDate(
-      this.getEarliestIvyTekDate([
-        this.getCsvValue(row, 'IvyTekClientActivationDate'),
-        this.getCsvValue(row, 'Client Activation Date'),
-        this.getCsvValue(row, 'Client ActivationDate'),
-        this.getCsvValue(row, 'activation_date'),
-        this.getCsvValue(row, 'submittedon_date'),
-        this.getCsvValue(row, 'Submitted On*'),
-        this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c'),
-        this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c'),
-        this.getCsvValue(row, 'CreatedDate'),
-        this.getCsvValue(row, 'created_on_utc')
-      ]),
-      row
-    );
-    return safeActivationDate ? this.dateUtils.formatDate(safeActivationDate, this.settingsService.dateFormat) : '';
+    const activationDate = this.getEarliestIvyTekDate([
+      this.getCsvValue(row, 'IvyTekClientActivationDate'),
+      this.getCsvValue(row, 'Client Activation Date'),
+      this.getCsvValue(row, 'Client ActivationDate'),
+      this.getCsvValue(row, 'activation_date'),
+      this.getCsvValue(row, 'submittedon_date'),
+      this.getCsvValue(row, 'Submitted On*'),
+      this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c'),
+      this.getCsvValue(row, 'CreatedDate'),
+      this.getCsvValue(row, 'created_on_utc')
+    ]);
+    return activationDate ? this.dateUtils.formatDate(activationDate, this.settingsService.dateFormat) : '';
   }
 
   /**
@@ -3501,13 +5210,12 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
-   * Keeps import dates within Fineract's office-opening boundary.
+   * Returns source dates unchanged so historical imports never clamp to office-opening dates.
    * @param {Date | null} date Candidate import date.
    * @param {any} row Optional IvyTek source row.
    */
   private getIvyTekOfficeSafeDate(date: Date | null, row: any = null): Date | null {
-    const officeOpeningDate = this.getIvyTekSelectedOfficeOpeningDate(row);
-    return date && officeOpeningDate && date < officeOpeningDate ? officeOpeningDate : date;
+    return date;
   }
 
   /**
@@ -3656,7 +5364,12 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private isIvyTekDuplicateIdentifierError(error: any) {
     const message = this.getErrorMessage(error).toLowerCase();
-    return message.includes('already exists') || message.includes('already registered');
+    return (
+      message.includes('already exists') ||
+      message.includes('already registered') ||
+      message.includes('already has') ||
+      message.includes('unique key')
+    );
   }
 
   /**
@@ -3672,7 +5385,7 @@ export class ViewBulkImportComponent implements OnInit {
       return options[0]?.id || '';
     }
 
-    const option = options.find((templateOption: any) => {
+    const exactOption = options.find((templateOption: any) => {
       const optionNames = [
         templateOption.name,
         templateOption.value,
@@ -3681,7 +5394,48 @@ export class ViewBulkImportComponent implements OnInit {
       ].map((name: string) => this.normalizeIvyTekText(name));
       return optionNames.some((name: string) => normalizedNames.includes(name));
     });
-    return option?.id || '';
+    if (exactOption?.id !== undefined && exactOption?.id !== null) {
+      return exactOption.id;
+    }
+
+    const looseOption = options.find((templateOption: any) => {
+      const optionNames = [
+        templateOption.name,
+        templateOption.value,
+        templateOption.code,
+        templateOption.description
+      ]
+        .map((name: string) => this.normalizeIvyTekText(name))
+        .filter((name: string) => !!name);
+      return optionNames.some((optionName: string) =>
+        normalizedNames.some((candidate: string) => {
+          const canUseLooseMatch = /^\d+$/.test(candidate) ? candidate.length >= 3 : candidate.length >= 3;
+          return canUseLooseMatch && (optionName.includes(candidate) || candidate.includes(optionName));
+        })
+      );
+    });
+    return looseOption?.id !== undefined && looseOption?.id !== null ? looseOption.id : '';
+  }
+
+  /**
+   * Formats Mifos option names for diagnostics.
+   * @param {any[]} options Template options.
+   */
+  private getIvyTekOptionListForMessage(options: any[]) {
+    if (!options?.length) {
+      return 'none returned by template';
+    }
+    return options
+      .map((option: any) => {
+        const names = [
+          option.name,
+          option.value,
+          option.code,
+          option.description
+        ].filter((name: string) => !!name);
+        return names.length ? `${option.id ?? '(no id)'}:${names.join('/')}` : `${option.id ?? '(no id)'}`;
+      })
+      .join(', ');
   }
 
   /**
@@ -3819,6 +5573,10 @@ export class ViewBulkImportComponent implements OnInit {
       this.getCsvValue(row, 'Customer Name'),
       this.getCsvValue(row, 'customer_name'),
       this.getCsvValue(row, 'IvytekTestPkg__Borrower_Name_Text__c'),
+      this.getCsvValue(row, 'IvytekTestPkg__Borrower_Name__c'),
+      this.getCsvValue(row, 'Borrower_Name_Text__c'),
+      this.getCsvValue(row, 'Borrower_Name__c'),
+      this.getCsvValue(row, 'Borrower Name Text'),
       this.getCsvValue(row, 'Borrower Name')
     ]);
   }
@@ -3859,6 +5617,8 @@ export class ViewBulkImportComponent implements OnInit {
       row,
       loanId: '',
       mappedValues: {},
+      importedValues: {},
+      validationValues: {},
       status: '',
       message: ''
     };
@@ -3931,14 +5691,14 @@ export class ViewBulkImportComponent implements OnInit {
       this.setIvyTekTransactionResultStatus(
         result,
         'labels.inputs.Skipped',
-        'Ignored because this IvyTek row is the legacy negative disbursement marker.'
+        'Recognized as the legacy disbursement marker; the loan disbursement command creates the Mifos disbursement transaction.'
       );
     } else if (!this.isIvyTekHistoricalRepaymentTransaction(row)) {
       result.historicalIgnored = true;
       this.setIvyTekTransactionResultStatus(
         result,
         'labels.inputs.Skipped',
-        'Ignored because this IvyTek row is not a historical repayment.'
+        'Preserved in the export because this IvyTek row is not a historical repayment command.'
       );
     } else if (!result.transactionDate) {
       this.setIvyTekTransactionResultStatus(result, 'labels.inputs.Failed', 'Missing transaction date.');
@@ -3976,9 +5736,39 @@ export class ViewBulkImportComponent implements OnInit {
       historicalOnly: true,
       historicalIgnored: false,
       historicalDisbursement: this.isIvyTekHistoricalDisbursementTransaction(row, bridgePrincipal),
+      mappedValues: this.getIvyTekTransactionMappedValues(row, bridgeRow),
       row,
       status: '',
       message: ''
+    };
+  }
+
+  /**
+   * Gets transaction values preserved for historical import/export.
+   * @param {any} row IvyTek transaction row.
+   * @param {any} bridgeRow Matched loan bridge row.
+   */
+  private getIvyTekTransactionMappedValues(row: any, bridgeRow: any) {
+    const isHistoricalRepayment = this.isIvyTekHistoricalRepaymentTransaction(row);
+    const staticSnapshotMode = this.shouldUseIvyTekStaticLoanSnapshot();
+    return {
+      sourceTransactionId: this.getCsvValue(row, 'Id'),
+      sourceExternalId: this.getCsvValue(row, 'IvytekTestPkg__ExternalID__c'),
+      sourceLoanId: this.getIvyTekTransactionLoanId(row),
+      legacyLoanId: this.getIvyTekLegacyLoanId(bridgeRow || row),
+      transactionDate: this.getIvyTekTransactionDate(row),
+      amountPaid: this.getIvyTekTransactionAmount(row),
+      principalPaid: this.getIvyTekTransactionPrincipalPaid(row) ?? '',
+      interestPaid: this.getIvyTekTransactionInterestPaid(row) ?? '',
+      paymentType: this.getCsvValue(row, 'IvytekTestPkg__TypPay__c'),
+      specialTransCode: this.getCsvValue(row, 'IvytekTestPkg__SpecialTransCode__c'),
+      description: this.getCsvValue(row, 'IvytekTestPkg__Description__c'),
+      restHistoricalImport: isHistoricalRepayment ? (staticSnapshotMode ? 'No - Static Snapshot' : 'Yes') : '',
+      requiresSqlImport: isHistoricalRepayment ? (staticSnapshotMode ? 'Static Snapshot' : '') : 'Review',
+      restSkipReason:
+        isHistoricalRepayment && staticSnapshotMode
+          ? 'Static snapshot mode preserves this repayment as IvyTek source history instead of posting it through Fineract repayment automation.'
+          : this.getIvyTekHistoricalTransactionSkipReason(row, bridgeRow)
     };
   }
 
@@ -3997,6 +5787,9 @@ export class ViewBulkImportComponent implements OnInit {
     ignoredCount: number,
     disbursementCount: number
   ) {
+    const readyMessage = this.shouldUseIvyTekStaticLoanSnapshot()
+      ? `${readyCount} of ${totalCount} transaction rows are positive IvyTek repayment rows and are preserved as static source history; they will not be posted through Fineract repayment automation.`
+      : `${readyCount} of ${totalCount} transaction rows are positive IvyTek repayment commands and will be posted through REST during the matched loan import.`;
     return {
       name: 'Historical transaction validation summary',
       sfLoanId: '',
@@ -4011,7 +5804,7 @@ export class ViewBulkImportComponent implements OnInit {
       transactionSummary: true,
       row: {},
       status: 'labels.inputs.Ready',
-      message: `${readyCount} of ${totalCount} historical repayment rows are ready for review/export. ${ignoredCount} non-repayment rows were ignored by design, including ${disbursementCount} legacy negative disbursement marker rows. ${reviewCount} rows need review. Ready rows are summarized instead of listed individually to keep the import screen responsive.`
+      message: `${readyMessage} ${ignoredCount} rows are not posted through REST and are preserved in the transaction export with mapped.restSkipReason, including ${disbursementCount} legacy negative disbursement marker rows already represented by the loan disbursement command. ${reviewCount} rows need manual review before exact historical import. Ready rows are summarized on screen but exported individually.`
     };
   }
 
@@ -4055,11 +5848,14 @@ export class ViewBulkImportComponent implements OnInit {
     const rawDate =
       this.getCsvValue(row, 'transaction_date') ||
       this.getCsvValue(row, 'IvytekTestPkg__Transaction_Date__c') ||
+      this.getCsvValue(row, 'IvytekTestPkg__Day_Paid__c') ||
+      this.getCsvValue(row, 'IvytekTestPkg__DayPaid__c') ||
+      this.getCsvValue(row, 'IvytekTestPkg__DayPosted__c') ||
       this.getCsvValue(row, 'IvytekTestPkg__DatePaid__c') ||
-      this.getCsvValue(row, 'IvytekTestPkg__DateLastPaid__c') ||
       this.getCsvValue(row, 'DatePaid') ||
-      this.getCsvValue(row, 'Date Last Paid') ||
-      this.getCsvValue(row, 'CreatedDate');
+      this.getCsvValue(row, 'Date Paid') ||
+      this.getCsvValue(row, 'IvytekTestPkg__DateLastPaid__c') ||
+      this.getCsvValue(row, 'Date Last Paid');
     return this.formatIvyTekDateValue(rawDate) || rawDate;
   }
 
@@ -4159,6 +5955,54 @@ export class ViewBulkImportComponent implements OnInit {
       '99'
     ];
     return !ignoredPaymentTypes.includes(paymentType) && !ignoredSpecialCodes.includes(specialCode);
+  }
+
+  /**
+   * Explains why a transaction row will not be posted through the repayment REST command.
+   * @param {any} row IvyTek transaction row.
+   * @param {any} bridgeRow Matched loan bridge row.
+   */
+  private getIvyTekHistoricalTransactionSkipReason(row: any, bridgeRow: any): string {
+    if (this.isIvyTekHistoricalRepaymentTransaction(row)) {
+      return '';
+    }
+
+    const amount = this.parseIvyTekDecimal(this.getIvyTekTransactionAmount(row));
+    const bridgePrincipal = this.getIvyTekLoanPrincipal(bridgeRow || {});
+    const paymentType = this.normalizeIvyTekText(this.getCsvValue(row, 'IvytekTestPkg__TypPay__c'));
+    const specialCode = this.getCsvValue(row, 'IvytekTestPkg__SpecialTransCode__c');
+
+    if (amount === null) {
+      return 'Missing transaction amount; no exact REST transaction can be posted.';
+    }
+    if (this.isIvyTekVoidedTransaction(row)) {
+      return 'Voided or reversed IvyTek row; preserved for audit and not posted as historical repayment.';
+    }
+    if (this.isIvyTekHistoricalDisbursementTransaction(row, bridgePrincipal)) {
+      return 'Legacy negative disbursement marker; the Mifos loan disbursement command creates the disbursement transaction.';
+    }
+    if (amount < 0) {
+      return 'Negative non-disbursement transaction; preserved for review because REST repayment cannot post a negative historical payment.';
+    }
+    if (amount === 0) {
+      return 'Zero-amount transaction row; preserved for audit and not posted as historical repayment.';
+    }
+    if (paymentType === 'informational') {
+      return 'Informational IvyTek row; preserved for audit and not posted as historical repayment.';
+    }
+    if (paymentType === 'charge') {
+      return 'Charge row; preserved for review because loan charges must be mapped separately from repayment posting.';
+    }
+    if (paymentType === 'bookaccruedinterest') {
+      return 'Book accrued interest row; preserved for review because generated Mifos interest is aligned from the loan snapshot.';
+    }
+    if (specialCode === '1') {
+      return 'Special transaction code 1 is not a repayment command; preserved for review.';
+    }
+    if (specialCode === '99') {
+      return 'Special transaction code 99 is informational/non-posting history; preserved for audit.';
+    }
+    return 'Not classified as a positive historical repayment command; preserved for review.';
   }
 
   /**
@@ -4381,12 +6225,12 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getIvyTekHistoricalRepaymentPostDate(row: any, loanDateText: string = '') {
     const sourceDate = this.getIvyTekTransactionPaymentDate(row);
-    const parsedSourceDate = this.parseIvyTekDate(sourceDate);
-    const parsedLoanDate = this.parseIvyTekDate(loanDateText);
-    if (parsedSourceDate && parsedLoanDate && parsedSourceDate < parsedLoanDate) {
+    const sourceDateValue = this.parseIvyTekDate(sourceDate);
+    const loanDateValue = this.parseIvyTekDate(loanDateText);
+    if (sourceDateValue && loanDateValue && sourceDateValue < loanDateValue) {
       return {
         sourceDate,
-        date: this.dateUtils.formatDate(parsedLoanDate, this.settingsService.dateFormat),
+        date: loanDateText,
         dateAdjusted: true
       };
     }
@@ -4416,11 +6260,23 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Checks whether IvyTek source snapshots should be treated as static imported truth.
+   */
+  private shouldUseIvyTekStaticLoanSnapshot(): boolean {
+    return this.ivyTekStaticSnapshotImport;
+  }
+
+  /**
    * Checks whether historical repayment rows should drive the active loan migration.
    * @param {any} summary Historical repayment summary.
    */
   private shouldPostIvyTekHistoricalRepayments(summary: any): boolean {
-    return !!summary?.count && summary.totalAmount > 0 && this.ivyTekPostHistoricalRepaymentsToFineract;
+    return (
+      !this.shouldUseIvyTekStaticLoanSnapshot() &&
+      !!summary?.count &&
+      summary.totalAmount > 0 &&
+      this.ivyTekPostHistoricalRepaymentsToFineract
+    );
   }
 
   /**
@@ -4608,6 +6464,8 @@ export class ViewBulkImportComponent implements OnInit {
     syncedClientIds.add(clientId);
     await this.upsertIvyTekClientTribalData(clientId, row);
     await this.upsertIvyTekClientIdentifiers(clientId, row);
+    await this.upsertIvyTekClientAddress(clientId, row);
+    await this.upsertIvyTekMappedCustomFields('m_client', clientId, row, [this.ivyTekClientTribalDatatableName]);
   }
 
   /**
@@ -4801,6 +6659,7 @@ export class ViewBulkImportComponent implements OnInit {
 
     const contactApplicationNames = contactApplications.flatMap((contactApplication: any) => [
       this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Borrower_Name_Text__c'),
+      this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Borrower_Name__c'),
       this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Customer_Name_Text__c'),
       this.getCsvValue(contactApplication || {}, 'IvytekTestPkg__Customer_Name__c'),
       this.getCsvValue(contactApplication || {}, 'IvyTestPkg__Customer_Name__c'),
@@ -4810,6 +6669,7 @@ export class ViewBulkImportComponent implements OnInit {
       ...this.getIvyTekCustomerNameCandidates(row),
       ...contactApplicationNames,
       this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Borrower_Name_Text__c'),
+      this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Borrower_Name__c'),
       this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Customer_Name_Text__c'),
       this.getCsvValue(borrowerContactApplication || {}, 'IvytekTestPkg__Customer_Name__c'),
       this.getCsvValue(borrowerContactApplication || {}, 'IvyTestPkg__Customer_Name__c'),
@@ -5514,10 +7374,9 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean,
     historicalRepaymentSummary: any = null
   ): number {
-    if (shouldCloseAfterDisbursement) {
+    if (this.shouldUseIvyTekStaticLoanSnapshot()) {
       return 0;
     }
-
     return this.getIvyTekLoanInterestRatePercent(row);
   }
 
@@ -5562,7 +7421,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} fallbackDate Fallback transaction date.
    */
   private getIvyTekMigrationTransactionDate(row: any, fallbackDate: string = ''): string {
-    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || fallbackDate || this.getIvyTekBusinessDate();
+    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || fallbackDate;
   }
 
   /**
@@ -5570,22 +7429,11 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    */
   private getIvyTekLoanInterestSnapshotStartDate(row: any): Date | null {
-    const sourceDate = this.parseIvyTekDate(
+    return this.parseIvyTekDate(
       this.getCsvValue(row, 'IvytekTestPkg__LastInterestDate__c') ||
         this.getCsvValue(row, 'IvytekTestPkg__DateLastCollected__c') ||
         this.getCsvValue(row, 'IvytekTestPkg__LastRCTransDate__c')
     );
-    if (!sourceDate) {
-      return null;
-    }
-
-    const safeSourceDate = this.getIvyTekOfficeSafeDate(sourceDate, row) || sourceDate;
-    const sourceLoanDate = this.parseIvyTekDate(
-      this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c') || this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c')
-    );
-    const businessDate = this.settingsService.businessDate;
-    const notBeforeLoanDate = sourceLoanDate && safeSourceDate < sourceLoanDate ? sourceLoanDate : safeSourceDate;
-    return notBeforeLoanDate > businessDate ? businessDate : notBeforeLoanDate;
   }
 
   /**
@@ -5628,7 +7476,7 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean,
     historicalRepaymentSummary: any = null
   ) {
-    return shouldCloseAfterDisbursement;
+    return this.shouldUseIvyTekStaticLoanSnapshot();
   }
 
   /**
@@ -5735,9 +7583,24 @@ export class ViewBulkImportComponent implements OnInit {
       'IvytekTestPkg__Per_Capita_WS__c',
       'PerCap_WS__c',
       'Percap_WS__c',
+      'PerCapita',
+      'Percapita',
       'Percap',
       'Per Capita',
       'Per_Capita'
+    ]);
+  }
+
+  /**
+   * Gets the IvyTek per-diem amount, which is distinct from per-capita.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekLoanPerDiemAmount(row: any): number | null {
+    return this.getFirstIvyTekDecimal(row, [
+      'IvytekTestPkg__Per_Diem_Amount__c',
+      'Per_Diem_Amount',
+      'PerDiemAmount',
+      'Per Diem Amount'
     ]);
   }
 
@@ -5770,6 +7633,19 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Gets the IvyTek total amount due snapshot value.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekLoanAmountNowDueAll(row: any): number | null {
+    return this.getFirstIvyTekDecimal(row, [
+      'IvytekTestPkg__AmtNowDueAll__c',
+      'AmtNowDueAll',
+      'Amount Now Due All',
+      'Amount Now Due'
+    ]);
+  }
+
+  /**
    * Gets mapped loan values for review and CSV export.
    * @param {any} row IvyTek loan row.
    * @param {string} productName Mifos loan product name.
@@ -5794,6 +7670,10 @@ export class ViewBulkImportComponent implements OnInit {
       accountStatus: this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c'),
       originalPrincipal: principal ?? '',
       balanceNow: balanceNow ?? '',
+      snapshotPrincipalOutstanding: balanceNow ?? '',
+      amountNowDueAll: this.getIvyTekLoanAmountNowDueAll(row) ?? '',
+      requiresSqlSnapshotImport: '',
+      restLifecycleSuppressed: 'No',
       contractRateDecimal: this.getIvyTekLoanContractRateDecimal(row) ?? '',
       contractRatePercent: this.getIvyTekLoanContractRatePercent(row) ?? '',
       interestRatePercent: this.getIvyTekLoanInterestRatePercent(row),
@@ -5852,6 +7732,7 @@ export class ViewBulkImportComponent implements OnInit {
       tribalRelation: relation === null ? '' : relation ? 'Yes' : 'No',
       tribalMortgageCode: this.getIvyTekLoanMortgageCode(row),
       tribalLoanGroup: this.getIvyTekLoanGroup(row),
+      perDiemAmount: this.getIvyTekLoanPerDiemAmount(row) ?? '',
       tribalPercap: this.getIvyTekLoanPercap(row) ?? '',
       tribalPension: this.getIvyTekLoanPension(row) ?? '',
       tribalPayroll: this.getIvyTekLoanPayroll(row) ?? ''
@@ -5869,23 +7750,8 @@ export class ViewBulkImportComponent implements OnInit {
       return 'Missing IvyTek current balance. Check IvytekTestPkg__BalanceNow__c.';
     }
 
-    const amountFinanced = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__AmtFinanced__c'));
-    const requestAmount = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__RequestAmount__c'));
-    if (
-      amountFinanced !== null &&
-      requestAmount !== null &&
-      !this.areIvyTekMoneyValuesEqual(amountFinanced, requestAmount)
-    ) {
-      return `Principal source fields do not match. AmtFinanced is ${amountFinanced}; RequestAmount is ${requestAmount}.`;
-    }
-
-    const contractRate = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__ContractRate__c'));
-    const marginRate = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Margin_Rate__c'));
-    if (contractRate !== null && marginRate !== null) {
-      const contractRatePercent = contractRate > 1 ? contractRate : contractRate * 100;
-      if (Math.abs(contractRatePercent - marginRate) > 0.01) {
-        return `Interest rate source fields do not match. ContractRate maps to ${contractRatePercent}; Margin Rate is ${marginRate}.`;
-      }
+    if (!this.getIvyTekLoanDate(row)) {
+      return 'Missing historical loan date. Exact IvyTek import will not use the current business date as a fallback.';
     }
 
     if (!principal || principal <= 0) {
@@ -5928,18 +7794,14 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean
   ): number | null {
     if (
+      this.shouldUseIvyTekStaticLoanSnapshot() &&
       shouldApproveAndDisburse &&
       !shouldCloseAfterDisbursement &&
-      this.isIvyTekSourceLoanRecord(row) &&
-      principal !== null &&
       balanceNow !== null &&
-      balanceNow > 0 &&
-      balanceNow > principal &&
-      !this.areIvyTekMoneyValuesEqual(balanceNow, principal)
+      balanceNow > 0
     ) {
-      return this.roundIvyTekMoney(balanceNow);
+      return balanceNow;
     }
-
     return principal;
   }
 
@@ -5952,16 +7814,7 @@ export class ViewBulkImportComponent implements OnInit {
     principal: number | null,
     payloadPrincipal: number | null
   ): number | null {
-    if (
-      principal === null ||
-      payloadPrincipal === null ||
-      payloadPrincipal <= principal ||
-      this.areIvyTekMoneyValuesEqual(payloadPrincipal, principal)
-    ) {
-      return null;
-    }
-
-    return this.roundIvyTekMoney(payloadPrincipal - principal);
+    return null;
   }
 
   /**
@@ -5979,20 +7832,7 @@ export class ViewBulkImportComponent implements OnInit {
     shouldApproveAndDisburse: boolean,
     shouldCloseAfterDisbursement: boolean
   ): number | null {
-    if (
-      !shouldApproveAndDisburse ||
-      shouldCloseAfterDisbursement ||
-      !this.isIvyTekSourceLoanRecord(row) ||
-      principal === null ||
-      balanceNow === null ||
-      balanceNow <= 0 ||
-      principal <= balanceNow ||
-      this.areIvyTekMoneyValuesEqual(principal, balanceNow)
-    ) {
-      return null;
-    }
-
-    return this.roundIvyTekMoney(principal - balanceNow);
+    return null;
   }
 
   /**
@@ -6008,6 +7848,354 @@ export class ViewBulkImportComponent implements OnInit {
       loan?.repaymentSchedule?.totalPrincipalOutstanding,
       loan?.repaymentSchedule?.totalOutstandingPrincipal,
       loan?.principalOutstanding
+    ];
+    const parsedValue = values
+      .map((value: any) => this.parseIvyTekDecimal((value ?? '').toString()))
+      .find((value: number | null) => value !== null);
+    return parsedValue ?? null;
+  }
+
+  /**
+   * Stores actual post-import Mifos loan summary values for reconciliation.
+   * @param {any} result IvyTek loan result.
+   * @param {string} loanId Mifos loan id.
+   */
+  private async setIvyTekLoanImportedSnapshotResult(result: any, loanId: string, row: any = null) {
+    if (!loanId) {
+      return;
+    }
+
+    const loan = await this.getIvyTekLoanForLifecycle(loanId);
+    if (!loan) {
+      if (this.shouldUseIvyTekStaticLoanSnapshot() && row) {
+        const importedValues = this.getIvyTekStaticLoanImportedSnapshotValues(row, {});
+        result.importedValues = {
+          ...result.importedValues,
+          ...importedValues,
+          snapshotReadStatus: 'Unavailable'
+        };
+        this.setIvyTekLoanSnapshotValidationResult(result, row, importedValues);
+        return;
+      }
+      result.importedValues = {
+        ...result.importedValues,
+        snapshotReadStatus: 'Unavailable'
+      };
+      return;
+    }
+
+    const importedValues = this.getIvyTekLoanImportedSnapshotValues(loan, row);
+    result.importedValues = {
+      ...result.importedValues,
+      ...importedValues
+    };
+    this.setIvyTekLoanSnapshotValidationResult(result, row || result.row, importedValues);
+  }
+
+  /**
+   * Builds actual imported Mifos loan values used by reconciliation.
+   * @param {any} loan Mifos loan response.
+   */
+  private getIvyTekLoanImportedSnapshotValues(loan: any, row: any = null) {
+    const principalOutstanding = this.getIvyTekLoanSummaryPrincipalOutstanding(loan);
+    const interestOutstanding = this.getIvyTekLoanSummaryInterestOutstanding(loan);
+    const feesOutstanding = this.getIvyTekLoanSummaryFeesOutstanding(loan);
+    const penaltiesOutstanding = this.getIvyTekLoanSummaryPenaltiesOutstanding(loan);
+    const totalOutstanding = this.getIvyTekLoanSummaryTotalOutstanding(
+      loan,
+      principalOutstanding,
+      interestOutstanding,
+      feesOutstanding,
+      penaltiesOutstanding
+    );
+    const liveValues = {
+      accountStatus: this.getIvyTekLoanStatusLabel(loan),
+      balanceNow: totalOutstanding ?? '',
+      totalOutstanding: totalOutstanding ?? '',
+      principalOutstanding: principalOutstanding ?? '',
+      interestOutstanding: interestOutstanding ?? '',
+      feeChargesOutstanding: feesOutstanding ?? '',
+      penaltyChargesOutstanding: penaltiesOutstanding ?? ''
+    };
+
+    if (this.shouldUseIvyTekStaticLoanSnapshot() && row) {
+      return this.getIvyTekStaticLoanImportedSnapshotValues(row, liveValues);
+    }
+
+    return liveValues;
+  }
+
+  /**
+   * Builds imported values from IvyTek static snapshots while preserving Fineract live values for audit.
+   * @param {any} row IvyTek loan row.
+   * @param {any} liveValues Fineract-calculated values read from the loan account.
+   */
+  private getIvyTekStaticLoanImportedSnapshotValues(row: any, liveValues: any) {
+    const sourcePrincipalOutstanding = this.getIvyTekLoanBalanceNow(row);
+    const sourceInterestOutstanding = this.getIvyTekLoanHistoricalInterestOutstanding(row);
+    const sourceDerivedTotalOutstanding =
+      sourcePrincipalOutstanding !== null && sourceInterestOutstanding !== null
+        ? this.roundIvyTekMoney(sourcePrincipalOutstanding + sourceInterestOutstanding)
+        : sourcePrincipalOutstanding;
+
+    return {
+      snapshotStorageMode: 'Static IvyTek source snapshot',
+      accountStatus: this.getIvyTekStaticLoanStatusLabel(row),
+      balanceNow: sourceDerivedTotalOutstanding ?? '',
+      totalOutstanding: sourceDerivedTotalOutstanding ?? '',
+      principalOutstanding: sourcePrincipalOutstanding ?? '',
+      interestOutstanding: sourceInterestOutstanding ?? '',
+      feeChargesOutstanding: '',
+      penaltyChargesOutstanding: '',
+      fineractAccountStatus: liveValues.accountStatus,
+      fineractBalanceNow: liveValues.balanceNow,
+      fineractTotalOutstanding: liveValues.totalOutstanding,
+      fineractPrincipalOutstanding: liveValues.principalOutstanding,
+      fineractInterestOutstanding: liveValues.interestOutstanding,
+      fineractFeeChargesOutstanding: liveValues.feeChargesOutstanding,
+      fineractPenaltyChargesOutstanding: liveValues.penaltyChargesOutstanding
+    };
+  }
+
+  /**
+   * Gets the IvyTek account status label to use in static snapshot mode.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekStaticLoanStatusLabel(row: any): string {
+    return this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c') || 'Static Snapshot';
+  }
+
+  /**
+   * Stores strict stage validation values after a loan has been imported and read back from Mifos.
+   * @param {any} result IvyTek loan import result.
+   * @param {any} row IvyTek loan row.
+   * @param {any} importedValues Actual Mifos loan values.
+   */
+  private setIvyTekLoanSnapshotValidationResult(result: any, row: any, importedValues: any) {
+    if (!row) {
+      return;
+    }
+
+    const validationValues = this.getIvyTekLoanSnapshotValidationValues(row, importedValues);
+    result.validationValues = {
+      ...result.validationValues,
+      ...validationValues
+    };
+
+    const validationMessage = this.getIvyTekLoanSnapshotValidationMessage(validationValues);
+    if (validationMessage && result.status !== 'labels.inputs.Failed') {
+      this.setIvyTekLoanResultStatus(
+        result,
+        validationValues.outcome === 'Matched' ? result.status : 'labels.inputs.Warning',
+        this.joinIvyTekMessages([
+          result.message,
+          validationMessage
+        ])
+      );
+    }
+  }
+
+  /**
+   * Builds post-import validation values for the active/closed IvyTek loan snapshot.
+   * @param {any} row IvyTek loan row.
+   * @param {any} importedValues Actual Mifos loan values.
+   */
+  private getIvyTekLoanSnapshotValidationValues(row: any, importedValues: any) {
+    const sourcePrincipalOutstanding = this.getIvyTekLoanBalanceNow(row);
+    const sourceInterestOutstanding = this.getIvyTekLoanHistoricalInterestOutstanding(row);
+    const sourceDerivedTotalOutstanding =
+      sourcePrincipalOutstanding !== null && sourceInterestOutstanding !== null
+        ? this.roundIvyTekMoney(sourcePrincipalOutstanding + sourceInterestOutstanding)
+        : null;
+    const importedPrincipalOutstanding = this.parseIvyTekDecimal(
+      (importedValues.principalOutstanding ?? '').toString()
+    );
+    const importedInterestOutstanding = this.parseIvyTekDecimal((importedValues.interestOutstanding ?? '').toString());
+    const importedTotalOutstanding = this.parseIvyTekDecimal((importedValues.totalOutstanding ?? '').toString());
+    const staticSnapshotMode = this.shouldUseIvyTekStaticLoanSnapshot();
+    const shouldCloseAfterDisbursement = staticSnapshotMode
+      ? false
+      : this.shouldCloseIvyTekLoanAfterDisbursement(row, sourcePrincipalOutstanding);
+    const expectedLifecycleStatus = staticSnapshotMode
+      ? this.getIvyTekStaticLoanStatusLabel(row)
+      : shouldCloseAfterDisbursement
+        ? 'Closed'
+        : 'Active';
+    const importedLifecycleStatus = importedValues.accountStatus || '';
+    const principalDifference = this.getIvyTekMoneyDifference(importedPrincipalOutstanding, sourcePrincipalOutstanding);
+    const interestDifference = this.getIvyTekMoneyDifference(importedInterestOutstanding, sourceInterestOutstanding);
+    const totalDifference = this.getIvyTekMoneyDifference(importedTotalOutstanding, sourceDerivedTotalOutstanding);
+    const principalMatches = this.isIvyTekValidationMatch(importedPrincipalOutstanding, sourcePrincipalOutstanding);
+    const interestMatches = this.isIvyTekValidationMatch(importedInterestOutstanding, sourceInterestOutstanding);
+    const totalMatches = this.isIvyTekValidationMatch(importedTotalOutstanding, sourceDerivedTotalOutstanding);
+    const lifecycleStatusMatches =
+      staticSnapshotMode ||
+      this.doesIvyTekImportedLoanStatusMatchExpected(importedLifecycleStatus, expectedLifecycleStatus);
+    const corrections = [
+      principalMatches ? '' : 'Principal snapshot correction required',
+      interestMatches ? '' : 'Interest snapshot correction or waiver required',
+      totalMatches ? '' : 'Total outstanding correction required',
+      lifecycleStatusMatches ? '' : 'Lifecycle status correction required'
+    ].filter((message: string) => !!message);
+
+    return {
+      stage: 'Stage 4 Balance Validation',
+      outcome: corrections.length ? 'Needs Correction' : 'Matched',
+      sourceBalanceNowPrincipal: sourcePrincipalOutstanding ?? '',
+      sourceInterestOutstanding: sourceInterestOutstanding ?? '',
+      sourceDerivedTotalOutstanding: sourceDerivedTotalOutstanding ?? '',
+      importedPrincipalOutstanding: importedPrincipalOutstanding ?? '',
+      importedInterestOutstanding: importedInterestOutstanding ?? '',
+      importedTotalOutstanding: importedTotalOutstanding ?? '',
+      staticSnapshotMode: staticSnapshotMode ? 'Yes' : 'No',
+      principalDifference: principalDifference ?? '',
+      interestDifference: interestDifference ?? '',
+      totalDifference: totalDifference ?? '',
+      expectedLifecycleStatus,
+      importedLifecycleStatus,
+      lifecycleStatusMatches: lifecycleStatusMatches ? 'Yes' : 'No',
+      correctionAction: corrections.join('; ')
+    };
+  }
+
+  /**
+   * Gets imported-minus-source money difference when both values exist.
+   * @param {number | null} importedValue Imported Mifos value.
+   * @param {number | null} sourceValue IvyTek source value.
+   */
+  private getIvyTekMoneyDifference(importedValue: number | null, sourceValue: number | null): number | null {
+    if (importedValue === null || sourceValue === null) {
+      return null;
+    }
+    return this.roundIvyTekMoney(importedValue - sourceValue);
+  }
+
+  /**
+   * Checks if a source/imported validation pair matches at cent level.
+   * @param {number | null} importedValue Imported Mifos value.
+   * @param {number | null} sourceValue IvyTek source value.
+   */
+  private isIvyTekValidationMatch(importedValue: number | null, sourceValue: number | null): boolean {
+    if (importedValue === null || sourceValue === null) {
+      return importedValue === null && sourceValue === null;
+    }
+    return this.areIvyTekMoneyValuesEqual(importedValue, sourceValue);
+  }
+
+  /**
+   * Checks whether the imported Mifos loan lifecycle status matches the IvyTek expected final state.
+   * @param {string} importedStatus Actual Mifos status label.
+   * @param {string} expectedStatus Expected final status.
+   */
+  private doesIvyTekImportedLoanStatusMatchExpected(importedStatus: string, expectedStatus: string): boolean {
+    const normalizedStatus = this.normalizeIvyTekText(importedStatus);
+    if (expectedStatus === 'Active') {
+      return [
+        'active',
+        'current'
+      ].includes(normalizedStatus);
+    }
+    return normalizedStatus.includes('closed');
+  }
+
+  /**
+   * Gets a readable snapshot validation message for the result row.
+   * @param {any} validationValues Validation values.
+   */
+  private getIvyTekLoanSnapshotValidationMessage(validationValues: any): string {
+    if (!validationValues?.outcome) {
+      return '';
+    }
+    if (validationValues.outcome === 'Matched') {
+      if (validationValues.staticSnapshotMode === 'Yes') {
+        return 'Stage 4 static snapshot validation matched: IvyTek BalanceNow and interest were imported as static source values; Fineract-generated balances are diagnostic only.';
+      }
+      return 'Stage 4 balance validation matched: IvyTek BalanceNow was validated as principal outstanding, not Mifos total outstanding.';
+    }
+    if (validationValues.staticSnapshotMode === 'Yes') {
+      return `Stage 4 static snapshot validation needs correction: IvyTek BalanceNow principal ${this.formatIvyTekNumber(validationValues.sourceBalanceNowPrincipal)} vs static imported principal ${this.formatIvyTekNumber(validationValues.importedPrincipalOutstanding)}; IvyTek interest snapshot ${this.formatIvyTekNumber(validationValues.sourceInterestOutstanding)} vs static imported interest ${this.formatIvyTekNumber(validationValues.importedInterestOutstanding)}. ${validationValues.correctionAction}.`;
+    }
+    return `Stage 4 balance validation needs correction: IvyTek BalanceNow principal ${this.formatIvyTekNumber(validationValues.sourceBalanceNowPrincipal)} vs Mifos principal ${this.formatIvyTekNumber(validationValues.importedPrincipalOutstanding)}; IvyTek interest snapshot ${this.formatIvyTekNumber(validationValues.sourceInterestOutstanding)} vs Mifos interest ${this.formatIvyTekNumber(validationValues.importedInterestOutstanding)}; expected lifecycle ${validationValues.expectedLifecycleStatus}, Mifos status ${validationValues.importedLifecycleStatus || '(blank)'}. ${validationValues.correctionAction}.`;
+  }
+
+  /**
+   * Gets actual total outstanding/current balance from a Mifos loan response.
+   * @param {any} loan Mifos loan response.
+   * @param {number | null} principalOutstanding Principal outstanding fallback part.
+   * @param {number | null} interestOutstanding Interest outstanding fallback part.
+   * @param {number | null} feesOutstanding Fees outstanding fallback part.
+   * @param {number | null} penaltiesOutstanding Penalties outstanding fallback part.
+   */
+  private getIvyTekLoanSummaryTotalOutstanding(
+    loan: any,
+    principalOutstanding: number | null = null,
+    interestOutstanding: number | null = null,
+    feesOutstanding: number | null = null,
+    penaltiesOutstanding: number | null = null
+  ): number | null {
+    const values = [
+      loan?.summary?.totalOutstanding,
+      loan?.summary?.totalOutstandingBalance,
+      loan?.summary?.outstandingBalance,
+      loan?.summary?.loanBalance,
+      loan?.repaymentSchedule?.totalOutstanding,
+      loan?.repaymentSchedule?.totalOutstandingBalance,
+      loan?.totalOutstanding,
+      loan?.totalOutstandingBalance,
+      loan?.outstandingBalance
+    ];
+    const parsedValue = values
+      .map((value: any) => this.parseIvyTekDecimal((value ?? '').toString()))
+      .find((value: number | null) => value !== null);
+    if (parsedValue !== undefined) {
+      return parsedValue;
+    }
+
+    const parts = [
+      principalOutstanding,
+      interestOutstanding,
+      feesOutstanding,
+      penaltiesOutstanding
+    ].filter((value: number | null) => value !== null) as number[];
+    if (!parts.length) {
+      return null;
+    }
+    return this.roundIvyTekMoney(parts.reduce((total: number, value: number) => total + value, 0));
+  }
+
+  /**
+   * Gets actual fee charges outstanding from a Mifos loan response.
+   * @param {any} loan Mifos loan response.
+   */
+  private getIvyTekLoanSummaryFeesOutstanding(loan: any): number | null {
+    const values = [
+      loan?.summary?.feeChargesOutstanding,
+      loan?.summary?.feesOutstanding,
+      loan?.summary?.feeOutstanding,
+      loan?.summary?.totalFeeChargesOutstanding,
+      loan?.repaymentSchedule?.totalFeeChargesOutstanding,
+      loan?.repaymentSchedule?.totalFeesOutstanding,
+      loan?.feeChargesOutstanding
+    ];
+    const parsedValue = values
+      .map((value: any) => this.parseIvyTekDecimal((value ?? '').toString()))
+      .find((value: number | null) => value !== null);
+    return parsedValue ?? null;
+  }
+
+  /**
+   * Gets actual penalty charges outstanding from a Mifos loan response.
+   * @param {any} loan Mifos loan response.
+   */
+  private getIvyTekLoanSummaryPenaltiesOutstanding(loan: any): number | null {
+    const values = [
+      loan?.summary?.penaltyChargesOutstanding,
+      loan?.summary?.penaltiesOutstanding,
+      loan?.summary?.penaltyOutstanding,
+      loan?.summary?.totalPenaltyChargesOutstanding,
+      loan?.repaymentSchedule?.totalPenaltyChargesOutstanding,
+      loan?.repaymentSchedule?.totalPenaltiesOutstanding,
+      loan?.penaltyChargesOutstanding
     ];
     const parsedValue = values
       .map((value: any) => this.parseIvyTekDecimal((value ?? '').toString()))
@@ -6036,19 +8224,16 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {number | null} balanceNow IvyTek current balance.
    */
   private shouldApproveAndDisburseIvyTekLoan(row: any, balanceNow: number | null) {
-    return (
-      !!this.ivyTekLoanImportForm.get('approveAndDisburse').value &&
-      this.isIvyTekSourceLoanRecord(row) &&
-      !this.shouldKeepIvyTekLoanUndisbursed(balanceNow)
-    );
-  }
-
-  /**
-   * Keeps overpaid historical loans out of automatic disbursement until overpayment migration is explicit.
-   * @param {number | null} balanceNow IvyTek current balance.
-   */
-  private shouldKeepIvyTekLoanUndisbursed(balanceNow: number | null) {
-    return balanceNow !== null && balanceNow < 0 && !this.areIvyTekMoneyValuesEqual(balanceNow, 0);
+    if (this.shouldUseIvyTekStaticLoanSnapshot()) {
+      const accountStatus = this.normalizeIvyTekText(this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c'));
+      return (
+        this.isIvyTekSourceLoanRecord(row) &&
+        balanceNow !== null &&
+        balanceNow > 0 &&
+        this.isIvyTekActiveLoanStatus(accountStatus)
+      );
+    }
+    return this.isIvyTekSourceLoanRecord(row) && balanceNow !== null;
   }
 
   /**
@@ -6057,12 +8242,25 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {number | null} balanceNow IvyTek current balance.
    */
   private shouldCloseIvyTekLoanAfterDisbursement(row: any, balanceNow: number | null) {
-    return (
-      !!this.ivyTekLoanImportForm.get('approveAndDisburse').value &&
-      this.isIvyTekSourceLoanRecord(row) &&
-      balanceNow !== null &&
-      this.areIvyTekMoneyValuesEqual(balanceNow, 0)
-    );
+    if (this.shouldUseIvyTekStaticLoanSnapshot()) {
+      return false;
+    }
+    const accountStatus = this.normalizeIvyTekText(this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c'));
+    if (!accountStatus) {
+      return this.isIvyTekPaidOutLoan(row, balanceNow);
+    }
+    return !this.isIvyTekActiveLoanStatus(accountStatus);
+  }
+
+  /**
+   * Checks whether the IvyTek account status should remain active after import.
+   * @param {string} accountStatus Normalized IvyTek account status.
+   */
+  private isIvyTekActiveLoanStatus(accountStatus: string) {
+    return [
+      'active',
+      'current'
+    ].includes(accountStatus);
   }
 
   /**
@@ -6099,59 +8297,32 @@ export class ViewBulkImportComponent implements OnInit {
     payloadPrincipal: number | null = null,
     historicalRepaymentSummary: any = null
   ) {
-    if (shouldApproveAndDisburse) {
-      if (shouldCloseAfterDisbursement) {
-        return (
-          `Approved, disbursed, repaid, and closed as a zero-balance historical loan. IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}. ` +
-          'Interest rate is set to 0 for the closeout so Fineract does not manufacture payoff interest.'
-        );
+    if (this.isIvyTekSourceLoanRecord(row) && balanceNow !== null) {
+      if (this.shouldUseIvyTekStaticLoanSnapshot()) {
+        const transactionMessage = historicalRepaymentSummary?.count
+          ? `${historicalRepaymentSummary.count} IvyTek repayment rows are preserved as static history and are not posted through Fineract repayment automation.`
+          : 'No positive IvyTek repayment rows were available in the transaction file.';
+        return this.joinIvyTekMessages([
+          'Static snapshot mode: IvyTek source values are imported as the historical truth; Fineract-generated balances are diagnostic only.',
+          shouldApproveAndDisburse
+            ? `A Mifos loan shell will be approved and disbursed for the active IvyTek principal snapshot ${this.formatIvyTekNumber(balanceNow)}.`
+            : `No automated approval/disbursement/closure will run for IvyTek status ${this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c') || '(blank)'}.`,
+          transactionMessage
+        ]);
       }
-      const principal = this.getIvyTekLoanPrincipal(row);
-      const migrationRepaymentMessage = migrationPrincipalPaid
-        ? this.shouldPostIvyTekHistoricalRepayments(historicalRepaymentSummary)
-          ? ` IvyTek transaction history carries ${this.formatIvyTekNumber(migrationPrincipalPaid)} of historical principal paid toward BalanceNow ${this.formatIvyTekNumber(balanceNow)}.`
-          : ` A migration repayment of ${this.formatIvyTekNumber(migrationPrincipalPaid)} carries over historical principal paid and lands outstanding principal on IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)}.`
-        : '';
-      const payloadPrincipalMessage =
-        principal !== null &&
-        payloadPrincipal !== null &&
-        payloadPrincipal > principal &&
-        !this.areIvyTekMoneyValuesEqual(payloadPrincipal, principal)
-          ? `using IvyTek BalanceNow ${this.formatIvyTekNumber(payloadPrincipal)} as the payload principal because it is higher than IvyTek original principal ${this.formatIvyTekNumber(principal)}.`
-          : `using IvyTek original principal ${this.formatIvyTekNumber(principal)} as the payload principal.`;
-      const interestMessage = this.isIvyTekLoanInterestAccrualSuppressed(
-        row,
-        balanceNow,
-        shouldApproveAndDisburse,
-        shouldCloseAfterDisbursement,
-        historicalRepaymentSummary
-      )
-        ? `Source interest rate ${this.formatIvyTekNumber(this.getIvyTekLoanInterestRatePercent(row))}% is retained in the export, while the payload rate is set to 0${
-            interestChargedFromDate
-              ? ` and the IvyTek interest snapshot date is recorded as ${interestChargedFromDate}`
-              : ''
-          } to prevent Fineract from generating schedule interest that changes the IvyTek opening balance.`
-        : `Source interest rate ${this.formatIvyTekNumber(this.getIvyTekLoanInterestRatePercent(row))}% is sent to Fineract so interest can be generated, then waived down to the IvyTek interest snapshot.`;
-      return (
-        `Approved and disbursed on ${payloadLoanDate} ${payloadPrincipalMessage}` +
-        migrationRepaymentMessage +
-        ' ' +
-        interestMessage +
-        ' ' +
-        (this.shouldPostIvyTekHistoricalRepayments(historicalRepaymentSummary)
-          ? 'IvyTek historical repayments are posted chronologically and then balanced against the IvyTek snapshot.'
-          : 'Detailed historical transactions are validation/export only; only the controlled migration repayment is posted to set the opening balance.')
-      );
+      const messages = [
+        `Loan was approved and disbursed on IvyTek loan date ${payloadLoanDate}.`,
+        this.shouldPostIvyTekHistoricalRepayments(historicalRepaymentSummary)
+          ? `${historicalRepaymentSummary.count} IvyTek repayment transactions will be posted with their source payment dates.`
+          : 'No positive IvyTek repayment transactions were available for REST posting.',
+        shouldCloseAfterDisbursement
+          ? `IvyTek status ${this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c') || '(blank)'} is not Active, so the loan will be closed after historical repayments.`
+          : `IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)} remains the active-loan snapshot for reconciliation.`
+      ];
+      return this.joinIvyTekMessages(messages);
     }
 
-    if (this.ivyTekLoanImportForm.get('approveAndDisburse').value) {
-      if (this.isIvyTekSourceLoanRecord(row) && this.shouldKeepIvyTekLoanUndisbursed(balanceNow)) {
-        return `Created or updated without disbursement because IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}. Overpaid historical loans need a separate overpayment migration rule.`;
-      }
-      return `Created or updated without disbursement because this row was not recognized as an IvyTek loan record. IvyTek BalanceNow is ${this.formatIvyTekNumber(balanceNow)}.`;
-    }
-
-    return 'Loan terms imported only. Approval/disbursement is disabled so historical import data does not create a Fineract balance.';
+    return 'Loan terms imported from IvyTek source values and moved through the REST lifecycle with IvyTek dates.';
   }
 
   /**
@@ -6259,73 +8430,48 @@ export class ViewBulkImportComponent implements OnInit {
     row: any,
     balanceNow: number | null,
     shouldApproveAndDisburse: boolean,
-    loanDate: string = this.getIvyTekLoanDate(row)
+    loanDate: string = this.getIvyTekLoanDate(row),
+    historicalRepaymentSummary: any = null
   ): Promise<string> {
-    if (!loanId) {
+    if (!loanId || !shouldApproveAndDisburse) {
       return '';
     }
 
-    if (!shouldApproveAndDisburse) {
-      return '';
-    }
-
-    if (this.isIvyTekLoanClosed(loan)) {
-      return '';
+    if (this.shouldUseIvyTekStaticLoanSnapshot()) {
+      return 'Static snapshot mode suppressed existing-loan lifecycle and repayment automation; IvyTek snapshot and transaction history are preserved as static import data.';
     }
 
     const messages: string[] = [];
-    let disbursedDuringImport = false;
-    try {
-      if (this.isIvyTekLoanApproved(loan)) {
-        await this.disburseIvyTekLoan(loanId, loanDate);
-        disbursedDuringImport = true;
-        messages.push(`Existing approved loan was disbursed on ${loanDate}.`);
-      } else if (this.canUpdateExistingIvyTekLoan(loan)) {
-        await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
-        disbursedDuringImport = true;
-        messages.push(`Existing pending loan was approved and disbursed on ${loanDate}.`);
-      }
-
-      if (disbursedDuringImport) {
-        const payloadPrincipal = this.getIvyTekLoanPayloadPrincipal(
-          row,
-          this.getIvyTekLoanPrincipal(row),
-          balanceNow,
-          shouldApproveAndDisburse,
-          false
-        );
-        const migrationRepaymentMessage = await this.repayIvyTekActiveLoanToBalanceNow(
-          loanId,
-          row,
-          payloadPrincipal,
-          balanceNow,
-          this.getIvyTekMigrationTransactionDate(row, loanDate)
-        );
-        if (migrationRepaymentMessage) {
-          messages.push(migrationRepaymentMessage);
-        }
-      }
-
-      const closeMessage = await this.settleAndCloseIvyTekZeroBalanceLoan(loanId, row, balanceNow, loanDate);
-      if (closeMessage) {
-        messages.push(closeMessage);
-      }
-    } catch (error: any) {
-      if (this.isIvyTekLoanCurrentStateError(error)) {
-        return 'Existing loan state prevented automatic disbursement.';
-      }
-      throw error;
+    let loanForLifecycle = (await this.getIvyTekLoanForLifecycle(loanId)) || loan;
+    if (this.isIvyTekLoanClosed(loanForLifecycle)) {
+      return 'Existing loan was already closed.';
     }
 
-    return this.joinIvyTekMessages(messages);
-  }
+    if (!this.isIvyTekLoanActiveOrOverpaid(loanForLifecycle)) {
+      if (this.isIvyTekLoanApproved(loanForLifecycle)) {
+        await this.disburseIvyTekLoan(loanId, loanDate);
+        messages.push(`Existing approved loan was disbursed on ${loanDate}.`);
+      } else if (this.canUpdateExistingIvyTekLoan(loanForLifecycle)) {
+        await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
+        messages.push(`Existing pending loan was approved and disbursed on ${loanDate}.`);
+      } else {
+        return 'Existing loan state prevented automatic approval/disbursement.';
+      }
+    }
 
-  /**
-   * Checks whether a loan is already disbursed or closed.
-   * @param {any} loan Loan response.
-   */
-  private isIvyTekLoanDisbursedOrClosed(loan: any) {
-    return this.isIvyTekLoanActiveOrOverpaid(loan) || this.isIvyTekLoanClosed(loan);
+    messages.push(
+      await this.repayIvyTekActiveLoanToBalanceNow(
+        loanId,
+        row,
+        balanceNow,
+        this.getIvyTekMigrationTransactionDate(row, loanDate),
+        shouldApproveAndDisburse,
+        this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow),
+        historicalRepaymentSummary
+      )
+    );
+    messages.push(await this.settleAndCloseIvyTekNonActiveLoan(loanId, row, balanceNow, loanDate));
+    return this.joinIvyTekMessages(messages);
   }
 
   /**
@@ -6383,14 +8529,11 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} loanDate Loan date text.
    */
   private async disburseIvyTekLoan(loanId: string, loanDate: string) {
-    const commandData = {
-      dateFormat: this.settingsService.dateFormat,
-      locale: this.settingsService.language.code
-    };
     await firstValueFrom(
       this.loansService.executeLoanCommand(loanId, 'disburse', {
-        ...commandData,
-        actualDisbursementDate: loanDate
+        actualDisbursementDate: loanDate,
+        dateFormat: this.settingsService.dateFormat,
+        locale: this.settingsService.language.code
       })
     );
   }
@@ -6399,7 +8542,6 @@ export class ViewBulkImportComponent implements OnInit {
    * Posts a single migration repayment for the exact historical principal-paid amount.
    * @param {string} loanId Mifos loan id.
    * @param {any} row IvyTek loan row.
-   * @param {number | null} principal Principal amount sent to Fineract.
    * @param {number | null} balanceNow IvyTek current balance.
    * @param {string} transactionDate Migration repayment date.
    * @param {boolean} shouldApproveAndDisburse Whether the import activated the loan.
@@ -6409,135 +8551,112 @@ export class ViewBulkImportComponent implements OnInit {
   private async repayIvyTekActiveLoanToBalanceNow(
     loanId: string,
     row: any,
-    principal: number | null,
     balanceNow: number | null,
     transactionDate: string,
     shouldApproveAndDisburse: boolean = true,
     shouldCloseAfterDisbursement: boolean = false,
     historicalRepaymentSummary: any = null
   ): Promise<string> {
-    if (
-      this.shouldPostIvyTekHistoricalRepayments(historicalRepaymentSummary) &&
-      shouldApproveAndDisburse &&
-      !shouldCloseAfterDisbursement
-    ) {
-      return this.postIvyTekHistoricalRepaymentsToSnapshot(
-        loanId,
-        row,
-        principal,
-        balanceNow,
-        historicalRepaymentSummary
-      );
-    }
-
-    const sourcePrincipalPaid = this.getIvyTekActiveLoanMigrationPrincipalPaid(
-      row,
-      principal,
-      balanceNow,
-      shouldApproveAndDisburse,
-      shouldCloseAfterDisbursement
-    );
-    if (!loanId || balanceNow === null) {
-      return '';
-    }
-
-    const loan = await this.getIvyTekLoanForLifecycle(loanId);
-    if (loan && !this.isIvyTekLoanActiveOrOverpaid(loan)) {
+    if (!loanId || !shouldApproveAndDisburse) {
       return '';
     }
 
     const messages: string[] = [];
-
-    if (sourcePrincipalPaid) {
-      let transactionAmount = sourcePrincipalPaid;
-      const currentPrincipalOutstanding = this.getIvyTekLoanSummaryPrincipalOutstanding(loan);
-      if (currentPrincipalOutstanding !== null) {
-        if (
-          currentPrincipalOutstanding > balanceNow &&
-          !this.areIvyTekMoneyValuesEqual(currentPrincipalOutstanding, balanceNow)
-        ) {
-          transactionAmount = this.roundIvyTekMoney(currentPrincipalOutstanding - balanceNow);
-        } else {
-          transactionAmount = 0;
-        }
+    if (this.shouldPostIvyTekHistoricalRepayments(historicalRepaymentSummary)) {
+      messages.push(await this.postIvyTekHistoricalRepaymentsToSnapshot(loanId, historicalRepaymentSummary));
+      if (!shouldCloseAfterDisbursement && balanceNow !== null) {
+        messages.push(await this.alignIvyTekLoanOutstandingInterest(loanId, row, transactionDate));
+        messages.push(await this.getIvyTekPostRepaymentBalanceMessage(loanId, row, balanceNow));
       }
-
-      if (transactionAmount && transactionAmount > 0) {
-        await firstValueFrom(
-          this.loansService.submitLoanActionButton(
-            loanId,
-            {
-              transactionDate,
-              transactionAmount,
-              dateFormat: this.settingsService.dateFormat,
-              locale: this.settingsService.language.code,
-              note: 'IvyTek import: migration repayment to carry over historical principal paid and preserve BalanceNow.'
-            },
-            'repayment'
-          )
-        );
-        messages.push(
-          `Migration repayment of ${this.formatIvyTekNumber(transactionAmount)} was posted on ${transactionDate} to carry IvyTek historical principal paid and land principal outstanding on IvyTek BalanceNow ${this.formatIvyTekNumber(balanceNow)}.`
-        );
-      }
+      return this.joinIvyTekMessages(messages);
     }
 
-    messages.push(await this.alignIvyTekLoanOutstandingInterest(loanId, row, transactionDate));
-    messages.push(await this.getIvyTekPostRepaymentBalanceMessage(loanId, row, balanceNow));
-    return this.joinIvyTekMessages(messages);
+    return balanceNow === null
+      ? ''
+      : `No positive IvyTek repayment rows were available to post against BalanceNow ${this.formatIvyTekNumber(balanceNow)}.`;
   }
 
   /**
    * Posts IvyTek payment-history rows chronologically for an active migration loan.
    * @param {string} loanId Mifos loan id.
-   * @param {any} row IvyTek loan row.
-   * @param {number | null} principal Principal amount sent to Fineract.
-   * @param {number | null} balanceNow IvyTek current balance.
    * @param {any} summary Historical repayment summary.
    */
-  private async postIvyTekHistoricalRepaymentsToSnapshot(
-    loanId: string,
-    row: any,
-    principal: number | null,
-    balanceNow: number | null,
-    summary: any
-  ): Promise<string> {
-    if (!loanId || principal === null || balanceNow === null || !this.shouldPostIvyTekHistoricalRepayments(summary)) {
+  private async postIvyTekHistoricalRepaymentsToSnapshot(loanId: string, summary: any): Promise<string> {
+    if (!loanId || !summary?.count) {
       return '';
     }
 
-    const loan = await this.getIvyTekLoanForLifecycle(loanId);
-    if (loan && !this.isIvyTekLoanActiveOrOverpaid(loan)) {
-      return '';
-    }
-
+    let postedCount = 0;
+    let skippedDuplicateCount = 0;
+    let postedAmount = 0;
     for (const transaction of summary.rows) {
-      await firstValueFrom(
-        this.loansService.submitLoanActionButton(
-          loanId,
-          {
-            transactionDate: transaction.date,
-            transactionAmount: transaction.amount,
-            dateFormat: this.settingsService.dateFormat,
-            locale: this.settingsService.language.code,
-            note: this.getIvyTekHistoricalRepaymentNote(transaction)
-          },
-          'repayment'
-        )
-      );
+      const payload = this.getIvyTekHistoricalRepaymentPayload(transaction);
+      try {
+        await firstValueFrom(this.loansService.submitLoanActionButton(loanId, payload, 'repayment'));
+        postedCount += 1;
+        postedAmount = this.roundIvyTekMoney(postedAmount + transaction.amount);
+      } catch (error: any) {
+        if (!this.isIvyTekDuplicateTransactionError(error)) {
+          throw error;
+        }
+        skippedDuplicateCount += 1;
+      }
     }
 
-    const interestMessage = await this.alignIvyTekLoanOutstandingInterest(
-      loanId,
-      row,
-      summary.lastDate || this.getIvyTekBusinessDate()
-    );
-    const balanceMessage = await this.getIvyTekPostRepaymentBalanceMessage(loanId, row, balanceNow);
     return this.joinIvyTekMessages([
-      `Posted ${summary.count} IvyTek historical repayments from ${summary.firstDate} through ${summary.lastDate} totaling ${this.formatIvyTekNumber(summary.totalAmount)} (${this.formatIvyTekNumber(summary.principalPaid)} principal, ${this.formatIvyTekNumber(summary.interestPaid)} interest from IvyTek history).`,
-      interestMessage,
-      balanceMessage
+      `Posted ${postedCount} IvyTek historical repayments totaling ${this.formatIvyTekNumber(postedAmount)}.`,
+      skippedDuplicateCount
+        ? `Skipped ${skippedDuplicateCount} duplicate repayment transactions with external IDs already registered in Mifos. If this follows an earlier IvyTek test run, reset or reverse that run before judging reconciliation because those duplicates may already be attached to another loan.`
+        : ''
     ]);
+  }
+
+  /**
+   * Builds the REST payload for a single IvyTek historical repayment.
+   * @param {any} transaction Historical repayment wrapper.
+   */
+  private getIvyTekHistoricalRepaymentPayload(transaction: any) {
+    const payload: any = {
+      transactionDate: transaction.date,
+      transactionAmount: transaction.amount,
+      dateFormat: this.settingsService.dateFormat,
+      locale: this.settingsService.language.code,
+      note: this.getIvyTekHistoricalRepaymentNote(transaction)
+    };
+    const externalId = this.getIvyTekHistoricalTransactionExternalId(transaction.row);
+    if (externalId) {
+      payload.externalId = externalId;
+    }
+    return payload;
+  }
+
+  /**
+   * Gets a stable Mifos transaction external id from IvyTek source identifiers.
+   * @param {any} row IvyTek transaction row.
+   */
+  private getIvyTekHistoricalTransactionExternalId(row: any): string {
+    const sourceId = this.getFirstCsvValue(row, [
+      'Id',
+      'IvytekTestPkg__ExternalID__c',
+      'legacy_history_id',
+      'Name'
+    ]);
+    return sourceId ? `ivytek-txn-${sourceId}` : '';
+  }
+
+  /**
+   * Checks whether a historical repayment failed because it was already posted.
+   * @param {any} error API error.
+   */
+  private isIvyTekDuplicateTransactionError(error: any) {
+    const message = this.getErrorMessage(error).toLowerCase();
+    return (
+      (message.includes('externalid') && (message.includes('already') || message.includes('duplicate'))) ||
+      message.includes('transaction with externalid is already registered') ||
+      message.includes('value.must.be.unique') ||
+      message.includes('already exists') ||
+      message.includes('already registered')
+    );
   }
 
   /**
@@ -6549,7 +8668,7 @@ export class ViewBulkImportComponent implements OnInit {
     return this.joinIvyTekMessages([
       `IvyTek import: historical repayment${sourceName ? ` ${sourceName}` : ''}.`,
       transaction.dateAdjusted
-        ? `Source payment date ${transaction.sourceDate} was before disbursement, so it was posted on ${transaction.date}.`
+        ? `Source payment date ${transaction.sourceDate} is before disbursement; posted on ${transaction.date}.`
         : '',
       `Source split: ${this.formatIvyTekNumber(transaction.principal)} principal, ${this.formatIvyTekNumber(transaction.interest)} interest.`
     ]);
@@ -6582,20 +8701,60 @@ export class ViewBulkImportComponent implements OnInit {
     }
 
     const waiverAmount = this.roundIvyTekMoney(currentInterest - targetInterest);
+    if (!waiverAmount || waiverAmount <= 0) {
+      return `Review interest allocation: Fineract interest outstanding is ${this.formatIvyTekNumber(currentInterest)}, above IvyTek snapshot interest ${this.formatIvyTekNumber(targetInterest)}, but no positive waiver amount could be calculated.`;
+    }
+
+    const waiverDate = this.getIvyTekInterestAlignmentDate(row, transactionDate);
+    try {
+      await this.postIvyTekInterestWaiver(loanId, row, waiverAmount, waiverDate);
+    } catch (error: any) {
+      if (!this.isIvyTekDuplicateTransactionError(error)) {
+        return `Review interest allocation: Fineract interest outstanding is ${this.formatIvyTekNumber(currentInterest)}, above IvyTek snapshot interest ${this.formatIvyTekNumber(targetInterest)}. Interest waiver of ${this.formatIvyTekNumber(waiverAmount)} on ${waiverDate} failed: ${this.getErrorMessage(error)}`;
+      }
+    }
+
+    const updatedLoan = await this.getIvyTekLoanForLifecycle(loanId);
+    const updatedInterest = this.getIvyTekLoanSummaryInterestOutstanding(updatedLoan);
+    if (updatedInterest !== null && this.areIvyTekMoneyValuesEqual(updatedInterest, targetInterest)) {
+      return `Waived generated Mifos interest of ${this.formatIvyTekNumber(waiverAmount)} on ${waiverDate}; interest outstanding now matches IvyTek snapshot ${this.formatIvyTekNumber(targetInterest)}.`;
+    }
+
+    return `Waived generated Mifos interest of ${this.formatIvyTekNumber(waiverAmount)} on ${waiverDate}, but interest outstanding is ${this.formatIvyTekNumber(updatedInterest)} instead of IvyTek snapshot ${this.formatIvyTekNumber(targetInterest)}.`;
+  }
+
+  /**
+   * Posts a controlled migration waiver for generated Mifos interest above the IvyTek snapshot.
+   * @param {string} loanId Mifos loan id.
+   * @param {any} row IvyTek loan row.
+   * @param {number} waiverAmount Excess interest to waive.
+   * @param {string} waiverDate Waiver transaction date.
+   */
+  private async postIvyTekInterestWaiver(loanId: string, row: any, waiverAmount: number, waiverDate: string) {
     await firstValueFrom(
       this.loansService.submitLoanActionButton(
         loanId,
         {
-          transactionDate: this.getIvyTekInterestAlignmentDate(row, transactionDate),
+          transactionDate: waiverDate,
           transactionAmount: waiverAmount,
+          externalId: this.getIvyTekInterestWaiverExternalId(row, loanId),
           dateFormat: this.settingsService.dateFormat,
           locale: this.settingsService.language.code,
-          note: 'IvyTek import: waive generated Fineract interest down to the IvyTek interest snapshot.'
+          note: `IvyTek import: migration interest waiver to align generated Mifos interest with IvyTek interest snapshot. Waived generated interest only; source IvyTek interest was preserved.`
         },
         'waiveinterest'
       )
     );
-    return `Waived ${this.formatIvyTekNumber(waiverAmount)} of generated Fineract interest so outstanding interest lands on IvyTek snapshot ${this.formatIvyTekNumber(targetInterest)}.`;
+  }
+
+  /**
+   * Gets a stable external id for the generated-interest waiver transaction.
+   * @param {any} row IvyTek loan row.
+   */
+  private getIvyTekInterestWaiverExternalId(row: any, loanId: string): string {
+    const sourceId =
+      this.getIvyTekLegacyLoanId(row) || this.getIvyTekLoanExternalId(row) || this.getCsvValue(row, 'Id');
+    return `ivytek-interest-waiver-${sourceId || loanId}`;
   }
 
   /**
@@ -6604,7 +8763,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} fallbackDate Fallback transaction date.
    */
   private getIvyTekInterestAlignmentDate(row: any, fallbackDate: string): string {
-    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || fallbackDate || this.getIvyTekBusinessDate();
+    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || fallbackDate;
   }
 
   /**
@@ -6612,16 +8771,6 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    */
   private getIvyTekLoanHistoricalInterestOutstanding(row: any): number | null {
-    const balanceNow = this.getIvyTekLoanBalanceNow(row);
-    const payoffAmount = this.getFirstIvyTekDecimal(row, [
-      'IvytekTestPkg__Payoff_Amount__c',
-      'Payoff Amount',
-      'PayoffAmount'
-    ]);
-    if (balanceNow !== null && payoffAmount !== null && payoffAmount >= balanceNow) {
-      return this.roundIvyTekMoney(payoffAmount - balanceNow);
-    }
-
     const interestParts = [
       this.getFirstIvyTekDecimal(row, [
         'IvytekTestPkg__AccruedInterestAll__c',
@@ -6639,10 +8788,20 @@ export class ViewBulkImportComponent implements OnInit {
         'DeferredInterestDue'
       ])
     ].filter((value: number | null) => value !== null) as number[];
-    if (!interestParts.length) {
-      return null;
+    if (interestParts.length) {
+      return this.roundIvyTekMoney(interestParts.reduce((total: number, value: number) => total + value, 0));
     }
-    return this.roundIvyTekMoney(interestParts.reduce((total: number, value: number) => total + value, 0));
+
+    const balanceNow = this.getIvyTekLoanBalanceNow(row);
+    const payoffAmount = this.getFirstIvyTekDecimal(row, [
+      'IvytekTestPkg__Payoff_Amount__c',
+      'Payoff Amount',
+      'PayoffAmount'
+    ]);
+    if (balanceNow !== null && payoffAmount !== null && payoffAmount >= balanceNow) {
+      return this.roundIvyTekMoney(payoffAmount - balanceNow);
+    }
+    return null;
   }
 
   /**
@@ -6683,37 +8842,84 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
-   * Posts the payoff transaction and closes a zero-balance historical IvyTek loan.
+   * Posts the payoff transaction and closes a non-active historical IvyTek loan.
    * @param {string} loanId Mifos loan id.
    * @param {any} row IvyTek loan row.
    * @param {number | null} balanceNow IvyTek current balance.
    */
-  private async settleAndCloseIvyTekZeroBalanceLoan(
+  private async settleAndCloseIvyTekNonActiveLoan(
     loanId: string,
     row: any,
     balanceNow: number | null,
     minimumLoanDate: string = this.getIvyTekLoanDate(row)
   ): Promise<string> {
+    if (this.shouldUseIvyTekStaticLoanSnapshot()) {
+      const accountStatus = this.normalizeIvyTekText(this.getCsvValue(row, 'IvytekTestPkg__AccountStatusCode__c'));
+      return accountStatus && !this.isIvyTekActiveLoanStatus(accountStatus)
+        ? 'Static snapshot mode suppressed automatic payoff/close commands.'
+        : '';
+    }
     if (!loanId || !this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow)) {
       return '';
     }
 
-    const closeDate = this.getIvyTekHistoricalLoanCloseDate(row, minimumLoanDate);
+    const closeDate = this.getIvyTekHistoricalLoanCloseDate(row, minimumLoanDate) || minimumLoanDate;
     const existingLoan = await this.getIvyTekLoanForLifecycle(loanId);
     if (this.isIvyTekLoanClosed(existingLoan)) {
-      return 'Zero-balance historical loan was already closed.';
+      return 'Non-active historical loan was already closed.';
+    }
+
+    const activationMessage = await this.ensureIvyTekLoanActiveForHistoricalClose(loanId, minimumLoanDate);
+    const activeLoan = await this.getIvyTekLoanForLifecycle(loanId);
+    if (this.isIvyTekLoanClosed(activeLoan)) {
+      return this.joinIvyTekMessages([
+        activationMessage,
+        'Non-active historical loan was already closed.'
+      ]);
+    }
+    if (!this.isIvyTekLoanActiveOrOverpaid(activeLoan)) {
+      throw new Error(
+        `Cannot close historical IvyTek loan until it is active. Current Mifos loan status is ${this.getIvyTekLoanStatusLabel(activeLoan)}.`
+      );
     }
 
     const payoffMessage = await this.repayIvyTekLoanForHistoricalClose(loanId, closeDate);
     const closeMessage = await this.closeIvyTekHistoricalLoan(loanId, closeDate);
     return this.joinIvyTekMessages([
+      activationMessage,
       payoffMessage,
       closeMessage
     ]);
   }
 
   /**
-   * Posts the payoff amount needed before closing a zero-balance historical loan.
+   * Ensures a historical loan is disbursed before the importer attempts to close it.
+   * @param {string} loanId Mifos loan id.
+   * @param {string} loanDate Historical loan date.
+   */
+  private async ensureIvyTekLoanActiveForHistoricalClose(loanId: string, loanDate: string): Promise<string> {
+    const loan = await this.getIvyTekLoanForLifecycle(loanId);
+    if (!loan || this.isIvyTekLoanActiveOrOverpaid(loan) || this.isIvyTekLoanClosed(loan)) {
+      return '';
+    }
+
+    if (this.isIvyTekLoanApproved(loan)) {
+      await this.disburseIvyTekLoan(loanId, loanDate);
+      return `Historical loan was disbursed on ${loanDate} before close.`;
+    }
+
+    if (this.canUpdateExistingIvyTekLoan(loan)) {
+      await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
+      return `Historical loan was approved and disbursed on ${loanDate} before close.`;
+    }
+
+    throw new Error(
+      `Cannot close historical IvyTek loan until it is active. Current Mifos loan status is ${this.getIvyTekLoanStatusLabel(loan)}.`
+    );
+  }
+
+  /**
+   * Posts the payoff amount needed before closing a non-active historical loan.
    * @param {string} loanId Mifos loan id.
    * @param {string} transactionDate Payoff transaction date.
    */
@@ -6723,7 +8929,7 @@ export class ViewBulkImportComponent implements OnInit {
     );
     const transactionAmount = this.getIvyTekLoanPayoffAmount(template);
     if (!transactionAmount || transactionAmount <= 0) {
-      return 'No payoff repayment was needed before closing the zero-balance historical loan.';
+      return 'No payoff repayment was needed before closing the historical loan.';
     }
 
     await firstValueFrom(
@@ -6734,7 +8940,7 @@ export class ViewBulkImportComponent implements OnInit {
           transactionAmount,
           dateFormat: this.settingsService.dateFormat,
           locale: this.settingsService.language.code,
-          note: 'IvyTek import: payoff transaction for zero-balance historical loan close.'
+          note: 'IvyTek import: final historical payoff needed before closing this non-active IvyTek loan.'
         },
         'repayment'
       )
@@ -6756,19 +8962,43 @@ export class ViewBulkImportComponent implements OnInit {
             transactionDate,
             dateFormat: this.settingsService.dateFormat,
             locale: this.settingsService.language.code,
-            note: 'IvyTek import: closing zero-balance historical loan.'
+            note: 'IvyTek import: closing non-active historical loan.'
           },
           'close'
         )
       );
-      return `Zero-balance historical loan was closed on ${transactionDate}.`;
+      return `Historical loan was closed on ${transactionDate}.`;
     } catch (error: any) {
       const loan = await this.getIvyTekLoanForLifecycle(loanId);
       if (this.isIvyTekLoanClosed(loan)) {
-        return `Zero-balance historical loan was already closed on or before ${transactionDate}.`;
+        return `Historical loan was already closed on or before ${transactionDate}.`;
+      }
+      if (this.isIvyTekCloseLoanNotActiveError(error)) {
+        return `Historical loan was no longer active after payoff on ${transactionDate}; Mifos rejected a second close command.`;
       }
       throw error;
     }
+  }
+
+  /**
+   * Checks whether Mifos rejected close because the payoff already moved the loan out of Active.
+   * @param {any} error API error.
+   */
+  private isIvyTekCloseLoanNotActiveError(error: any) {
+    const message = this.getErrorMessage(error).toLowerCase();
+    return message.includes('closing loan account is not allowed') && message.includes('loan account is not active');
+  }
+
+  /**
+   * Gets a readable loan status from Fineract response shapes.
+   * @param {any} loan Loan response.
+   */
+  private getIvyTekLoanStatusLabel(loan: any): string {
+    const status = loan?.status || {};
+    if (typeof status === 'string') {
+      return status || 'unknown';
+    }
+    return status.value || status.code || 'unknown';
   }
 
   /**
@@ -6815,6 +9045,10 @@ export class ViewBulkImportComponent implements OnInit {
     if (!chargeName) {
       return null;
     }
+    const chargeAmount = this.getIvyTekLoanChargeAmount(row, principal);
+    if (!chargeAmount || chargeAmount <= 0) {
+      return null;
+    }
     const balanceNow = this.getIvyTekLoanBalanceNow(row);
     if (
       this.shouldSkipIvyTekLoanChargeForActiveSnapshot(
@@ -6836,7 +9070,7 @@ export class ViewBulkImportComponent implements OnInit {
     }
     return {
       chargeId: charge.chargeId || charge.id,
-      amount: this.getIvyTekLoanChargeAmount(row, principal)
+      amount: chargeAmount
     };
   }
 
@@ -6867,14 +9101,18 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {number} principal Principal amount.
    */
   private getIvyTekLoanChargeAmount(row: any, principal: number) {
-    const source = this.ivyTekLoanImportForm.get('chargeAmountSource').value;
-    if (source === 'balance_now') {
-      return this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__BalanceNow__c')) || principal;
-    }
-    if (source === 'payoff_amount') {
-      return this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Payoff_Amount__c')) || principal;
-    }
-    return principal;
+    return this.getFirstIvyTekPositiveDecimal(row, [
+      'IvytekTestPkg__ChargeAmount__c',
+      'IvytekTestPkg__FeeAmount__c',
+      'IvytekTestPkg__Fees__c',
+      'IvytekTestPkg__TotalFees__c',
+      'IvytekTestPkg__OriginationFee__c',
+      'Charge Amount',
+      'Fee Amount',
+      'Fees',
+      'Total Fees',
+      'Origination Fee'
+    ]);
   }
 
   /**
@@ -6932,25 +9170,13 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    */
   private getIvyTekLoanDate(row: any): string {
-    if (this.ivyTekLoanImportForm.get('preserveHistoricalDates').value) {
-      const loanDate = this.parseIvyTekDate(
-        this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c') || this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c')
-      );
-      if (loanDate) {
-        return this.dateUtils.formatDate(
-          this.getIvyTekOfficeSafeDate(loanDate, row) || loanDate,
-          this.settingsService.dateFormat
-        );
-      }
+    const loanDate = this.parseIvyTekDate(
+      this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c') || this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c')
+    );
+    if (loanDate) {
+      return this.dateUtils.formatDate(loanDate, this.settingsService.dateFormat);
     }
-    return this.dateUtils.formatDate(this.settingsService.businessDate, this.settingsService.dateFormat);
-  }
-
-  /**
-   * Gets the current business date in the active Mifos date format.
-   */
-  private getIvyTekBusinessDate(): string {
-    return this.dateUtils.formatDate(this.settingsService.businessDate, this.settingsService.dateFormat);
+    return '';
   }
 
   /**
@@ -6979,7 +9205,6 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {any} row IvyTek loan row.
    */
   private getIvyTekHistoricalLoanCloseDate(row: any, minimumLoanDate: string = this.getIvyTekLoanDate(row)): string {
-    const loanDate = this.parseIvyTekDate(minimumLoanDate);
     const sourceCloseDate = this.parseIvyTekDate(
       this.getFirstCsvValue(row, [
         'IvytekTestPkg__Paid_Out_Date__c',
@@ -6992,11 +9217,7 @@ export class ViewBulkImportComponent implements OnInit {
         'Status Change Effective Date'
       ])
     );
-    const safeCloseDate =
-      this.getIvyTekOfficeSafeDate(sourceCloseDate || loanDate || this.settingsService.businessDate, row) ||
-      this.settingsService.businessDate;
-    const closeDate = loanDate && safeCloseDate < loanDate ? loanDate : safeCloseDate;
-    return this.dateUtils.formatDate(closeDate, this.settingsService.dateFormat);
+    return sourceCloseDate ? this.dateUtils.formatDate(sourceCloseDate, this.settingsService.dateFormat) : '';
   }
 
   /**
@@ -7024,12 +9245,6 @@ export class ViewBulkImportComponent implements OnInit {
     ]);
     if (sourceRepayments) {
       return sourceRepayments;
-    }
-
-    const fixedPaymentAmount = this.getIvyTekFixedEmiAmount(row);
-    const scheduleAmount = balanceNow && balanceNow > 0 ? balanceNow : principal;
-    if (fixedPaymentAmount && fixedPaymentAmount > 0 && scheduleAmount && scheduleAmount > 0) {
-      return Math.max(1, Math.ceil(scheduleAmount / fixedPaymentAmount));
     }
 
     return null;
@@ -7129,13 +9344,7 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getIvyTekFirstRepaymentDate(row: any, loanDateText: string): string {
     const firstDueDate = this.parseIvyTekDate(this.getCsvValue(row, 'IvytekTestPkg__FirstDueDate__c'));
-    const baseDate = this.parseIvyTekDate(loanDateText) || this.settingsService.businessDate;
-    if (this.ivyTekLoanImportForm.get('preserveHistoricalDates').value && firstDueDate && firstDueDate >= baseDate) {
-      return this.dateUtils.formatDate(firstDueDate, this.settingsService.dateFormat);
-    }
-    const defaultFirstDueDate = new Date(baseDate);
-    defaultFirstDueDate.setDate(defaultFirstDueDate.getDate() + 30);
-    return this.dateUtils.formatDate(defaultFirstDueDate, this.settingsService.dateFormat);
+    return firstDueDate ? this.dateUtils.formatDate(firstDueDate, this.settingsService.dateFormat) : '';
   }
 
   /**
@@ -7223,8 +9432,8 @@ export class ViewBulkImportComponent implements OnInit {
    * Formats a number for concise import result messages.
    * @param {number | null} value Numeric value.
    */
-  private formatIvyTekNumber(value: number | null): string {
-    return value === null ? '(blank)' : value.toFixed(2);
+  private formatIvyTekNumber(value: any): string {
+    return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '(blank)';
   }
 
   /**
@@ -7279,10 +9488,15 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} value Salesforce id.
    */
   private getSalesforceIdKeys(value: string): string[] {
-    const compact = value.replace(/[^A-Za-z0-9]/g, '');
-    const keys = [compact.toLowerCase()];
-    if (compact.length >= 15) {
-      keys.push(compact.substring(0, 15).toLowerCase());
+    const compact = (value || '').toString().replace(/[^A-Za-z0-9]/g, '');
+    const keys = [compact];
+    if (compact.length === 18) {
+      // Salesforce 15-character IDs are case-sensitive; lowercasing that form can merge different loans.
+      keys.push(compact.toLowerCase(), compact.substring(0, 15));
+    } else if (compact.length < 15) {
+      keys.push(compact.toLowerCase());
+    } else if (compact.length > 18) {
+      keys.push(compact.toLowerCase());
     }
     return Array.from(new Set(keys.filter((key: string) => !!key)));
   }
@@ -7293,8 +9507,11 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getIvyTekIdentifierLookupKeys(value: string): string[] {
     const trimmed = (value || '').toString().trim();
+    const compact = trimmed.replace(/[^A-Za-z0-9]/g, '');
+    const isSalesforceId = compact.length === 15 || compact.length === 18;
     return this.getUniqueIvyTekIdentifiers([
-      trimmed.toLowerCase(),
+      trimmed,
+      isSalesforceId ? '' : trimmed.toLowerCase(),
       ...this.getSalesforceIdKeys(trimmed)
     ]);
   }
@@ -7415,14 +9632,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} csvText CSV text.
    */
   private parseCsv(csvText: string): any[] {
-    const rows = this.parseCsvRows(csvText);
-    const headers = rows.shift()?.map((header: string) => header.replace(/^\uFEFF/, '').trim()) || [];
-    return rows.map((row: string[]) =>
-      headers.reduce((record: any, header: string, index: number) => {
-        record[header] = row[index] || '';
-        return record;
-      }, {})
-    );
+    return this.ivyTekCsvParser.parse(csvText);
   }
 
   /**
@@ -7430,42 +9640,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} csvText CSV text.
    */
   private parseCsvRows(csvText: string): string[][] {
-    const rows: string[][] = [];
-    let row: string[] = [];
-    let value = '';
-    let quoted = false;
-
-    for (let index = 0; index < csvText.length; index += 1) {
-      const character = csvText[index];
-      const nextCharacter = csvText[index + 1];
-
-      if (character === '"' && quoted && nextCharacter === '"') {
-        value += character;
-        index += 1;
-      } else if (character === '"') {
-        quoted = !quoted;
-      } else if (character === ',' && !quoted) {
-        row.push(value);
-        value = '';
-      } else if ((character === '\n' || character === '\r') && !quoted) {
-        if (character === '\r' && nextCharacter === '\n') {
-          index += 1;
-        }
-        row.push(value);
-        rows.push(row);
-        row = [];
-        value = '';
-      } else {
-        value += character;
-      }
-    }
-
-    if (value || row.length) {
-      row.push(value);
-      rows.push(row);
-    }
-
-    return rows.filter((csvRow: string[]) => csvRow.some((cell: string) => cell.trim() !== ''));
+    return this.ivyTekCsvParser.parseRows(csvText);
   }
 
   /**

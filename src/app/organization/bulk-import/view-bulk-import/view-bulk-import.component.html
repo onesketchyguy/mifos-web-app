@@ -127,6 +127,14 @@
               >
                 <i class="fa fa-download"></i>&nbsp;&nbsp;{{ 'labels.buttons.Export All CSV' | translate }}
               </button>
+              <button
+                mat-button
+                type="button"
+                [disabled]="!hasIvyTekExportableResults"
+                (click)="exportIvyTekReconciliationResults('all')"
+              >
+                <i class="fa fa-balance-scale"></i>&nbsp;&nbsp;{{ 'labels.buttons.Export Reconciliation' | translate }}
+              </button>
               <button mat-button type="button" [disabled]="isIvyTekPipelineRunning" (click)="clearIvyTekPipelineRun()">
                 {{ 'labels.buttons.Clear' | translate }}
               </button>
