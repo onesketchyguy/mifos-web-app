@@ -21,6 +21,7 @@ import {
 /** Custom Services */
 import { ReportsService } from '../reports.service';
 import { SettingsService } from 'app/settings/settings.service';
+import { ReportExcelExportService } from '../report-excel-export.service';
 
 /** Custom Models */
 import { ReportParameter } from '../common-models/report-parameter.model';
@@ -28,7 +29,6 @@ import { SelectOption } from '../common-models/select-option.model';
 import { Dates } from 'app/core/utils/dates';
 import { GlobalConfiguration } from 'app/system/configurations/global-configurations-tab/configuration.model';
 
-import * as ExcelJS from 'exceljs';
 import { AlertService } from 'app/core/alert/alert.service';
 import { TranslateService } from '@ngx-translate/core';
 import { finalize } from 'rxjs/operators';
@@ -67,6 +67,7 @@ export class RunReportComponent implements OnInit {
   private alertService = inject(AlertService);
   private translateService = inject(TranslateService);
   private dateUtils = inject(Dates);
+  private reportExcelExportService = inject(ReportExcelExportService);
 
   /** Minimum date allowed. */
   minDate = new Date(2000, 0, 1);
@@ -470,7 +471,7 @@ export class RunReportComponent implements OnInit {
           });
 
           const displayedColumns = this.getDisplayedColumns(res);
-          this.exportToXLS(reportName, res.data, displayedColumns);
+          this.exportToXLS(reportName, res.data, displayedColumns, this.getColumnTypes(res));
         } else {
           this.alertService.alert({
             type: this.translateService.instant('errors.report.type'),
@@ -504,47 +505,16 @@ export class RunReportComponent implements OnInit {
       });
   }
 
-  async exportToXLS(reportName: string, csvData: any, displayedColumns: string[]): Promise<void> {
-    const fileName = `${reportName}.xlsx`;
-
-    // Format data for ExcelJS
-    const data = csvData.map((object: any) => {
-      const row: Record<string, any> = {};
-      for (let i = 0; i < displayedColumns.length; i++) {
-        row[displayedColumns[i]] = object.row[i];
-      }
-      return row;
+  async exportToXLS(
+    reportName: string,
+    csvData: any,
+    displayedColumns: string[],
+    columnTypes: string[] = []
+  ): Promise<void> {
+    await this.reportExcelExportService.exportTableReport(reportName, csvData, displayedColumns, {
+      columnTypes,
+      decimalChoice: this.decimalChoice.value
     });
-
-    // Create workbook and worksheet
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('report');
-
-    // Add header
-    worksheet.addRow(displayedColumns);
-
-    // Add data rows
-    data.forEach((rowObj: any) => {
-      worksheet.addRow(displayedColumns.map((col) => rowObj[col]));
-    });
-
-    // Write to buffer and trigger download
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    });
-
-    // Native download logic (no FileSaver)
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 0);
   }
 
   private getTableReportPayload(): object {
@@ -556,6 +526,10 @@ export class RunReportComponent implements OnInit {
 
   private getDisplayedColumns(reportData: any): string[] {
     return reportData.columnHeaders.map((header: any) => header.columnName);
+  }
+
+  private getColumnTypes(reportData: any): string[] {
+    return reportData.columnHeaders.map((header: any) => header.columnDisplayType);
   }
 
   private printTableReport(reportName: string, reportRows: any[], displayedColumns: string[]): void {

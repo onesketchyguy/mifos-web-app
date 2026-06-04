@@ -33,8 +33,8 @@ import { InputBase } from 'app/shared/form-dialog/formfield/model/input-base';
 import { FormDialogComponent } from 'app/shared/form-dialog/form-dialog.component';
 import { environment } from '../../../../environments/environment';
 import { ProgressBarService } from 'app/core/progress-bar/progress-bar.service';
+import { ReportExcelExportService } from '../../report-excel-export.service';
 
-import * as ExcelJS from 'exceljs';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 
@@ -66,6 +66,7 @@ export class TableAndSmsComponent implements OnChanges {
   dialog = inject(MatDialog);
   private decimalPipe = inject(DecimalPipe);
   private progressBarService = inject(ProgressBarService);
+  private reportExcelExportService = inject(ReportExcelExportService);
 
   /** Run Report Data */
   @Input() dataObject: any;
@@ -170,36 +171,16 @@ export class TableAndSmsComponent implements OnChanges {
     });
   }
 
-  exportToXLS(): void {
-    const fileName = `${this.dataObject.report.name}.xlsx`;
-    const data = this.csvData.map((object: any) => {
-      const row: { [key: string]: any } = {};
-      for (let i = 0; i < this.displayedColumns.length; i++) {
-        row[this.displayedColumns[i]] = object.row[i];
+  async exportToXLS(): Promise<void> {
+    await this.reportExcelExportService.exportTableReport(
+      this.dataObject.report.name,
+      this.csvData,
+      this.displayedColumns,
+      {
+        columnTypes: this.columnTypes,
+        decimalChoice: this.dataObject.decimalChoice
       }
-      return row;
-    });
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Report');
-
-    // Add header row
-    worksheet.addRow(this.displayedColumns);
-
-    // Add data rows
-    data.forEach((rowObj: any) => {
-      worksheet.addRow(this.displayedColumns.map((col) => rowObj[col]));
-    });
-
-    workbook.xlsx.writeBuffer().then((buffer: any) => {
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'filename.xlsx';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
+    );
   }
 
   /**
