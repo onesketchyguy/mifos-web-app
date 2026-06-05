@@ -94,7 +94,7 @@ export class KeyboardShortcutsConfiguration {
         ctrlKey: true,
         shiftKey: false,
         altKey: false,
-        key: 'f',
+        key: 'p',
         route: 'accounting/journal-entries/frequent-postings'
       },
       // Closure Entries - ctrl + e
