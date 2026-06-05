@@ -27,18 +27,18 @@ export class KeyboardShortcutsConfiguration {
       // Navigation Page - ctrl + n
       {
         title: 'Navigation Page',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'n',
         route: 'navigation'
       },
       // Run Report - ctrl + t
       {
         title: 'Run Report',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 't',
         route: '',
         id: 'runReport'
@@ -46,9 +46,9 @@ export class KeyboardShortcutsConfiguration {
       // Checker Inbox & Pending Tasks - ctrl + i
       {
         title: 'Checker Inbox & Pending Tasks',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'i',
         route: 'checker-inbox-and-tasks/checker-inbox'
       },
@@ -73,54 +73,54 @@ export class KeyboardShortcutsConfiguration {
       // Create Group - ctrl + g
       {
         title: 'Create Group',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'g',
         route: 'groups/create'
       },
       // Create Center - ctrl + q
       {
         title: 'Create Center',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'q',
         route: 'centers/create'
       },
       // Frequent Posting - ctrl + f
       {
         title: 'Frequent Posting',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
-        key: 'p',
+        altKey: true,
+        key: 'f',
         route: 'accounting/journal-entries/frequent-postings'
       },
       // Closure Entries - ctrl + e
       {
         title: 'Closure Entries',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'e',
         route: 'accounting/closing-entries'
       },
       // Journal Entry - ctrl + j
       {
         title: 'Journal Entry',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'j',
         route: 'accounting/journal-entries/create'
       },
       // Reports - ctrl + r
       {
         title: 'Reports',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'r',
         route: 'reports'
       },
@@ -184,9 +184,9 @@ export class KeyboardShortcutsConfiguration {
       // Logout - ctrl + l
       {
         title: 'Logout',
-        ctrlKey: true,
+        ctrlKey: false,
         shiftKey: false,
-        altKey: false,
+        altKey: true,
         key: 'l',
         route: '',
         id: 'logout'
