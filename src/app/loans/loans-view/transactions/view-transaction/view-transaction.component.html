@@ -111,6 +111,48 @@
           </div>
         }
 
+        @if (ivyTekImportNote) {
+          <mat-divider [inset]="true"></mat-divider>
+
+          <div class="flex-50 mat-body-strong">
+            {{ 'labels.inputs.IvyTek Import Note' | translate }}
+          </div>
+
+          <div class="flex-50 no-break-content ivytek-import-note-value">
+            {{ ivyTekImportNote.importNote }}
+          </div>
+        }
+
+        @if (ivyTekImportNote?.comment) {
+          <div class="flex-50 mat-body-strong">
+            {{ 'labels.inputs.IvyTek Transaction Comment' | translate }}
+          </div>
+
+          <div class="flex-50 no-break-content ivytek-import-note-value">
+            {{ ivyTekImportNote.comment }}
+          </div>
+        }
+
+        @if (ivyTekImportNote?.ivyTekTransactionId) {
+          <div class="flex-50 mat-body-strong">
+            {{ 'labels.inputs.IvyTek Transaction ID' | translate }}
+          </div>
+
+          <div class="flex-50 no-break-content">
+            {{ ivyTekImportNote.ivyTekTransactionId }}
+          </div>
+        }
+
+        @if (ivyTekImportNote?.receiptNumber || ivyTekImportNote?.checkNumber) {
+          <div class="flex-50 mat-body-strong">
+            {{ 'labels.inputs.IvyTek Receipt and Check' | translate }}
+          </div>
+
+          <div class="flex-50 no-break-content">
+            {{ ivyTekImportNote.receiptNumber || '-' }} / {{ ivyTekImportNote.checkNumber || '-' }}
+          </div>
+        }
+
         @if (existTransactionRelations) {
           <mat-divider [inset]="true"></mat-divider>
         }

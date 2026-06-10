@@ -40,15 +40,17 @@ import { DatepickerBase } from 'app/shared/form-dialog/formfield/model/datepicke
 import { NgClass } from '@angular/common';
 import { MatCheckbox } from '@angular/material/checkbox';
 import { MatIconButton } from '@angular/material/button';
-import { ExternalIdentifierComponent } from '../../../shared/external-identifier/external-identifier.component';
 import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
 import { MatIcon } from '@angular/material/icon';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { DateFormatPipe } from '../../../pipes/date-format.pipe';
 import { FormatNumberPipe } from '../../../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
+import { forkJoin, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 
 @Component({
   selector: 'mifosx-transactions-tab',
@@ -63,12 +65,12 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
     MatCellDef,
     MatCell,
     NgClass,
-    ExternalIdentifierComponent,
     MatIconButton,
     MatMenuTrigger,
     MatIcon,
     MatMenu,
     MatMenuItem,
+    MatTooltip,
     FaIconComponent,
     MatHeaderCellDef,
     MatHeaderCell,
@@ -103,7 +105,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     'row',
     'id',
     'office',
-    'externalId',
     'date',
     'transactionType',
     'amount',
@@ -112,18 +113,19 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     'fee',
     'penalties',
     'loanBalance',
+    'note',
     'actions'
   ];
   displayedHeader1Columns: string[] = [
     'h1-row',
     'h1-id',
     'h1-office',
-    'h1-external-id',
     'h1-transaction-date',
     'h1-transaction-type',
     'h1-space',
     'h1-breakdown',
     'h1-loan-balance',
+    'h1-note',
     'h1-actions'
   ];
   displayedHeader2Columns: string[] = [
@@ -141,6 +143,7 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
   @ViewChild(MatSort, { static: true }) sort: MatSort;
 
   loanId: number;
+  transactionNotes: Map<string, string> = new Map();
   /**
    * Retrieves the loans with associations data from `resolve`.
    * @param {ActivatedRoute} route Activated Route.
@@ -159,6 +162,50 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     this.hideAccrualsParam = new UntypedFormControl(false);
     this.hideReversedParam = new UntypedFormControl(false);
     this.setLoanTransactions();
+    this.loadTransactionNotes();
+  }
+
+  loadTransactionNotes(): void {
+    const withExternalId = this.transactionsData.filter((t: LoanTransaction) => t.externalId);
+    if (!withExternalId.length) {
+      return;
+    }
+    const requests = withExternalId.map((t: LoanTransaction) =>
+      this.loansService.getIvyTekTransactionImportNote(String(t.externalId)).pipe(
+        map((response: any) => ({ externalId: t.externalId, note: this.extractImportNote(response) })),
+        catchError(() => of({ externalId: t.externalId, note: null as string | null }))
+      )
+    );
+    forkJoin(requests).subscribe((results: { externalId: string; note: string | null }[]) => {
+      results.forEach(({ externalId, note }) => {
+        if (note) {
+          this.transactionNotes.set(externalId, note);
+        }
+      });
+    });
+  }
+
+  private extractImportNote(response: any): string | null {
+    const row = response?.data?.[0]?.row;
+    const headers: any[] = response?.columnHeaders || [];
+    if (!row || !headers.length) {
+      return null;
+    }
+    const idx = headers.findIndex(
+      (h) =>
+        String(h.columnName || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '') === 'importnote'
+    );
+    return idx >= 0 ? row[idx] : null;
+  }
+
+  getTransactionNote(transaction: LoanTransaction): string | null {
+    if (!transaction.externalId) {
+      return null;
+    }
+    return this.transactionNotes.get(transaction.externalId) || null;
   }
 
   setLoanTransactions() {

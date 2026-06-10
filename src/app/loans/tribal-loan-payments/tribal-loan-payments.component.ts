@@ -11,6 +11,7 @@ import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { Component, OnInit, inject } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
+import type * as ExcelJS from 'exceljs';
 
 /** Angular Material Imports */
 import { MatCard, MatCardActions, MatCardContent, MatCardHeader, MatCardTitle } from '@angular/material/card';
@@ -35,6 +36,16 @@ import {
 /** Custom Imports */
 import { FormatNumberPipe } from 'app/pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+
+type ExcelColumnType = 'text' | 'number' | 'integer';
+
+interface ExcelReportTable {
+  worksheetName: string;
+  tableName: string;
+  columns: string[];
+  rows: any[][];
+  columnTypes?: ExcelColumnType[];
+}
 
 /**
  * Tribal loan payments component.
@@ -311,7 +322,7 @@ export class TribalLoanPaymentsComponent implements OnInit {
   }
 
   /**
-   * Exports the generated payment preview to CSV.
+   * Exports the generated payment preview to an Excel workbook.
    */
   exportPreview(): void {
     if (!this.preview || this.isExportingPreview) {
@@ -322,135 +333,33 @@ export class TribalLoanPaymentsComponent implements OnInit {
     this.previewExportComplete = false;
 
     setTimeout(() => {
-      try {
-        const rows = this.getPreviewExportRows();
-        this.downloadCsv(`tribal-loan-payment-preview-${this.getCsvTimestamp()}.csv`, rows);
-        this.previewExportComplete = true;
-        this.clearPreviewExportComplete();
-      } finally {
-        this.isExportingPreview = false;
-      }
+      this.exportPreviewWorkbook()
+        .then(() => {
+          this.previewExportComplete = true;
+          this.clearPreviewExportComplete();
+        })
+        .catch((error: any) => {
+          this.previewError = this.getErrorMessage(error);
+        })
+        .finally(() => {
+          this.isExportingPreview = false;
+        });
     });
   }
 
-  private getPreviewExportRows(): any[][] {
+  private async exportPreviewWorkbook(): Promise<void> {
     if (!this.preview) {
-      return [];
+      return;
     }
 
-    const rows: any[][] = [
-      ['Tribal Loan Payment Preview'],
-      [
-        'Payment Source',
-        this.getPaymentSourceText(this.preview.paymentSource)
-      ],
-      [
-        'Transaction Date',
-        this.getTransactionDateForExport()
-      ],
-      [
-        'Payment Type',
-        this.getSelectedPaymentTypeName()
-      ],
-      [
-        'Note',
-        this.tribalPaymentForm.value.note || ''
-      ],
-      [],
-      ['Summary'],
-      [
-        'Total Records',
-        this.preview.loansScanned
-      ],
-      [
-        'Tribal Data Records',
-        this.preview.loansWithTribalData
-      ],
-      [
-        'Transactions',
-        this.preview.transactionCount
-      ],
-      [
-        'Skipped',
-        this.preview.skippedLoans.length
-      ],
-      [
-        'Percap Total',
-        this.preview.sourceTotals.percap
-      ],
-      [
-        'Pension Total',
-        this.preview.sourceTotals.pension
-      ],
-      [
-        'Payroll Total',
-        this.preview.sourceTotals.payroll
-      ],
-      [
-        'Transaction Total',
-        this.preview.transactionTotal
-      ]
-    ];
-
-    if (this.preview.payments.length) {
-      rows.push(
-        [],
-        ['Payments'],
-        [
-          'Loan Id',
-          'Borrower Name',
-          'Loan Status',
-          'Percap',
-          'Pension',
-          'Payroll',
-          'Amount',
-          'Balance Now',
-          'Transaction Date'
-        ],
-        ...this.preview.payments.map((payment: TribalLoanPayment) => [
-          this.getPaymentIdentifier(payment),
-          payment.borrowerName,
-          payment.status,
-          payment.percap,
-          payment.pension,
-          payment.payroll,
-          payment.transactionAmount,
-          payment.balanceNow,
-          this.getTransactionDateForExport()
-        ])
-      );
-    }
-
-    if (this.preview.skippedLoans.length) {
-      rows.push(
-        [],
-        ['Skipped Loans'],
-        [
-          'Loan Id',
-          'Borrower Name',
-          'Loan Status',
-          'Percap',
-          'Pension',
-          'Payroll',
-          'Reason'
-        ],
-        ...this.preview.skippedLoans.map((loanData: TribalLoanData) => [
-          this.getSkippedLoanIdentifier(loanData),
-          loanData.borrowerName,
-          loanData.status,
-          loanData.percap,
-          loanData.pension,
-          loanData.payroll,
-          this.getSkippedReasonText(loanData)
-        ])
-      );
-    }
-
-    return rows;
+    await this.downloadExcelWorkbook(
+      `tribal-loan-payment-preview-${this.getExportTimestamp()}.xlsx`,
+      this.getPreviewExcelTables(this.preview)
+    );
   }
 
   /**
-   * Exports the submitted payment report to CSV.
+   * Exports the submitted payment report to an Excel workbook.
    */
   exportSubmissionReport(): void {
     if (!this.submissionResults.length || this.isExportingSubmissionReport) {
@@ -461,71 +370,299 @@ export class TribalLoanPaymentsComponent implements OnInit {
     this.submissionReportExportComplete = false;
 
     setTimeout(() => {
-      try {
-        const rows = this.getSubmissionReportExportRows();
-        this.downloadCsv(`tribal-loan-payment-submission-report-${this.getCsvTimestamp()}.csv`, rows);
-        this.submissionReportExportComplete = true;
-        this.clearSubmissionReportExportComplete();
-      } finally {
-        this.isExportingSubmissionReport = false;
-      }
+      this.exportSubmissionReportWorkbook()
+        .then(() => {
+          this.submissionReportExportComplete = true;
+          this.clearSubmissionReportExportComplete();
+        })
+        .catch((error: any) => {
+          this.previewError = this.getErrorMessage(error);
+        })
+        .finally(() => {
+          this.isExportingSubmissionReport = false;
+        });
     });
   }
 
-  private getSubmissionReportExportRows(): any[][] {
-    const rows: any[][] = [
-      ['Tribal Loan Payment Submission Report'],
-      [
-        'Payment Source',
-        this.preview ? this.getPaymentSourceText(this.preview.paymentSource) : ''
-      ],
-      [
-        'Transaction Date',
-        this.getTransactionDateForExport()
-      ],
-      [
-        'Payment Type',
-        this.getSelectedPaymentTypeName()
-      ],
-      [
-        'Note',
-        this.tribalPaymentForm.value.note || ''
-      ],
-      [],
-      ['Summary'],
-      [
-        'Success Count',
-        this.successfulSubmissionResults.length
-      ],
-      [
-        'Failure Count',
-        this.failedSubmissionResults.length
-      ],
-      [
-        'Transaction Total',
-        this.submittedPaymentTotal
-      ],
-      [],
-      ['Submitted Payments'],
-      [
-        'Loan Id',
-        'Borrower Name',
-        'Amount',
-        'Status',
-        'Transaction Id',
-        'Error'
-      ],
-      ...this.submissionResults.map((result: TribalLoanPaymentSubmissionResult) => [
-        this.getPaymentIdentifier(result.payment),
-        result.payment.borrowerName,
-        result.payment.transactionAmount,
-        result.success ? 'Successful' : 'Failed',
-        result.transactionId || '',
-        result.errorMessage || ''
-      ])
-    ];
+  private async exportSubmissionReportWorkbook(): Promise<void> {
+    await this.downloadExcelWorkbook(
+      `tribal-loan-payment-submission-report-${this.getExportTimestamp()}.xlsx`,
+      this.getSubmissionReportExcelTables()
+    );
+  }
 
-    return rows;
+  private getPreviewExcelTables(preview: TribalLoanPaymentPreview): ExcelReportTable[] {
+    return [
+      this.getReportDetailsTable('Tribal Loan Payment Preview', preview.paymentSource),
+      {
+        worksheetName: 'Summary',
+        tableName: 'PreviewSummary',
+        columns: [
+          'Metric',
+          'Value'
+        ],
+        rows: [
+          [
+            'Total Records',
+            preview.loansScanned
+          ],
+          [
+            'Tribal Data Records',
+            preview.loansWithTribalData
+          ],
+          [
+            'Transactions',
+            preview.transactionCount
+          ],
+          [
+            'Skipped',
+            preview.skippedLoans.length
+          ],
+          [
+            'Percap Total',
+            preview.sourceTotals.percap
+          ],
+          [
+            'Pension Total',
+            preview.sourceTotals.pension
+          ],
+          [
+            'Payroll Total',
+            preview.sourceTotals.payroll
+          ],
+          [
+            'Transaction Total',
+            preview.transactionTotal
+          ]
+        ],
+        columnTypes: [
+          'text',
+          'number'
+        ]
+      },
+      {
+        worksheetName: 'Payments',
+        tableName: 'PreviewPayments',
+        columns: [
+          'Loan Id',
+          'Borrower Name',
+          'Loan Status',
+          'Percap',
+          'Pension',
+          'Payroll',
+          'Amount',
+          'Balance Now',
+          'Transaction Date',
+          'Payment Source',
+          'Payment Type',
+          'Note'
+        ],
+        rows: preview.payments.map((payment: TribalLoanPayment) => [
+          this.getPaymentIdentifier(payment),
+          payment.borrowerName,
+          payment.status,
+          payment.percap,
+          payment.pension,
+          payment.payroll,
+          payment.transactionAmount,
+          payment.balanceNow,
+          this.getTransactionDateForExport(),
+          this.getPaymentSourceText(preview.paymentSource),
+          this.getSelectedPaymentTypeName(),
+          this.tribalPaymentForm.value.note || ''
+        ]),
+        columnTypes: [
+          'text',
+          'text',
+          'text',
+          'number',
+          'number',
+          'number',
+          'number',
+          'number',
+          'text',
+          'text',
+          'text',
+          'text'
+        ]
+      },
+      {
+        worksheetName: 'Skipped Loans',
+        tableName: 'SkippedLoans',
+        columns: [
+          'Loan Id',
+          'Borrower Name',
+          'Loan Status',
+          'Percap',
+          'Pension',
+          'Payroll',
+          'Reason'
+        ],
+        rows: preview.skippedLoans.map((loanData: TribalLoanData) => [
+          this.getSkippedLoanIdentifier(loanData),
+          loanData.borrowerName,
+          loanData.status,
+          loanData.percap,
+          loanData.pension,
+          loanData.payroll,
+          this.getSkippedReasonText(loanData)
+        ]),
+        columnTypes: [
+          'text',
+          'text',
+          'text',
+          'number',
+          'number',
+          'number',
+          'text'
+        ]
+      }
+    ];
+  }
+
+  private getSubmissionReportExcelTables(): ExcelReportTable[] {
+    const paymentSource = this.preview ? this.preview.paymentSource : this.tribalPaymentForm.value.paymentSource;
+
+    return [
+      this.getReportDetailsTable('Tribal Loan Payment Submission Report', paymentSource),
+      {
+        worksheetName: 'Summary',
+        tableName: 'SubmissionSummary',
+        columns: [
+          'Metric',
+          'Value'
+        ],
+        rows: [
+          [
+            'Submitted Records',
+            this.submissionResults.length
+          ],
+          [
+            'Successful Transactions',
+            this.successfulSubmissionResults.length
+          ],
+          [
+            'Failed Transactions',
+            this.failedSubmissionResults.length
+          ],
+          [
+            'Attempted Transaction Total',
+            this.getAttemptedSubmissionTotal()
+          ],
+          [
+            'Successful Transaction Total',
+            this.submittedPaymentTotal
+          ]
+        ],
+        columnTypes: [
+          'text',
+          'number'
+        ]
+      },
+      {
+        worksheetName: 'Submission Results',
+        tableName: 'SubmissionResults',
+        columns: [
+          'Loan Id',
+          'Borrower Name',
+          'Loan Status',
+          'Percap',
+          'Pension',
+          'Payroll',
+          'Amount',
+          'Balance Now',
+          'Transaction Date',
+          'Payment Source',
+          'Payment Type',
+          'Result',
+          'Transaction Id',
+          'Error',
+          'Note'
+        ],
+        rows: this.submissionResults.map((result: TribalLoanPaymentSubmissionResult) => [
+          this.getPaymentIdentifier(result.payment),
+          result.payment.borrowerName,
+          result.payment.status,
+          result.payment.percap,
+          result.payment.pension,
+          result.payment.payroll,
+          result.payment.transactionAmount,
+          result.payment.balanceNow,
+          this.getTransactionDateForExport(),
+          this.getPaymentSourceText(paymentSource),
+          this.getSelectedPaymentTypeName(),
+          result.success ? 'Successful' : 'Failed',
+          result.transactionId || '',
+          result.errorMessage || '',
+          this.tribalPaymentForm.value.note || ''
+        ]),
+        columnTypes: [
+          'text',
+          'text',
+          'text',
+          'number',
+          'number',
+          'number',
+          'number',
+          'number',
+          'text',
+          'text',
+          'text',
+          'text',
+          'text',
+          'text',
+          'text'
+        ]
+      }
+    ];
+  }
+
+  private getReportDetailsTable(reportName: string, paymentSource: TribalPaymentSource): ExcelReportTable {
+    return {
+      worksheetName: 'Report Details',
+      tableName: 'ReportDetails',
+      columns: [
+        'Field',
+        'Value'
+      ],
+      rows: [
+        [
+          'Report',
+          reportName
+        ],
+        [
+          'Payment Source',
+          this.getPaymentSourceText(paymentSource)
+        ],
+        [
+          'Transaction Date',
+          this.getTransactionDateForExport()
+        ],
+        [
+          'Payment Type',
+          this.getSelectedPaymentTypeName()
+        ],
+        [
+          'Note',
+          this.tribalPaymentForm.value.note || ''
+        ],
+        [
+          'Generated At',
+          new Date().toISOString()
+        ]
+      ],
+      columnTypes: [
+        'text',
+        'text'
+      ]
+    };
+  }
+
+  private getAttemptedSubmissionTotal(): number {
+    return this.submissionResults.reduce(
+      (total: number, result: TribalLoanPaymentSubmissionResult) => total + result.payment.transactionAmount,
+      0
+    );
   }
 
   /**
@@ -753,11 +890,151 @@ export class TribalLoanPaymentsComponent implements OnInit {
     return transactionDate || '';
   }
 
-  private downloadCsv(filename: string, rows: any[][]): void {
-    const csv = rows
-      .map((row: any[]) => row.map((value: any) => this.escapeCsvValue(this.getCsvCellValue(value))).join(','))
-      .join('\r\n');
-    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+  private async downloadExcelWorkbook(filename: string, reportTables: ExcelReportTable[]): Promise<void> {
+    const ExcelJS = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Mifos X Web App';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+
+    reportTables.forEach((reportTable: ExcelReportTable, index: number) => {
+      this.addExcelTableWorksheet(workbook, reportTable, index);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer as BlobPart], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    this.downloadBlob(filename, blob);
+  }
+
+  private addExcelTableWorksheet(workbook: ExcelJS.Workbook, reportTable: ExcelReportTable, index: number): void {
+    const worksheet = workbook.addWorksheet(this.getExcelWorksheetName(reportTable.worksheetName, index), {
+      views: [
+        {
+          state: 'frozen',
+          ySplit: 1
+        }
+      ],
+      properties: {
+        defaultRowHeight: 18
+      },
+      pageSetup: {
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0
+      }
+    });
+    const rows = this.getExcelTableRows(reportTable);
+
+    worksheet.addTable({
+      name: this.getExcelTableName(reportTable.tableName, index),
+      ref: 'A1',
+      headerRow: true,
+      totalsRow: false,
+      style: {
+        theme: 'TableStyleLight15',
+        showRowStripes: true,
+        showColumnStripes: false
+      },
+      columns: reportTable.columns.map((column: string) => ({
+        name: column,
+        filterButton: true
+      })),
+      rows
+    });
+
+    this.applyExcelWorksheetFormatting(worksheet, reportTable.columns, rows, reportTable.columnTypes || []);
+  }
+
+  private getExcelTableRows(reportTable: ExcelReportTable): any[][] {
+    const rows = reportTable.rows.length ? reportTable.rows : [
+          [
+            'No records',
+            ...Array.from({ length: Math.max(reportTable.columns.length - 1, 0) }, (): null => null)
+          ]
+        ];
+
+    return rows.map((row: any[]) =>
+      Array.from({ length: reportTable.columns.length }, (_value: unknown, index: number) =>
+        this.getExcelCellValue(row[index], reportTable.columnTypes?.[index])
+      )
+    );
+  }
+
+  private applyExcelWorksheetFormatting(
+    worksheet: ExcelJS.Worksheet,
+    columns: string[],
+    rows: any[][],
+    columnTypes: ExcelColumnType[]
+  ): void {
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 22;
+    headerRow.font = {
+      bold: true
+    };
+    headerRow.alignment = {
+      vertical: 'middle',
+      wrapText: true
+    };
+
+    columns.forEach((column: string, index: number) => {
+      const worksheetColumn = worksheet.getColumn(index + 1);
+      worksheetColumn.width = this.getExcelColumnWidth(column, rows, index);
+      worksheetColumn.alignment = {
+        vertical: 'middle',
+        wrapText: true
+      };
+
+      if (this.isExcelNumericColumn(columnTypes[index])) {
+        worksheetColumn.numFmt = columnTypes[index] === 'integer' ? '#,##0' : '#,##0.00';
+      }
+    });
+  }
+
+  private getExcelColumnWidth(column: string, rows: any[][], columnIndex: number): number {
+    const columnLength = rows.reduce((maxLength: number, row: any[]) => {
+      const value = row[columnIndex];
+      const cellLength = value === null || value === undefined ? 0 : `${value}`.length;
+      return Math.max(maxLength, cellLength);
+    }, column.length);
+
+    return Math.min(Math.max(columnLength + 2, 10), 45);
+  }
+
+  private getExcelCellValue(value: any, columnType: ExcelColumnType = 'text'): string | number | null {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    if (this.isExcelNumericColumn(columnType)) {
+      const numberValue = typeof value === 'string' ? Number(value.replace(/,/g, '')) : Number(value);
+      return Number.isFinite(numberValue) ? numberValue : null;
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    return typeof value === 'object' ? JSON.stringify(value) : value;
+  }
+
+  private isExcelNumericColumn(columnType?: ExcelColumnType): boolean {
+    return columnType === 'number' || columnType === 'integer';
+  }
+
+  private getExcelWorksheetName(worksheetName: string, index: number): string {
+    const sanitizedWorksheetName = worksheetName.replace(/[\\/*?:[\]]/g, ' ').trim();
+    return (sanitizedWorksheetName || `Sheet ${index + 1}`).substring(0, 31);
+  }
+
+  private getExcelTableName(tableName: string, index: number): string {
+    const sanitizedTableName = tableName.replace(/[^A-Za-z0-9_]/g, '_').replace(/^[^A-Za-z_]/, 'ReportTable_');
+    return `${sanitizedTableName || 'ReportTable'}_${index + 1}`.substring(0, 255);
+  }
+
+  private downloadBlob(filename: string, blob: Blob): void {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.href = url;
@@ -769,23 +1046,7 @@ export class TribalLoanPaymentsComponent implements OnInit {
     URL.revokeObjectURL(url);
   }
 
-  private getCsvCellValue(value: any): any {
-    if (value === null || value === undefined) {
-      return '';
-    }
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-    return typeof value === 'object' ? JSON.stringify(value) : value;
-  }
-
-  private escapeCsvValue(value: any): string {
-    const text = (value ?? '').toString();
-    const escapedText = text.replace(/"/g, '""');
-    return /[",\r\n]/.test(escapedText) || /^\s|\s$/.test(escapedText) ? `"${escapedText}"` : escapedText;
-  }
-
-  private getCsvTimestamp(): string {
+  private getExportTimestamp(): string {
     return new Date().toISOString().replace(/\D/g, '').substring(0, 14);
   }
 

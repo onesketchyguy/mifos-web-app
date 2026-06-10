@@ -159,6 +159,10 @@
               {{ ivyTekPipelineRun.activeStage | translate }}
             </span>
             <span>
+              <strong>{{ 'labels.inputs.Reconciliation Status' | translate }}:</strong>
+              {{ ivyTekReconciliationStatusKey | translate }}
+            </span>
+            <span>
               <strong>{{ 'labels.heading.Stage 1 Clients' | translate }}:</strong>
               {{ ivyTekPipelineRun.clientsProcessed || 0 }} / {{ ivyTekPipelineRun.clientsTotal || 0 }}
             </span>
@@ -175,6 +179,13 @@
           @if (ivyTekPipelineRun.message) {
             <p class="ivytek-import-note">{{ ivyTekPipelineRun.message }}</p>
           }
+
+          @if (ivyTekReconciliationStatusMessage) {
+            <p class="ivytek-import-note">
+              <strong>{{ 'labels.inputs.Reconciliation Details' | translate }}:</strong>
+              {{ ivyTekReconciliationStatusMessage }}
+            </p>
+          }
         </div>
       }
 
@@ -186,73 +197,205 @@
               <mat-option value="clients">{{ 'labels.heading.Stage 1 Clients' | translate }}</mat-option>
               <mat-option value="loans">{{ 'labels.heading.Stage 2 Loans' | translate }}</mat-option>
               <mat-option value="transactions">{{ 'labels.heading.Stage 3 Transactions' | translate }}</mat-option>
+              <mat-option value="notes">{{ 'labels.heading.Stage 4 Notes' | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
         </mat-card-content>
       </form>
 
-      <div class="ivytek-file-grid">
-        <div>
-          <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 1 Clients' | translate }}</strong>
-          <h4>{{ 'labels.heading.Select IvyTek Contact CSV File' | translate }}</h4>
-          <mifosx-file-upload flex="75%" (change)="onIvyTekFileSelect($event)" acceptFilter=".csv"></mifosx-file-upload>
-          @if (ivyTekFile) {
-            <mat-hint>{{ ivyTekFile.name }}</mat-hint>
-          }
-        </div>
+      <div class="ivytek-dir-picker-row">
+        <input
+          #ivyTekDirInput
+          type="file"
+          webkitdirectory
+          multiple
+          class="visually-hidden"
+          (change)="onIvyTekDirectorySelected($event)"
+        />
+        <button mat-raised-button color="primary" type="button" (click)="ivyTekDirInput.click()">
+          <i class="fa fa-folder-open"></i>&nbsp;&nbsp;{{ 'labels.buttons.Choose Directory' | translate }}
+        </button>
+        @if (ivyTekDirectoryName) {
+          <span class="ivytek-dir-name">{{ ivyTekDirectoryName }}</span>
+        }
+      </div>
 
-        <div>
-          <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
-          <h4>{{ 'labels.heading.Select IvyTek Loan CSV File' | translate }}</h4>
-          <mifosx-file-upload
-            flex="75%"
-            (change)="onIvyTekLoanFileSelect($event)"
-            acceptFilter=".csv"
-          ></mifosx-file-upload>
-          @if (ivyTekLoanFile) {
-            <mat-hint>{{ ivyTekLoanFile.name }}</mat-hint>
-          }
+      <div class="ivytek-file-status-grid">
+        <div class="ivytek-file-status-row" [class.found]="!!ivyTekFile" [class.missing]="!ivyTekFile">
+          <i class="fa" [class.fa-check-circle]="ivyTekFile" [class.fa-times-circle]="!ivyTekFile"></i>
+          <span
+            >{{ 'labels.heading.Stage 1 Clients' | translate }} —
+            {{ 'labels.heading.Select IvyTek Contact CSV File' | translate }}</span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
         </div>
-
-        <div>
-          <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
-          <h4>{{ 'labels.heading.Select IvyTek Application CSV File' | translate }}</h4>
-          <mifosx-file-upload
-            flex="75%"
-            (change)="onIvyTekApplicationFileSelect($event)"
-            acceptFilter=".csv"
-          ></mifosx-file-upload>
-          @if (ivyTekApplicationFile) {
-            <mat-hint>{{ ivyTekApplicationFile.name }}</mat-hint>
-          }
+        <div class="ivytek-file-status-row" [class.found]="!!ivyTekLoanFile" [class.missing]="!ivyTekLoanFile">
+          <i class="fa" [class.fa-check-circle]="ivyTekLoanFile" [class.fa-times-circle]="!ivyTekLoanFile"></i>
+          <span
+            >{{ 'labels.heading.Stage 2 Loans' | translate }} —
+            {{ 'labels.heading.Select IvyTek Loan CSV File' | translate }}</span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekLoanFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
         </div>
-
-        <div>
-          <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
-          <h4>{{ 'labels.heading.Select IvyTek Contact Applications CSV File' | translate }}</h4>
-          <mifosx-file-upload
-            flex="75%"
-            (change)="onIvyTekLoanContactApplicationsFileSelect($event)"
-            acceptFilter=".csv"
-          ></mifosx-file-upload>
-          @if (ivyTekLoanContactApplicationsFile) {
-            <mat-hint>{{ ivyTekLoanContactApplicationsFile.name }}</mat-hint>
-          }
+        <div
+          class="ivytek-file-status-row"
+          [class.found]="!!ivyTekApplicationFile"
+          [class.optional]="!ivyTekApplicationFile"
+        >
+          <i
+            class="fa"
+            [class.fa-check-circle]="ivyTekApplicationFile"
+            [class.fa-circle-o]="!ivyTekApplicationFile"
+          ></i>
+          <span
+            >{{ 'labels.heading.Stage 2 Loans' | translate }} —
+            {{ 'labels.heading.Select IvyTek Application CSV File' | translate }}
+            <em>({{ 'labels.text.optional' | translate }})</em></span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekApplicationFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
         </div>
-
-        <div>
-          <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 3 Transactions' | translate }}</strong>
-          <h4>{{ 'labels.heading.Select IvyTek Transaction CSV File' | translate }}</h4>
-          <mifosx-file-upload
-            flex="75%"
-            (change)="onIvyTekTransactionFileSelect($event)"
-            acceptFilter=".csv"
-          ></mifosx-file-upload>
-          @if (ivyTekTransactionFile) {
-            <mat-hint>{{ ivyTekTransactionFile.name }}</mat-hint>
-          }
+        <div
+          class="ivytek-file-status-row"
+          [class.found]="!!ivyTekLoanContactApplicationsFile"
+          [class.missing]="!ivyTekLoanContactApplicationsFile"
+        >
+          <i
+            class="fa"
+            [class.fa-check-circle]="ivyTekLoanContactApplicationsFile"
+            [class.fa-times-circle]="!ivyTekLoanContactApplicationsFile"
+          ></i>
+          <span
+            >{{ 'labels.heading.Stage 2 Loans' | translate }} —
+            {{ 'labels.heading.Select IvyTek Contact Applications CSV File' | translate }}</span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekLoanContactApplicationsFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
+        </div>
+        <div
+          class="ivytek-file-status-row"
+          [class.found]="!!ivyTekTransactionFile"
+          [class.missing]="!ivyTekTransactionFile"
+        >
+          <i
+            class="fa"
+            [class.fa-check-circle]="ivyTekTransactionFile"
+            [class.fa-times-circle]="!ivyTekTransactionFile"
+          ></i>
+          <span
+            >{{ 'labels.heading.Stage 3 Transactions' | translate }} —
+            {{ 'labels.heading.Select IvyTek Transaction CSV File' | translate }}</span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekTransactionFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
+        </div>
+        <div class="ivytek-file-status-row" [class.found]="!!ivyTekFeedPostFile" [class.optional]="!ivyTekFeedPostFile">
+          <i class="fa" [class.fa-check-circle]="ivyTekFeedPostFile" [class.fa-circle-o]="!ivyTekFeedPostFile"></i>
+          <span
+            >{{ 'labels.heading.Stage 4 Notes' | translate }} —
+            {{ 'labels.heading.Select FeedPost CSV File' | translate }}
+            <em>({{ 'labels.text.optional' | translate }})</em></span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekFeedPostFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
         </div>
       </div>
+
+      <details class="ivytek-file-overrides">
+        <summary class="ivytek-stage-label">{{ 'labels.text.Override individual files' | translate }}</summary>
+        <div class="ivytek-file-grid">
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 1 Clients' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select IvyTek Contact CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select IvyTek Loan CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekLoanFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select IvyTek Application CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekApplicationFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 2 Loans' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select IvyTek Contact Applications CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekLoanContactApplicationsFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 3 Transactions' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select IvyTek Transaction CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekTransactionFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 4 Notes' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select FeedPost CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekFeedPostFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
+        </div>
+      </details>
+
+      @if (ivyTekTransactionFile || ivyTekFeedPostFile) {
+        <div class="ivytek-sql-db-section">
+          <strong class="ivytek-stage-label">{{ 'labels.heading.SQL Database Connection' | translate }}</strong>
+          <form [formGroup]="ivyTekSqlDbForm" class="ivytek-sql-db-form">
+            <mat-form-field>
+              <mat-label>{{ 'labels.inputs.Host' | translate }}</mat-label>
+              <input matInput formControlName="host" />
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>{{ 'labels.inputs.Port' | translate }}</mat-label>
+              <input matInput type="number" formControlName="port" />
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>{{ 'labels.inputs.Database' | translate }}</mat-label>
+              <input matInput formControlName="dbname" />
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>{{ 'labels.inputs.User' | translate }}</mat-label>
+              <input matInput formControlName="user" />
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>{{ 'labels.inputs.Password' | translate }}</mat-label>
+              <input matInput type="password" formControlName="password" />
+            </mat-form-field>
+          </form>
+        </div>
+      }
 
       @if (ivyTekImporting) {
         <mat-progress-bar
@@ -308,6 +451,63 @@
           <i class="fa fa-upload"></i>&nbsp;&nbsp;{{ 'labels.buttons.Run IvyTek Import' | translate }}
         </button>
       </div>
+
+      @if (hasIvyTekExportableResults) {
+        <div class="ivytek-reconciliation-result">
+          <span>
+            <strong>{{ 'labels.inputs.Reconciliation Status' | translate }}:</strong>
+            {{ ivyTekReconciliationStatusKey | translate }}
+          </span>
+          @if (ivyTekReconciliationStatusMessage) {
+            <span>{{ ivyTekReconciliationStatusMessage }}</span>
+          }
+        </div>
+      }
+
+      @if (ivyTekSqlImportError) {
+        <div class="ivytek-error-message">
+          <strong>{{ 'labels.heading.Error Details' | translate }}</strong>
+          <p>{{ ivyTekSqlImportError }}</p>
+        </div>
+      }
+
+      @if (ivyTekSqlImportResult) {
+        <div class="ivytek-sql-import-result">
+          <p class="ivytek-import-note">{{ ivyTekSqlImportResult.message }}</p>
+          @if (ivyTekSqlImportResult.warnings?.length) {
+            <p class="ivytek-import-note">
+              <strong>{{ 'labels.heading.Warnings' | translate }}:</strong>
+              {{ ivyTekSqlImportResult.warnings.join(' | ') }}
+            </p>
+          }
+          <table class="ivytek-reconciliation-table">
+            <thead>
+              <tr>
+                <th>{{ 'labels.heading.Metric' | translate }}</th>
+                <th>{{ 'labels.heading.Source' | translate }}</th>
+                <th>{{ 'labels.heading.Database' | translate }}</th>
+                <th>{{ 'labels.heading.Difference' | translate }}</th>
+                <th>{{ 'labels.inputs.Status' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of ivyTekSqlImportResult.reconciliation; track row.metric) {
+                <tr
+                  [class.reconciliation-matched]="row.status === 'Matched'"
+                  [class.reconciliation-review]="row.status === 'Needs Review'"
+                  [class.reconciliation-info]="row.status === 'Info'"
+                >
+                  <td>{{ row.metric }}</td>
+                  <td>{{ row.source }}</td>
+                  <td>{{ row.database }}</td>
+                  <td>{{ row.difference }}</td>
+                  <td>{{ row.status }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
 
       @if (ivyTekImportResults.length) {
         <div class="ivytek-results">

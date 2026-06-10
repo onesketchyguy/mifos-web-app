@@ -94,6 +94,8 @@ export class ViewTransactionComponent extends LoanAccountActionsBaseComponent im
   allowUndo = true;
   /** Is able to be Chargeback */
   allowChargeback = true;
+  /** IvyTek SQL import note shown for historical imported transactions. */
+  ivyTekImportNote: any | null = null;
   existTransactionRelations = false;
 
   paymentTypeOptions: {}[] = [];
@@ -168,6 +170,54 @@ export class ViewTransactionComponent extends LoanAccountActionsBaseComponent im
           this.paymentTypeOptions = data;
         });
     }
+    this.loadIvyTekImportNote();
+  }
+
+  /**
+   * Loads the IvyTek SQL import note through the read-only Fineract report.
+   */
+  loadIvyTekImportNote(): void {
+    const externalId = this.transactionData?.externalId;
+    if (!externalId) {
+      return;
+    }
+    this.loansService.getIvyTekTransactionImportNote(String(externalId)).subscribe({
+      next: (response: any) => {
+        this.ivyTekImportNote = this.getIvyTekImportNoteFromReport(response);
+      },
+      error: () => {
+        this.ivyTekImportNote = null;
+      }
+    });
+  }
+
+  /**
+   * Converts a generic run report response to a named object.
+   * @param {any} response Report response.
+   * @returns {any | null} The first report row as a named object.
+   */
+  getIvyTekImportNoteFromReport(response: any): any | null {
+    const row = response?.data?.[0]?.row;
+    const headers = response?.columnHeaders || [];
+    if (!row || !headers.length) {
+      return null;
+    }
+    return headers.reduce((note: any, header: any, index: number) => {
+      note[this.normalizeReportColumnName(header.columnName)] = row[index];
+      return note;
+    }, {});
+  }
+
+  /**
+   * Converts report column names to camelCase keys.
+   * @param {string} columnName Report column name.
+   * @returns {string} Normalized property key.
+   */
+  normalizeReportColumnName(columnName: string): string {
+    const normalized = String(columnName || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9]+(.)/g, (_match: string, character: string) => character.toUpperCase());
+    return normalized.charAt(0).toLowerCase() + normalized.slice(1);
   }
 
   /**

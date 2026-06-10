@@ -174,16 +174,15 @@ export class RunReportComponent implements OnInit {
     this.paramData.forEach((param: ReportParameter) => {
       if (!param.parentParameterName) {
         // Non Child Parameter
-        this.reportForm.addControl(param.name, new UntypedFormControl('', Validators.required));
-        if (param.displayType === 'select') {
-          this.fetchSelectOptions(param, param.name);
-        }
+        this.addReportParameterControl(param);
       } else {
         // Child Parameter
         const parent: ReportParameter = this.paramData.find((entry: any) => entry.name === param.parentParameterName);
         if (parent != null) {
           parent.childParameters.push(param);
           this.updateParentParameters(parent);
+        } else {
+          this.addReportParameterControl(param, this.getOrphanParameterInputString(param));
         }
       }
     });
@@ -215,6 +214,29 @@ export class RunReportComponent implements OnInit {
     this.decimalChoice.patchValue('2');
     this.setChildControls();
     this.addDateRangeValidator();
+  }
+
+  /**
+   * Adds a report parameter control and fetches options for selectable parameters.
+   * @param {ReportParameter} param Report parameter.
+   * @param {string} inputstring Select-options API substring.
+   */
+  private addReportParameterControl(param: ReportParameter, inputstring: string = param.name) {
+    this.reportForm.addControl(param.name, new UntypedFormControl('', Validators.required));
+    if (param.displayType === 'select') {
+      this.fetchSelectOptions(param, inputstring);
+    }
+  }
+
+  /**
+   * Returns fallback input values for parameters whose parent was not added to the report.
+   * @param {ReportParameter} param Report parameter.
+   */
+  private getOrphanParameterInputString(param: ReportParameter): string {
+    if (param.variable === 'loanProductId' && param.parentParameterName === 'currencyIdSelectAll') {
+      return `${param.name}?R_currencyId=-1`;
+    }
+    return param.name;
   }
 
   /**

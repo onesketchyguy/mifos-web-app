@@ -84,3 +84,12 @@
   width: 100%;
   height: 100%;
 }
+
+.transaction-note {
+  display: block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
