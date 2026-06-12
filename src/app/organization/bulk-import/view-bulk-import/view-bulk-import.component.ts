@@ -656,30 +656,41 @@ export class ViewBulkImportComponent implements OnInit {
       const n = norm(f.name);
       return n.includes('contactapplication') || n.includes('contactapp');
     });
-    const loanFile = csvFiles.find((f) => norm(f.name).includes('loan'));
+    const loanFile = csvFiles.find((f) => {
+      const n = norm(f.name);
+      return n.includes('loan') && !n.includes('counter') && !n.includes('projected') && !n.includes('rates');
+    });
     const applicationFile = csvFiles.find((f) => {
       const n = norm(f.name);
-      return n.includes('application') && !n.includes('contact');
+      return n.includes('application') && !n.includes('contact') && !n.includes('checklist') && !n.includes('document');
     });
     const contactFile = csvFiles.find((f) => {
       const n = norm(f.name);
-      return n.includes('contact') && !n.includes('application');
+      return (
+        n.includes('contact') &&
+        !n.includes('ivytektestpkg') &&
+        !n.includes('case') &&
+        !n.includes('role') &&
+        !n.includes('point') &&
+        !n.includes('email') &&
+        !n.includes('request')
+      );
     });
     const transactionFile = csvFiles.find((f) => {
       const n = norm(f.name);
-      return n.includes('transaction') || n.includes('history');
+      return n.includes('transactions') && !n.includes('details');
     });
     const feedPostFile = csvFiles.find((f) => norm(f.name).includes('feedpost'));
 
-    if (contactFile) this.ivyTekFile = contactFile;
-    if (loanFile) this.ivyTekLoanFile = loanFile;
-    if (applicationFile) this.ivyTekApplicationFile = applicationFile;
-    if (contactAppFile) this.ivyTekLoanContactApplicationsFile = contactAppFile;
-    if (transactionFile) {
-      this.ivyTekTransactionFile = transactionFile;
-      this.ivyTekSqlCsvFile = transactionFile;
-    }
-    if (feedPostFile) this.ivyTekFeedPostFile = feedPostFile;
+    // Always overwrite (including with null) so stale File handles from a previous
+    // directory pick don't silently return empty content when re-read.
+    this.ivyTekFile = contactFile ?? null;
+    this.ivyTekLoanFile = loanFile ?? null;
+    this.ivyTekApplicationFile = applicationFile ?? null;
+    this.ivyTekLoanContactApplicationsFile = contactAppFile ?? null;
+    this.ivyTekTransactionFile = transactionFile ?? null;
+    this.ivyTekSqlCsvFile = transactionFile ?? null;
+    this.ivyTekFeedPostFile = feedPostFile ?? null;
 
     this.ivyTekImportResults = [];
     this.ivyTekLoanImportResults = [];
@@ -828,7 +839,7 @@ export class ViewBulkImportComponent implements OnInit {
         ...applicationRows,
         ...contactApplicationRows
       ];
-      const loanRows = this.parseCsv(await this.readFileAsText(this.ivyTekLoanFile));
+      const loanRows = this.ivyTekLoanFile ? this.parseCsv(await this.readFileAsText(this.ivyTekLoanFile)) : [];
       const transactionRows =
         this.ivyTekTransactionFile && (shouldRunLoans || shouldRunTransactions)
           ? this.parseCsv(await this.readFileAsText(this.ivyTekTransactionFile))
@@ -1422,11 +1433,19 @@ export class ViewBulkImportComponent implements OnInit {
         : Promise.resolve(null)
     ]);
 
+    if (!csvText || !csvText.trim()) {
+      this.ivyTekSqlImportError = `Transaction file "${this.ivyTekSqlCsvFile!.name}" was read but is empty. Re-pick the directory to refresh the file reference.`;
+      this.ivyTekSqlImportRunning = false;
+      return;
+    }
+
     const body = JSON.stringify({
       db: this.ivyTekSqlDbForm.value,
       apply,
       createdBy: 4,
       csvText,
+      csvFileName: this.ivyTekSqlCsvFile!.name,
+      csvFileSizeOnDisk: this.ivyTekSqlCsvFile!.size,
       loanCsvText,
       contactCsvText,
       applicationCsvText,
@@ -1441,12 +1460,12 @@ export class ViewBulkImportComponent implements OnInit {
       });
       const result = await response.json();
       if (!response.ok) {
-        this.ivyTekSqlImportError = result?.message || `Server error ${response.status}`;
+        this.ivyTekSqlImportError = this.formatSqlImportError(result, response.status);
         this.ivyTekReconciliationStatusKey = 'labels.text.Reconciliation Needs Review';
       } else {
         this.ivyTekSqlImportResult = result;
         if (!result.success) {
-          this.ivyTekSqlImportError = result.message || 'Import did not complete successfully.';
+          this.ivyTekSqlImportError = this.formatSqlImportError(result, null);
           this.ivyTekReconciliationStatusKey = 'labels.text.Reconciliation Needs Review';
         } else {
           const reviewRows = (result.reconciliation ?? []).filter((r: any) => r.status === 'Needs Review');
@@ -10705,6 +10724,26 @@ export class ViewBulkImportComponent implements OnInit {
    * Gets the most useful message from a failed API response.
    * @param {any} error API or runtime error.
    */
+  private formatSqlImportError(result: any, httpStatus: number | null): string {
+    const base =
+      result?.message || (httpStatus ? `Server error ${httpStatus}` : 'Import did not complete successfully.');
+    const pg = result?.error;
+    if (!pg) return base;
+    const extras = [
+      pg.pgCode ? `PG ${pg.pgCode}` : null,
+      pg.pgDetail ? `Detail: ${pg.pgDetail}` : null,
+      pg.pgHint ? `Hint: ${pg.pgHint}` : null,
+      pg.pgPosition ? `Position: ${pg.pgPosition}` : null,
+      pg.pgTable ? `Table: ${pg.pgTable}` : null,
+      pg.pgColumn ? `Column: ${pg.pgColumn}` : null,
+      pg.pgConstraint ? `Constraint: ${pg.pgConstraint}` : null,
+      pg.pgWhere ? `Where: ${pg.pgWhere}` : null
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    return extras ? `${base} — ${extras}` : base;
+  }
+
   private getErrorMessage(error: any): string {
     const errorBody = error?.error;
     const messages = [
@@ -10740,24 +10779,38 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekFeedPostImportResult = null;
 
     try {
-      const feedPostCsvText = await this.readFileAsText(this.ivyTekFeedPostFile);
+      const [
+        feedPostCsvText,
+        loanCsvText
+      ] = await Promise.all([
+        this.readFileAsText(this.ivyTekFeedPostFile),
+        this.ivyTekLoanFile ? this.readFileAsText(this.ivyTekLoanFile) : Promise.resolve(null)
+      ]);
+
+      if (!feedPostCsvText || !feedPostCsvText.trim()) {
+        this.ivyTekFeedPostImportError = `FeedPost file "${this.ivyTekFeedPostFile.name}" was read but is empty. Re-pick the directory to refresh the file reference.`;
+        this.ivyTekFeedPostImportRunning = false;
+        return;
+      }
+
       const response = await fetch('/api/ivytek/feedpost-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           db: this.ivyTekSqlDbForm.value,
           feedPostCsvText,
+          loanCsvText,
           createdBy: 4,
           apply
         })
       });
       const result = await response.json();
       if (!response.ok) {
-        this.ivyTekFeedPostImportError = result?.message || `Server error ${response.status}`;
+        this.ivyTekFeedPostImportError = this.formatSqlImportError(result, response.status);
       } else {
         this.ivyTekFeedPostImportResult = result;
         if (!result.success) {
-          this.ivyTekFeedPostImportError = result.message || 'FeedPost import did not complete successfully.';
+          this.ivyTekFeedPostImportError = this.formatSqlImportError(result, null);
         }
       }
     } catch {

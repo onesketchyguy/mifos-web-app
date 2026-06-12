@@ -22,6 +22,9 @@ const PORT = parseInt(process.env['SQL_IMPORT_PORT'] || '3001', 10);
 const NOTE_PREFIX = 'IvyTek SQL history import:';
 const DETAILS_TABLE = 'c_transaction_details';
 const DEFAULT_BATCH_SIZE = 500;
+const IMPORT_NOTE_REPORT_NAME = 'IvyTek Transaction Import Note';
+const IMPORT_NOTE_PARAMETER_NAME = 'IvyTekTransactionExternalId';
+const IMPORT_NOTE_PARAMETER_VARIABLE = 'transactionExternalId';
 const FEEDPOST_NOTE_PREFIX = 'IvyTek FeedPost import:';
 const FEEDPOST_TRACKING_TABLE = 'm_ivytek_imported_feedpost_note';
 const NOTE_TYPE_LOAN = 200;
@@ -220,6 +223,7 @@ function stripHtml(value) {
   if (!value) return '';
   let text = String(value)
     .replace(/<(\/?)(\w+)[^>]*>/g, (_, _slash, tag) => (_HTML_BLOCK_TAGS.has(tag.toLowerCase()) ? '\n' : ''))
+    .replace(/\\highlight\d*/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -444,10 +448,13 @@ function processTransaction(txn) {
 // SQL helpers
 // ---------------------------------------------------------------------------
 
-function valuesClause(rowCount, colCount, offset = 0) {
+function valuesClause(rowCount, colCount, offset = 0, types = null) {
   const rows = [];
   for (let r = 0; r < rowCount; r++) {
-    const cols = Array.from({ length: colCount }, (_, c) => `$${offset + r * colCount + c + 1}`);
+    const cols = Array.from({ length: colCount }, (_, c) => {
+      const p = `$${offset + r * colCount + c + 1}`;
+      return types && types[c] ? `${p}::${types[c]}` : p;
+    });
     rows.push(`(${cols.join(', ')})`);
   }
   return rows.join(', ');
@@ -474,6 +481,81 @@ async function ensureDetailsTable(client) {
   `);
 }
 
+async function ensureImportNoteReport(client) {
+  const reportSql = [
+    `select note as "Import Note"`,
+    `from ${DETAILS_TABLE}`,
+    `where transaction_external_id = '\${${IMPORT_NOTE_PARAMETER_VARIABLE}}'`,
+    `   or transaction_external_id = regexp_replace('\${${IMPORT_NOTE_PARAMETER_VARIABLE}}', '^ivytek-txn-', '')`,
+    `order by id`
+  ].join('\n');
+
+  const reportResult = await client.query(
+    `
+    insert into stretchy_report (
+      id, report_name, report_type, report_subtype, report_category,
+      report_sql, description, core_report, use_report, self_service_user_report
+    ) values (
+      nextval('stretchy_report_id_seq'), $1, 'Table', null, 'Loan',
+      $2, 'Read-only IvyTek imported transaction note lookup by transaction external id.',
+      false, true, false
+    )
+    on conflict (report_name) do update set
+      report_type = excluded.report_type,
+      report_subtype = excluded.report_subtype,
+      report_category = excluded.report_category,
+      report_sql = excluded.report_sql,
+      description = excluded.description,
+      use_report = true
+    returning id
+    `,
+    [
+      IMPORT_NOTE_REPORT_NAME,
+      reportSql
+    ]
+  );
+  const reportId = reportResult.rows[0].id;
+
+  const paramResult = await client.query(
+    `
+    insert into stretchy_parameter (
+      id, parameter_name, parameter_variable, parameter_label,
+      "parameter_displayType", "parameter_FormatType", parameter_default,
+      special, "selectOne", "selectAll", parameter_sql, parent_id
+    ) values (
+      nextval('stretchy_parameter_id_seq'), $1, $2, 'Transaction External Id',
+      'text', 'string', 'n/a', null, null, null, null, null
+    )
+    on conflict (parameter_name) do update set
+      parameter_variable = excluded.parameter_variable,
+      parameter_label = excluded.parameter_label,
+      "parameter_displayType" = excluded."parameter_displayType",
+      "parameter_FormatType" = excluded."parameter_FormatType",
+      parameter_default = excluded.parameter_default
+    returning id
+    `,
+    [
+      IMPORT_NOTE_PARAMETER_NAME,
+      IMPORT_NOTE_PARAMETER_VARIABLE
+    ]
+  );
+  const parameterId = paramResult.rows[0].id;
+
+  await client.query(
+    `
+    insert into stretchy_report_parameter (id, report_id, parameter_id, report_parameter_name)
+    values (nextval('stretchy_report_parameter_id_seq'), $1, $2, $3)
+    on conflict (report_id, parameter_id) do update set
+      report_parameter_name = excluded.report_parameter_name
+    `,
+    [
+      reportId,
+      parameterId,
+      IMPORT_NOTE_PARAMETER_VARIABLE
+    ]
+  );
+}
+
 async function insertTransactionDetails(client, records, batchSize) {
   let upserted = 0;
   for (const batch of chunks(records, batchSize)) {
@@ -493,41 +575,53 @@ async function insertTransactionDetails(client, records, batchSize) {
 }
 
 async function insertTransactions(client, records, createdBy, batchSize) {
+  // Uses UNNEST with typed arrays — avoids CTE VALUES null-type-inference issues
+  // that cause "could not determine data type of parameter $N" in PostgreSQL.
   let inserted = 0,
     updated = 0;
   for (const batch of chunks(records, batchSize)) {
-    const params = [];
-    for (const rec of batch) {
-      params.push(
-        rec.externalId,
-        rec.loanId,
-        rec.transactionTypeEnum,
-        rec.transactionDate,
-        rec.amount,
-        rec.principal,
-        rec.interest,
-        null,
-        null,
-        null,
-        null,
-        null,
-        rec.transactionDate,
-        rec.voided,
-        rec.voided ? rec.transactionDate : null
-      );
-    }
-    const colCount = 15;
-    const cbOffset = batch.length * colCount;
-    params.push(createdBy, createdBy);
-    const cte = `with src(
-        external_id, loan_id, transaction_type_enum, transaction_date, amount,
-        principal, interest, fee, penalty, overpayment, unrecognized,
-        outstanding_balance, submitted_on_date, is_reversed, reversed_on_date
-      ) as (values ${valuesClause(batch.length, colCount)})`;
+    const externalIds = batch.map((r) => r.externalId);
+    const loanIds = batch.map((r) => r.loanId);
+    const typeEnums = batch.map((r) => r.transactionTypeEnum);
+    const dates = batch.map((r) => r.transactionDate);
+    const amounts = batch.map((r) => r.amount);
+    const principals = batch.map((r) => r.principal ?? null);
+    const interests = batch.map((r) => r.interest ?? null);
+    const isReversed = batch.map((r) => r.voided);
+
+    const unnest = `unnest(
+        $1::varchar[], $2::bigint[], $3::smallint[], $4::date[],
+        $5::numeric[], $6::numeric[], $7::numeric[], $8::boolean[]
+      ) as s(external_id, loan_id, transaction_type_enum, transaction_date,
+             amount, principal, interest, is_reversed)`;
+
+    // INSERT uses $9=created_by and $10=last_modified_by; UPDATE only needs $9=last_modified_by
+    const insertParams = [
+      externalIds,
+      loanIds,
+      typeEnums,
+      dates,
+      amounts,
+      principals,
+      interests,
+      isReversed,
+      createdBy,
+      createdBy
+    ];
+    const updateParams = [
+      externalIds,
+      loanIds,
+      typeEnums,
+      dates,
+      amounts,
+      principals,
+      interests,
+      isReversed,
+      createdBy
+    ];
 
     const insertResult = await client.query(
       `
-      ${cte}
       insert into m_loan_transaction (
         id, loan_id, office_id, payment_detail_id, is_reversed, external_id,
         transaction_type_enum, transaction_date, amount, principal_portion_derived,
@@ -540,62 +634,56 @@ async function insertTransactions(client, records, createdBy, batchSize) {
       )
       select
         nextval('m_loan_transaction_id_seq'),
-        s.loan_id::bigint,
+        s.loan_id,
         coalesce(c.office_id, g.office_id, 1::bigint)::bigint,
         null,
-        s.is_reversed::boolean,
-        s.external_id::varchar,
-        s.transaction_type_enum::smallint,
-        s.transaction_date::date,
-        s.amount::numeric,
-        coalesce(s.principal::numeric, 0::numeric),
-        coalesce(s.interest::numeric, 0::numeric),
-        coalesce(s.fee::numeric, 0::numeric),
-        coalesce(s.penalty::numeric, 0::numeric),
-        coalesce(s.overpayment::numeric, 0::numeric),
-        coalesce(s.unrecognized::numeric, 0::numeric),
-        coalesce(s.outstanding_balance::numeric, 0::numeric),
-        s.submitted_on_date::date,
+        s.is_reversed,
+        s.external_id,
+        s.transaction_type_enum,
+        s.transaction_date,
+        s.amount,
+        coalesce(s.principal, 0::numeric),
+        coalesce(s.interest, 0::numeric),
+        0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric,
+        s.transaction_date,
         false,
         current_timestamp,
-        $${cbOffset + 1},
-        $${cbOffset + 2},
+        $9::bigint, $10::bigint,
         current_timestamp, current_timestamp,
         null, null,
-        s.reversed_on_date::date
-      from src s
-      join m_loan l on l.id = s.loan_id::bigint
+        case when s.is_reversed then s.transaction_date else null end
+      from ${unnest}
+      join m_loan l on l.id = s.loan_id
       left join m_client c on c.id = l.client_id
       left join m_group g on g.id = l.group_id
       where not exists (
-        select 1 from m_loan_transaction t where t.external_id = s.external_id::varchar
+        select 1 from m_loan_transaction t where t.external_id = s.external_id
       )`,
-      params
+      insertParams
     );
     inserted += insertResult.rowCount ?? 0;
 
     const updateResult = await client.query(
       `
-      ${cte}
       update m_loan_transaction t set
-        transaction_type_enum       = s.transaction_type_enum::smallint,
-        transaction_date            = s.transaction_date::date,
-        amount                      = s.amount::numeric,
-        principal_portion_derived   = coalesce(s.principal::numeric, 0::numeric),
-        interest_portion_derived    = coalesce(s.interest::numeric, 0::numeric),
-        fee_charges_portion_derived = coalesce(s.fee::numeric, 0::numeric),
-        penalty_charges_portion_derived  = coalesce(s.penalty::numeric, 0::numeric),
-        overpayment_portion_derived      = coalesce(s.overpayment::numeric, 0::numeric),
-        unrecognized_income_portion      = coalesce(s.unrecognized::numeric, 0::numeric),
-        outstanding_loan_balance_derived = coalesce(s.outstanding_balance::numeric, 0::numeric),
-        submitted_on_date           = s.submitted_on_date::date,
-        is_reversed                 = s.is_reversed::boolean,
-        reversed_on_date            = s.reversed_on_date::date,
-        last_modified_by            = $${cbOffset + 2},
-        last_modified_on_utc        = current_timestamp
-      from src s
-      where t.external_id = s.external_id::varchar`,
-      params
+        transaction_type_enum            = s.transaction_type_enum,
+        transaction_date                 = s.transaction_date,
+        amount                           = s.amount,
+        principal_portion_derived        = coalesce(s.principal, 0::numeric),
+        interest_portion_derived         = coalesce(s.interest, 0::numeric),
+        fee_charges_portion_derived      = 0::numeric,
+        penalty_charges_portion_derived  = 0::numeric,
+        overpayment_portion_derived      = 0::numeric,
+        unrecognized_income_portion      = 0::numeric,
+        outstanding_loan_balance_derived = 0::numeric,
+        submitted_on_date                = s.transaction_date,
+        is_reversed                      = s.is_reversed,
+        reversed_on_date                 = case when s.is_reversed then s.transaction_date else null end,
+        last_modified_by                 = $9::bigint,
+        last_modified_on_utc             = current_timestamp
+      from ${unnest}
+      where t.external_id = s.external_id`,
+      updateParams
     );
     updated += updateResult.rowCount ?? 0;
   }
@@ -745,7 +833,10 @@ async function runImport({ db, transactions, createdBy = 4, apply = false }) {
       const upsertResult = await insertTransactions(client, records, createdBy, DEFAULT_BATCH_SIZE);
       insertedCount = upsertResult.inserted;
       updatedCount = upsertResult.updated;
-      if (detailsTableReady) await insertTransactionDetails(client, records, DEFAULT_BATCH_SIZE);
+      if (detailsTableReady) {
+        await insertTransactionDetails(client, records, DEFAULT_BATCH_SIZE);
+        await ensureImportNoteReport(client);
+      }
     }
 
     const dbTotals = await fetchDbTotals(client, externalIds, DEFAULT_BATCH_SIZE);
@@ -859,6 +950,20 @@ function parseSourceDateString(value) {
   return null;
 }
 
+const MAX_NOTE_LEN = 1000;
+
+function splitNote(fullText) {
+  if (fullText.length <= MAX_NOTE_LEN) return [fullText];
+  // Reserve 10 chars for the " (NN/NN)" suffix; handles up to 99 parts.
+  const chunkSize = MAX_NOTE_LEN - 10;
+  const rawChunks = [];
+  for (let i = 0; i < fullText.length; i += chunkSize) {
+    rawChunks.push(fullText.slice(i, i + chunkSize).trimEnd());
+  }
+  const n = rawChunks.length;
+  return rawChunks.map((c, idx) => `${c} (${idx + 1}/${n})`);
+}
+
 function parseFeedPostCsv(text) {
   const rows = parseCsv(text);
   const records = [];
@@ -880,8 +985,12 @@ function parseFeedPostCsv(text) {
     const body = stripHtml(rawBody);
     if (!body) continue;
     const createdDate = parseSourceDateString(row['CreatedDate'] || '');
-    const header = `${FEEDPOST_NOTE_PREFIX} source ${sourceId}${createdDate ? `; created ${createdDate}` : ''}`;
-    records.push({ sourceId, parentId, loanId: null, note: `${header}\n${body}` });
+    const rawCreatedDate = (row['CreatedDate'] || '').trim() || null;
+    const parts = splitNote(body);
+    for (let p = 0; p < parts.length; p++) {
+      const partSourceId = parts.length > 1 ? `${sourceId}-p${p + 1}` : sourceId;
+      records.push({ sourceId: partSourceId, parentId, loanId: null, note: parts[p], createdDate, rawCreatedDate });
+    }
   }
   return { records, errors };
 }
@@ -965,14 +1074,17 @@ async function insertFeedPostNotes(client, records, createdBy) {
         nextval('m_note_id_seq'),
         null, null, $1, null, null, null, null,
         ${NOTE_TYPE_LOAN}, $2,
-        current_timestamp, $3, current_timestamp, $3,
-        current_timestamp, current_timestamp
+        coalesce($4::date, current_timestamp::date), $3,
+        coalesce($4::date, current_timestamp::date), $3,
+        coalesce($5::timestamptz, current_timestamp), current_timestamp
       ) returning id
     `,
       [
         record.loanId,
         record.note,
-        createdBy
+        createdBy,
+        record.createdDate ?? null,
+        record.rawCreatedDate ?? null
       ]
     );
     await client.query(`insert into ${FEEDPOST_TRACKING_TABLE} (note_id, source_id, parent_id) values ($1, $2, $3)`, [
@@ -985,7 +1097,7 @@ async function insertFeedPostNotes(client, records, createdBy) {
   return inserted;
 }
 
-async function runFeedPostImport({ db, feedPostCsvText, createdBy = 4, apply = false }) {
+async function runFeedPostImport({ db, feedPostCsvText, loanCsvText, createdBy = 4, apply = false }) {
   const { records: parsedRecords, errors } = parseFeedPostCsv(feedPostCsvText);
   const warnings = [...errors];
 
@@ -1000,6 +1112,13 @@ async function runFeedPostImport({ db, feedPostCsvText, createdBy = 4, apply = f
     };
   }
 
+  // Build ParentId → legacy account number map from the loan CSV when provided.
+  // FeedPost ParentId = Salesforce loan object Id, which appears as the Id column
+  // in IvyTekTestPkg__Loan_C.csv. buildLoanIdentifierMap keys that Id to account_no.
+  const loanIdentifierMap = loanCsvText ? buildLoanIdentifierMap(parseCsv(loanCsvText)) : null;
+  if (loanIdentifierMap)
+    warnings.push(`Loan cross-reference: ${loanIdentifierMap.size} identifier(s) loaded from loan CSV.`);
+
   const client = new Client({
     host: db.host,
     port: db.port ?? 5432,
@@ -1011,11 +1130,32 @@ async function runFeedPostImport({ db, feedPostCsvText, createdBy = 4, apply = f
   try {
     await client.query('BEGIN');
 
-    const loanLookup = await lookupLoansByParentId(
-      client,
-      [...new Set(parsedRecords.map((r) => r.parentId))],
-      DEFAULT_BATCH_SIZE
-    );
+    const uniqueParentIds = [...new Set(parsedRecords.map((r) => r.parentId))];
+
+    // Resolve parentIds to legacy account numbers via the loan CSV map, then
+    // look up m_loan.id by account_no. Fall back to direct external_id / account_no
+    // lookup for any parentId not found in the map.
+    const resolvedAccountNos = loanIdentifierMap
+      ? uniqueParentIds.map((id) => loanIdentifierMap.get(id)).filter(Boolean)
+      : uniqueParentIds;
+    const directIds = loanIdentifierMap ? uniqueParentIds.filter((id) => !loanIdentifierMap.has(id)) : [];
+
+    const loanLookup = new Map();
+    if (resolvedAccountNos.length) {
+      const accountNoMap = await lookupLoanIds(client, resolvedAccountNos);
+      for (const parentId of uniqueParentIds) {
+        const accountNo = loanIdentifierMap?.get(parentId);
+        if (accountNo) {
+          const loanId = accountNoMap.get(accountNo);
+          if (loanId !== undefined) loanLookup.set(parentId, loanId);
+        }
+      }
+    }
+    if (directIds.length) {
+      const fallback = await lookupLoansByParentId(client, directIds, DEFAULT_BATCH_SIZE);
+      fallback.forEach((loanId, parentId) => loanLookup.set(parentId, loanId));
+    }
+
     const unmatched = [];
     const records = [];
     for (const rec of parsedRecords) {
@@ -1117,24 +1257,53 @@ async function handleFeedPostImport(req, res) {
     return jsonResponse(res, 400, { success: false, message: 'Invalid JSON body.' });
   }
 
-  const { db, apply = false, createdBy = 4, feedPostCsvText } = body;
+  const { db, apply = false, createdBy = 4, feedPostCsvText, loanCsvText } = body;
   if (!db?.host || !db?.dbname || !db?.user)
     return jsonResponse(res, 400, { success: false, message: 'Missing required db fields: host, dbname, user.' });
   if (!feedPostCsvText)
-    return jsonResponse(res, 400, { success: false, message: 'Missing feedPostCsvText in request body.' });
+    return jsonResponse(res, 400, {
+      success: false,
+      message: 'FeedPost CSV body is missing or empty (feedPostCsvText field not sent).'
+    });
+
+  console.log(`[IvyTek FeedPost] received feedPostCsvText: ${feedPostCsvText.length} bytes`);
+  const fpRows = parseCsv(feedPostCsvText);
+  if (!fpRows.length)
+    return jsonResponse(res, 400, {
+      success: false,
+      message: `FeedPost CSV is empty or has no data rows (received ${feedPostCsvText.length} bytes). Check that the correct file was selected and the directory was re-picked after any folder change.`
+    });
 
   try {
-    const result = await runFeedPostImport({ db, feedPostCsvText, createdBy, apply });
+    const result = await runFeedPostImport({ db, feedPostCsvText, loanCsvText, createdBy, apply });
     jsonResponse(res, 200, result);
   } catch (e) {
     console.error('[IvyTek FeedPost] Import error:', e);
-    jsonResponse(res, 500, { success: false, message: `FeedPost import failed: ${e.message}` });
+    jsonResponse(res, 500, {
+      success: false,
+      message: `FeedPost import failed: ${e.message}`,
+      error: pgErrorDetail(e)
+    });
   }
 }
 
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
+
+function pgErrorDetail(e) {
+  const detail = { message: e.message };
+  if (e.code) detail.pgCode = e.code;
+  if (e.detail) detail.pgDetail = e.detail;
+  if (e.hint) detail.pgHint = e.hint;
+  if (e.position) detail.pgPosition = e.position;
+  if (e.where) detail.pgWhere = e.where;
+  if (e.schema) detail.pgSchema = e.schema;
+  if (e.table) detail.pgTable = e.table;
+  if (e.column) detail.pgColumn = e.column;
+  if (e.constraint) detail.pgConstraint = e.constraint;
+  return detail;
+}
 
 async function handleSqlImportCsv(req, res) {
   let body;
@@ -1147,10 +1316,21 @@ async function handleSqlImportCsv(req, res) {
   const { db, apply = false, createdBy = 4, csvText, loanCsvText } = body;
   if (!db?.host || !db?.dbname || !db?.user)
     return jsonResponse(res, 400, { success: false, message: 'Missing required db fields: host, dbname, user.' });
-  if (!csvText) return jsonResponse(res, 400, { success: false, message: 'Missing csvText in request body.' });
+  if (!csvText)
+    return jsonResponse(res, 400, {
+      success: false,
+      message: 'Transaction CSV body is missing or empty (csvText field not sent).'
+    });
 
+  const csvFileName = body.csvFileName || '(unknown)';
+  console.log(`[IvyTek SQL-CSV] "${csvFileName}" received ${csvText.length} bytes`);
+  console.log(`[IvyTek SQL-CSV] first 300 chars: ${csvText.slice(0, 300).replace(/\n/g, '\\n')}`);
   const rows = parseCsv(csvText);
-  if (!rows.length) return jsonResponse(res, 400, { success: false, message: 'CSV is empty or has no data rows.' });
+  if (!rows.length)
+    return jsonResponse(res, 400, {
+      success: false,
+      message: `Transaction CSV "${csvFileName}" is empty or has no data rows (received ${csvText.length} bytes, file reports ${body.csvFileSizeOnDisk ?? '?'} bytes on disk). First 200 chars: ${csvText.slice(0, 200)}`
+    });
 
   let loanIdentifierMap;
   if (loanCsvText) {
@@ -1214,7 +1394,37 @@ async function handleSqlImportCsv(req, res) {
     jsonResponse(res, 200, result);
   } catch (e) {
     console.error('[IvyTek SQL] Import error:', e);
-    jsonResponse(res, 500, { success: false, message: `Import failed: ${e.message}` });
+    jsonResponse(res, 500, { success: false, message: `Import failed: ${e.message}`, error: pgErrorDetail(e) });
+  }
+}
+
+async function handleEnsureReport(req, res) {
+  let body;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return jsonResponse(res, 400, { success: false, message: 'Invalid JSON body.' });
+  }
+  const { db } = body;
+  if (!db?.host || !db?.dbname || !db?.user)
+    return jsonResponse(res, 400, { success: false, message: 'Missing required db fields: host, dbname, user.' });
+
+  const client = new Client({
+    host: db.host,
+    port: db.port ?? 5432,
+    database: db.dbname,
+    user: db.user,
+    password: db.password
+  });
+  try {
+    await client.connect();
+    await ensureDetailsTable(client);
+    await ensureImportNoteReport(client);
+    return jsonResponse(res, 200, { success: true, message: 'Transaction notes table and Fineract report are ready.' });
+  } catch (e) {
+    return jsonResponse(res, 500, { success: false, message: `Setup failed: ${e.message}` });
+  } finally {
+    await client.end().catch(() => {});
   }
 }
 
@@ -1240,6 +1450,9 @@ function startInlineServer() {
     }
     if (req.url === '/api/ivytek/feedpost-import' && req.method === 'POST') {
       return handleFeedPostImport(req, res);
+    }
+    if (req.url === '/api/ivytek/ensure-report' && req.method === 'POST') {
+      return handleEnsureReport(req, res);
     }
     jsonResponse(res, 404, { message: 'Not found' });
   });

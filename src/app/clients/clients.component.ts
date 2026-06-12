@@ -111,7 +111,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   displayedColumns = [
     'displayName',
     'entityIdNumber',
-    'loanOfficer'
+    'activeBalance'
   ];
   dataSource: MatTableDataSource<any> = new MatTableDataSource();
   duplicateClientGroups: Array<{ name: string; clients: any[]; primaryClient: any }> = [];
@@ -309,10 +309,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     return (client?.id || client?.clientId || client?.entityId || '').toString();
   }
 
-  getLoanOfficer(client: any): string {
-    return this.getLoanOfficerValue(client);
-  }
-
   private loadClientRowDetails(clients: any[]): void {
     this.entityIdsRequestSub?.unsubscribe();
 
@@ -320,28 +316,25 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.entityIdsRequestSub = this.clientService
-      .getClientDatatables()
-      .pipe(
-        catchError(() => of([])),
-        switchMap((clientDatatables: any[]) => {
-          const datatableNames = (clientDatatables || [])
-            .map((datatable: any) => datatable.registeredTableName)
-            .filter((datatableName: string) => !!datatableName);
-
-          const clientDetailsRequests = clients.map((client: any) => this.getClientRowDetails(client, datatableNames));
-          return forkJoin(clientDetailsRequests);
-        }),
-        takeUntil(this.destroy$)
-      )
-      .subscribe((clientDetails: Array<{ entityIdNumber: string | number | null; loanOfficer: string }>) => {
-        this.dataSource.data = clients.map((client: any, index: number) => ({
-          ...client,
-          entityIdNumber: clientDetails[index].entityIdNumber,
-          loanOfficer: clientDetails[index].loanOfficer
-        }));
-        this.refreshDuplicateClientGroups();
-      });
+    this.entityIdsRequestSub = forkJoin(clients.map((client: any) => this.getClientRowDetails(client)))
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(
+        (
+          clientDetails: Array<{
+            entityIdNumber: string | number | null;
+            loanOfficer: string;
+            activeBalance: number | null;
+          }>
+        ) => {
+          this.dataSource.data = clients.map((client: any, index: number) => ({
+            ...client,
+            entityIdNumber: clientDetails[index].entityIdNumber,
+            loanOfficer: clientDetails[index].loanOfficer,
+            activeBalance: clientDetails[index].activeBalance
+          }));
+          this.refreshDuplicateClientGroups();
+        }
+      );
   }
 
   toggleAdvancedOptions(): void {
@@ -451,29 +444,49 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   private getClientRowDetails(
-    client: any,
-    datatableNames: string[]
-  ): Observable<{ entityIdNumber: string | number | null; loanOfficer: string }> {
+    client: any
+  ): Observable<{ entityIdNumber: string | number | null; loanOfficer: string; activeBalance: number | null }> {
+    const clientId = client.id?.toString();
     return forkJoin({
-      entityIdNumber: this.getClientEntityId(client.id?.toString(), datatableNames),
-      loanOfficer: this.getClientLoanOfficer(client)
+      entityIdNumber: this.getClientEntityId(clientId),
+      loanOfficer: this.getClientLoanOfficer(client),
+      activeBalance: this.getClientActiveBalance(clientId)
     });
   }
 
-  private getClientEntityId(
-    clientId: string | null | undefined,
-    datatableNames: string[]
-  ): Observable<string | number | null> {
-    if (!clientId || datatableNames.length === 0) {
+  private getClientEntityId(clientId: string | null | undefined): Observable<string | number | null> {
+    if (!clientId) {
       return of(null);
     }
 
-    const datatableRequests = datatableNames.map((datatableName: string) =>
-      this.clientService.getClientDatatable(clientId, datatableName).pipe(catchError(() => of(null)))
+    return this.clientService.getClientIdentifiers(clientId).pipe(
+      map((identifiers: any[]) => {
+        const normalizedNames = this.entityIdColumnNames.map((n: string) => this.normalizeColumnName(n));
+        const match = (identifiers || []).find((identifier: any) =>
+          normalizedNames.includes(this.normalizeColumnName(identifier?.documentType?.name))
+        );
+        return match?.documentKey ?? null;
+      }),
+      catchError(() => of(null))
     );
+  }
 
-    return forkJoin(datatableRequests).pipe(
-      map((datatables: any[]) => this.getFirstDatatableColumnValue(datatables, this.entityIdColumnNames)),
+  private getClientActiveBalance(clientId: string | null | undefined): Observable<number | null> {
+    if (!clientId) {
+      return of(null);
+    }
+
+    return this.clientService.getClientAccountData(clientId).pipe(
+      map((accounts: any) => {
+        const activeLoans = (accounts?.loanAccounts || []).filter((loan: any) => {
+          const status = loan?.status;
+          if (!status) return false;
+          if (typeof status === 'string') return status.toLowerCase() === 'active';
+          if (typeof status === 'object' && status.value) return status.value.toLowerCase() === 'active';
+          return false;
+        });
+        return activeLoans.reduce((sum: number, loan: any) => sum + (loan.loanBalance || 0), 0);
+      }),
       catchError(() => of(null))
     );
   }
@@ -507,36 +520,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
       staff?.displayName ||
       ''
     );
-  }
-
-  private getFirstDatatableColumnValue(datatables: any[], columnNames: string[]): string | number | null {
-    for (const datatable of datatables) {
-      const columnValue = this.getDatatableColumnValue(datatable, columnNames);
-      if (columnValue !== null) {
-        return columnValue;
-      }
-    }
-    return null;
-  }
-
-  private getDatatableColumnValue(datatable: any, columnNames: string[]): string | number | null {
-    const row = datatable?.data?.[0]?.row;
-    const columnHeaders = datatable?.columnHeaders || [];
-    if (!row || columnHeaders.length === 0) {
-      return null;
-    }
-
-    const normalizedColumnNames = columnNames.map((columnName: string) => this.normalizeColumnName(columnName));
-    const columnIndex = columnHeaders.findIndex((columnHeader: any) =>
-      normalizedColumnNames.includes(this.normalizeColumnName(columnHeader?.columnName))
-    );
-
-    if (columnIndex === -1) {
-      return null;
-    }
-
-    const value = row[columnIndex];
-    return value === undefined || value === null || value === '' ? null : value;
   }
 
   private normalizeColumnName(columnName: string): string {

@@ -1603,6 +1603,7 @@
       "Add Profile Entry": "Add Profile Entry"
     },
     "inputs": {
+      "Active Balance": "Active Balance",
       "Loan Account Status": "Loan Account Status",
       "Floating rate": "Floating Rate",
       "Differential rate": "Differential Rate",

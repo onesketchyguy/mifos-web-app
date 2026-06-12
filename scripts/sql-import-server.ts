@@ -26,7 +26,7 @@ import { Client } from 'pg';
 
 const PORT = parseInt(process.env['SQL_IMPORT_PORT'] || '3001', 10);
 const NOTE_PREFIX = 'IvyTek SQL history import:';
-const IMPORT_NOTE_TABLE = 'm_ivytek_imported_loan_transaction_note';
+const DETAILS_TABLE = 'c_transaction_details';
 const IMPORT_NOTE_REPORT_NAME = 'IvyTek Transaction Import Note';
 const IMPORT_NOTE_PARAMETER_NAME = 'IvyTekTransactionExternalId';
 const IMPORT_NOTE_PARAMETER_VARIABLE = 'transactionExternalId';
@@ -296,52 +296,21 @@ function chunks<T>(arr: T[], size: number): T[][] {
 
 async function ensureImportNoteTable(client: Client): Promise<void> {
   await client.query(`
-    create table if not exists ${IMPORT_NOTE_TABLE} (
+    create table if not exists ${DETAILS_TABLE} (
       id bigserial primary key,
-      loan_transaction_id bigint not null unique references m_loan_transaction(id) on delete cascade,
       transaction_external_id varchar(100) not null unique,
-      source_transaction_id varchar(100) not null,
-      source_external_id varchar(100),
-      source_loan_id varchar(100),
-      legacy_loan_id varchar(100),
-      history_type varchar(100),
-      payment_type varchar(100),
-      special_code varchar(50),
-      receipt_number varchar(100),
-      check_number varchar(100),
-      transaction_description text,
-      transaction_comment text,
-      import_note text,
-      created_on_utc timestamp with time zone not null default current_timestamp,
-      last_modified_on_utc timestamp with time zone not null default current_timestamp
+      note text not null,
+      created_on_utc timestamptz not null default current_timestamp
     )
   `);
-  await client.query(
-    `create index if not exists idx_${IMPORT_NOTE_TABLE}_source_txn on ${IMPORT_NOTE_TABLE}(source_transaction_id)`
-  );
-  await client.query(
-    `create index if not exists idx_${IMPORT_NOTE_TABLE}_legacy_loan on ${IMPORT_NOTE_TABLE}(legacy_loan_id)`
-  );
 }
 
 async function ensureImportNoteReport(client: Client): Promise<void> {
   const reportSql = [
-    `select`,
-    `  transaction_external_id as "Transaction External Id",`,
-    `  source_transaction_id as "IvyTek Transaction Id",`,
-    `  source_external_id as "IvyTek External Id",`,
-    `  legacy_loan_id as "Legacy Loan Id",`,
-    `  source_loan_id as "IvyTek Loan Id",`,
-    `  history_type as "History Type",`,
-    `  payment_type as "Payment Type",`,
-    `  special_code as "Special Code",`,
-    `  receipt_number as "Receipt Number",`,
-    `  check_number as "Check Number",`,
-    `  transaction_description as "Description",`,
-    `  transaction_comment as "Comment",`,
-    `  import_note as "Import Note"`,
-    `from ${IMPORT_NOTE_TABLE}`,
+    `select note as "Import Note"`,
+    `from ${DETAILS_TABLE}`,
     `where transaction_external_id = '\${${IMPORT_NOTE_PARAMETER_VARIABLE}}'`,
+    `   or transaction_external_id = regexp_replace('\${${IMPORT_NOTE_PARAMETER_VARIABLE}}', '^ivytek-txn-', '')`,
     `order by id`
   ].join('\n');
 
@@ -579,74 +548,13 @@ async function insertImportNotes(client: Client, records: ProcessedRecord[], bat
   for (const batch of chunks(records, batchSize)) {
     const params: unknown[] = [];
     for (const rec of batch) {
-      params.push(
-        rec.externalId,
-        rec.sourceTransactionId,
-        rec.sourceExternalId || null,
-        rec.sourceLoanId || null,
-        rec.legacyLoanId || null,
-        rec.historyType || null,
-        rec.paymentType || null,
-        rec.specialCode || null,
-        rec.receiptNumber || null,
-        rec.checkNumber || null,
-        rec.description || null,
-        rec.sourceComment || null,
-        rec.note
-      );
+      params.push(rec.externalId, rec.note);
     }
-
     const result = await client.query(
       `
-      with src(
-        transaction_external_id, source_transaction_id, source_external_id,
-        source_loan_id, legacy_loan_id, history_type, payment_type,
-        special_code, receipt_number, check_number, transaction_description,
-        transaction_comment, import_note
-      ) as (
-        values ${valuesClause(batch.length, 13)}
-      )
-      insert into ${IMPORT_NOTE_TABLE} (
-        loan_transaction_id, transaction_external_id, source_transaction_id,
-        source_external_id, source_loan_id, legacy_loan_id, history_type,
-        payment_type, special_code, receipt_number, check_number,
-        transaction_description, transaction_comment, import_note,
-        created_on_utc, last_modified_on_utc
-      )
-      select
-        t.id,
-        s.transaction_external_id::varchar,
-        s.source_transaction_id::varchar,
-        s.source_external_id::varchar,
-        s.source_loan_id::varchar,
-        s.legacy_loan_id::varchar,
-        s.history_type::varchar,
-        s.payment_type::varchar,
-        s.special_code::varchar,
-        s.receipt_number::varchar,
-        s.check_number::varchar,
-        s.transaction_description::text,
-        s.transaction_comment::text,
-        s.import_note::text,
-        current_timestamp,
-        current_timestamp
-      from src s
-      join m_loan_transaction t on t.external_id = s.transaction_external_id::varchar
-      on conflict (transaction_external_id) do update set
-        loan_transaction_id = excluded.loan_transaction_id,
-        source_transaction_id = excluded.source_transaction_id,
-        source_external_id = excluded.source_external_id,
-        source_loan_id = excluded.source_loan_id,
-        legacy_loan_id = excluded.legacy_loan_id,
-        history_type = excluded.history_type,
-        payment_type = excluded.payment_type,
-        special_code = excluded.special_code,
-        receipt_number = excluded.receipt_number,
-        check_number = excluded.check_number,
-        transaction_description = excluded.transaction_description,
-        transaction_comment = excluded.transaction_comment,
-        import_note = excluded.import_note,
-        last_modified_on_utc = current_timestamp
+      insert into ${DETAILS_TABLE} (transaction_external_id, note)
+      values ${valuesClause(batch.length, 2)}
+      on conflict (transaction_external_id) do update set note = excluded.note
       `,
       params
     );
@@ -726,12 +634,12 @@ async function fetchDbTotals(
   totals.loanCount = loanIds.size;
 
   // Import note table count (non-fatal if table absent)
-  const tableCheck = await client.query(`select to_regclass($1)`, [IMPORT_NOTE_TABLE]);
+  const tableCheck = await client.query(`select to_regclass($1)`, [DETAILS_TABLE]);
   if (tableCheck.rows[0].to_regclass) {
     for (const batch of chunks(externalIds, batchSize)) {
       const ph = batch.map((_, i) => `$${i + 1}`).join(', ');
       const inRes = await client.query(
-        `select count(*) from ${IMPORT_NOTE_TABLE} where transaction_external_id in (${ph})`,
+        `select count(*) from ${DETAILS_TABLE} where transaction_external_id in (${ph})`,
         batch
       );
       totals.importNoteCount += parseInt(inRes.rows[0].count || 0);
