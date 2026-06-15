@@ -7,8 +7,6 @@
  */
 
 import { Component, OnInit, ViewChild, inject } from '@angular/core';
-import { forkJoin, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
 import { ActivatedRoute } from '@angular/router';
 import { UntypedFormControl, Validators } from '@angular/forms';
 import { MatPaginator } from '@angular/material/paginator';
@@ -165,18 +163,8 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     if (!this.transactionsData.length) {
       return;
     }
-    const requests = this.transactionsData.map((t) =>
-      this.loansService.getTransactionImportNote(String(t.id)).pipe(
-        map((rows: any[]) => ({ id: t.id, note: rows?.[0]?.['Import Note'] ?? '' })),
-        catchError(() => of({ id: t.id, note: '' }))
-      )
-    );
-    forkJoin(requests).subscribe((results) => {
-      results.forEach((r) => {
-        if (r.note) {
-          this.transactionNotes.set(String(r.id), r.note);
-        }
-      });
+    this.loansService.getAllTransactionNotesForLoan(String(this.loanId)).subscribe((noteMap) => {
+      noteMap.forEach((note, txnId) => this.transactionNotes.set(txnId, note));
     });
   }
 

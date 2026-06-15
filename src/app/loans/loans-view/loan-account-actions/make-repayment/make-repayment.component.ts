@@ -102,7 +102,7 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
         this.settingsService.businessDate,
         Validators.required
       ],
-      externalId: '',
+      externalId: [crypto.randomUUID()],
       paymentTypeId: '',
       note: '',
       skipInterestRefund: [false]
@@ -319,6 +319,8 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
       dateFormat,
       locale
     };
+    const note: string = data.note || '';
+    delete data.note;
     data['transactionAmount'] = data['transactionAmount'] * 1;
     if (repaymentLoanFormData.skipInterestRefund) {
       data.interestRefundCalculation = false;
@@ -329,22 +331,33 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
     if (this.waivePenalties && this.selectedPenalties.length > 0) {
       this.penaltyManagementService.waivePenalties(this.loanId, this.selectedPenalties).subscribe({
         next: () => {
-          this.submitRepayment(data);
+          this.submitRepayment(data, note);
         },
         error: (error: any) => {
           console.error('Error waiving penalties:', error);
           // Continue with repayment even if waive fails
-          this.submitRepayment(data);
+          this.submitRepayment(data, note);
         }
       });
     } else {
-      this.submitRepayment(data);
+      this.submitRepayment(data, note);
     }
   }
 
   /** Submit the repayment after penalties are waived */
-  private submitRepayment(data: any) {
+  private submitRepayment(data: any, note: string = '') {
     this.loanService.submitLoanActionButton(this.loanId, data, this.command).subscribe((response: any) => {
+      const transactionId = response?.resourceId || response?.changes?.resourceId;
+      if (note.trim() && transactionId) {
+        this.loanService.saveTransactionNote(this.loanId, String(transactionId), note).subscribe({
+          next: (result) => {
+            if (!result?.success) {
+              console.error('[IvyTek] Transaction note save failed:', result?.message);
+            }
+          },
+          error: (err) => console.error('[IvyTek] Transaction note save error:', err)
+        });
+      }
       this.gotoLoanView('transactions');
     });
   }

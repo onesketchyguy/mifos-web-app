@@ -11,7 +11,7 @@ import { Injectable, inject } from '@angular/core';
 
 /** rxjs Imports */
 import { forkJoin, from, Observable, of } from 'rxjs';
-import { catchError, map, mergeMap, switchMap, toArray } from 'rxjs/operators';
+import { catchError, map, mergeMap, switchMap, tap, toArray } from 'rxjs/operators';
 
 /** Custom Services */
 import { Dates } from 'app/core/utils/dates';
@@ -362,7 +362,17 @@ export class TribalLoanPaymentsService {
         success: true,
         resourceId: response?.resourceId,
         transactionId: response?.resourceId || response?.transactionId || response?.changes?.transactionId
-      }))
+      })),
+      tap((result: TribalLoanPaymentSubmissionResult) => {
+        if (options.note && result.transactionId) {
+          this.loansService.saveTransactionNote(payment.loanId, String(result.transactionId), options.note).subscribe({
+            next: (r) => {
+              if (!r?.success) console.error('[IvyTek] Transaction note save failed:', r?.message);
+            },
+            error: (err) => console.error('[IvyTek] Transaction note save error:', err)
+          });
+        }
+      })
     );
   }
 
@@ -381,9 +391,6 @@ export class TribalLoanPaymentsService {
 
     if (options.paymentTypeId) {
       payload.paymentTypeId = options.paymentTypeId;
-    }
-    if (options.note) {
-      payload.note = options.note;
     }
 
     return payload;

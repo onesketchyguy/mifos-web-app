@@ -11,7 +11,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, catchError, map, of, switchMap, tap } from 'rxjs';
 import { Dates } from 'app/core/utils/dates';
 import { SettingsService } from 'app/settings/settings.service';
 import { DisbursementData } from './models/loan-account.model';
@@ -679,13 +679,96 @@ export class LoansService {
     return this.http.get(`/loans/${accountId}/transactions/${transactionId}`);
   }
 
+  private readonly ivyTekTxnNoteTable = 'c_ivytek_txn_note';
+  private ivyTekTxnNoteTableEnsured = false;
+
   /**
-   * @param {string} transactionId Mifos Fineract transaction id.
-   * @returns Transaction import note report row.
+   * @param {string} transactionId Fineract transaction id.
+   * @param {string} loanId Fineract loan id.
+   * @returns { importNote: string } or null.
    */
-  getTransactionImportNote(transactionId: string): Observable<any> {
-    const httpParams = new HttpParams().set('R_transactionId', transactionId).set('genericResultSet', 'false');
-    return this.http.get('/runreports/IvyTek Transaction Import Note', { params: httpParams });
+  getTransactionImportNote(transactionId: string, loanId: string): Observable<{ importNote: string } | null> {
+    const fetch = () =>
+      this.http.get<any[]>(`/datatables/${this.ivyTekTxnNoteTable}/${loanId}`).pipe(
+        map((rows) => {
+          const row = rows?.find((r) => String(r.transaction_id) === String(transactionId));
+          return row?.note ? { importNote: row.note } : null;
+        }),
+        catchError(() => of(null))
+      );
+    if (this.ivyTekTxnNoteTableEnsured) {
+      return fetch();
+    }
+    return this.ensureIvyTekTxnNoteTable().pipe(switchMap(() => fetch()));
+  }
+
+  /**
+   * Returns all transaction notes for a loan as a Map of transactionId → note.
+   * @param {string} loanId Fineract loan id.
+   */
+  getAllTransactionNotesForLoan(loanId: string): Observable<Map<string, string>> {
+    const fetch = () =>
+      this.http.get<any[]>(`/datatables/${this.ivyTekTxnNoteTable}/${loanId}`).pipe(
+        map((rows) => {
+          const noteMap = new Map<string, string>();
+          rows?.forEach((r) => {
+            if (r.transaction_id && r.note) noteMap.set(String(r.transaction_id), r.note);
+          });
+          return noteMap;
+        }),
+        catchError(() => of(new Map<string, string>()))
+      );
+    if (this.ivyTekTxnNoteTableEnsured) {
+      return fetch();
+    }
+    return this.ensureIvyTekTxnNoteTable().pipe(switchMap(() => fetch()));
+  }
+
+  /**
+   * Saves a note to the c_ivytek_txn_note Fineract datatable for a loan transaction.
+   * @param {string} loanId Fineract loan id.
+   * @param {string} transactionId Fineract transaction id.
+   * @param {string} note Note text.
+   */
+  saveTransactionNote(loanId: string, transactionId: string, note: string): Observable<any> {
+    const payload = { transaction_id: Number(transactionId), note, locale: 'en', dateFormat: 'dd MMMM yyyy' };
+    const writeNote = () => this.http.post(`/datatables/${this.ivyTekTxnNoteTable}/${loanId}`, payload);
+    if (this.ivyTekTxnNoteTableEnsured) {
+      return writeNote();
+    }
+    return this.ensureIvyTekTxnNoteTable().pipe(switchMap(() => writeNote()));
+  }
+
+  private ensureIvyTekTxnNoteTable(): Observable<void> {
+    return this.http.get<any[]>('/datatables').pipe(
+      switchMap((tables) => {
+        const exists = tables?.some((t) => t.registeredTableName === this.ivyTekTxnNoteTable);
+        if (exists) {
+          this.ivyTekTxnNoteTableEnsured = true;
+          return of(undefined as void);
+        }
+        return this.http
+          .post('/datatables', {
+            datatableName: this.ivyTekTxnNoteTable,
+            apptableName: 'm_loan',
+            multiRow: true,
+            columns: [
+              { name: 'transaction_id', type: 'Number', mandatory: true },
+              { name: 'note', type: 'String', length: 1000, mandatory: false }
+            ]
+          })
+          .pipe(
+            tap(() => {
+              this.ivyTekTxnNoteTableEnsured = true;
+            }),
+            map(() => undefined as void)
+          );
+      }),
+      catchError((err) => {
+        console.warn('[IvyTek] Could not ensure txn note table:', err?.message || err);
+        return of(undefined as void);
+      })
+    );
   }
 
   /**

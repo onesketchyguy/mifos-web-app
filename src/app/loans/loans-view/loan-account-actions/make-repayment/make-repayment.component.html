@@ -68,11 +68,6 @@
           >
           </mifosx-input-amount>
 
-          <mat-form-field>
-            <mat-label>{{ 'labels.inputs.External Id' | translate }}</mat-label>
-            <input matInput formControlName="externalId" />
-          </mat-form-field>
-
           @if (isCapitalizedIncome() || isBuyDownFee()) {
             <mat-form-field>
               <mat-label>{{ 'labels.inputs.Classification' | translate }}</mat-label>

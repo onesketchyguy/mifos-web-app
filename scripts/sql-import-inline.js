@@ -1428,6 +1428,160 @@ async function handleEnsureReport(req, res) {
   }
 }
 
+async function detectDetailsTableSchema(client) {
+  const res = await client.query(
+    `select column_name from information_schema.columns
+     where table_name = $1 and table_schema = current_schema()`,
+    [DETAILS_TABLE]
+  );
+  const cols = res.rows.map((r) => r.column_name);
+  if (!cols.length) return 'none';
+  return cols.includes('transaction_external_id') ? 'external_id' : 'transaction_id';
+}
+
+async function ensureNoteReportByTransactionId(client, schema) {
+  const reportSql = schema === 'external_id' ? [
+          `select note as "Import Note"`,
+          `from ${DETAILS_TABLE}`,
+          `where transaction_external_id = 'manual-txn-' || \${transactionId}`,
+          `limit 1`
+        ].join('\n') : [
+          `select note as "Import Note"`,
+          `from ${DETAILS_TABLE}`,
+          `where id = \${transactionId}`,
+          `limit 1`
+        ].join('\n');
+
+  const reportResult = await client.query(
+    `insert into stretchy_report (
+       id, report_name, report_type, report_subtype, report_category,
+       report_sql, description, core_report, use_report, self_service_user_report
+     ) values (
+       nextval('stretchy_report_id_seq'), $1, 'Table', null, 'Loan',
+       $2, 'IvyTek imported transaction note lookup by Fineract transaction ID.',
+       false, true, false
+     )
+     on conflict (report_name) do update set
+       report_sql  = excluded.report_sql,
+       use_report  = true
+     returning id`,
+    [
+      IMPORT_NOTE_REPORT_NAME,
+      reportSql
+    ]
+  );
+  const reportId = reportResult.rows[0].id;
+
+  const paramResult = await client.query(
+    `insert into stretchy_parameter (
+       id, parameter_name, parameter_variable, parameter_label,
+       "parameter_displayType", "parameter_FormatType", parameter_default,
+       special, "selectOne", "selectAll", parameter_sql, parent_id
+     ) values (
+       nextval('stretchy_parameter_id_seq'), 'TransactionId', 'transactionId', 'Transaction Id',
+       'text', 'string', 'n/a', null, null, null, null, null
+     )
+     on conflict (parameter_name) do update set
+       parameter_variable = 'transactionId'
+     returning id`,
+    []
+  );
+  const parameterId = paramResult.rows[0].id;
+
+  await client.query(
+    `insert into stretchy_report_parameter (id, report_id, parameter_id, report_parameter_name)
+     values (nextval('stretchy_report_parameter_id_seq'), $1, $2, 'transactionId')
+     on conflict (report_id, parameter_id) do update set report_parameter_name = 'transactionId'`,
+    [
+      reportId,
+      parameterId
+    ]
+  );
+}
+
+async function handleWriteTransactionNote(req, res) {
+  let body;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return jsonResponse(res, 400, { success: false, message: 'Invalid JSON body.' });
+  }
+  const { transactionId, note, db } = body;
+  console.log(
+    `[IvyTek SQL] write-transaction-note request: transactionId=${transactionId}, noteLength=${note?.length}`
+  );
+  if (!transactionId || typeof transactionId !== 'number') {
+    return jsonResponse(res, 400, { success: false, message: 'transactionId is required and must be a number.' });
+  }
+  if (!note || typeof note !== 'string' || !note.trim()) {
+    return jsonResponse(res, 400, { success: false, message: 'note is required and must be a non-empty string.' });
+  }
+  const dbConfig = db || { host: 'localhost', port: 5432, dbname: 'fineract_default', user: 'root', password: '' };
+  const client = new Client({
+    host: dbConfig.host,
+    port: dbConfig.port ?? 5432,
+    database: dbConfig.dbname,
+    user: dbConfig.user,
+    password: dbConfig.password || ''
+  });
+  try {
+    await client.connect();
+
+    const schema = await detectDetailsTableSchema(client);
+
+    if (schema === 'none') {
+      await client.query(`
+        create table if not exists ${DETAILS_TABLE} (
+          id bigint primary key,
+          note text not null,
+          created_on_utc timestamptz not null default current_timestamp
+        )
+      `);
+    }
+
+    if (schema === 'external_id') {
+      // Table has transaction_external_id NOT NULL unique — use that as key
+      const extId = `manual-txn-${transactionId}`;
+      await client.query(
+        `insert into ${DETAILS_TABLE} (transaction_external_id, note)
+         values ($1, $2)
+         on conflict (transaction_external_id) do update set note = excluded.note`,
+        [
+          extId,
+          note.trim()
+        ]
+      );
+    } else {
+      // Table has id bigint primary key (= Fineract transaction ID)
+      await client.query(
+        `insert into ${DETAILS_TABLE} (id, note)
+         values ($1, $2)
+         on conflict (id) do update set note = excluded.note`,
+        [
+          transactionId,
+          note.trim()
+        ]
+      );
+    }
+
+    try {
+      await ensureNoteReportByTransactionId(client, schema);
+    } catch (e) {
+      console.warn('[IvyTek SQL] Could not upsert stretchy report:', e?.message || e?.code || String(e));
+    }
+
+    return jsonResponse(res, 200, { success: true, message: 'Transaction note saved.' });
+  } catch (e) {
+    console.error('[IvyTek SQL] write-transaction-note error:', e?.message || e?.code || String(e), e);
+    return jsonResponse(res, 500, {
+      success: false,
+      message: `Failed to save transaction note: ${e?.message || String(e)}`
+    });
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
@@ -1453,6 +1607,9 @@ function startInlineServer() {
     }
     if (req.url === '/api/ivytek/ensure-report' && req.method === 'POST') {
       return handleEnsureReport(req, res);
+    }
+    if (req.url === '/api/ivytek/write-transaction-note' && req.method === 'POST') {
+      return handleWriteTransactionNote(req, res);
     }
     jsonResponse(res, 404, { message: 'Not found' });
   });

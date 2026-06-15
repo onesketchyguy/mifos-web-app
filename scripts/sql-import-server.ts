@@ -1423,6 +1423,59 @@ app.post('/api/ivytek/repair-notes', async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Write transaction note endpoint — saves a manual payment note to c_transaction_details.
+// ---------------------------------------------------------------------------
+
+app.post('/api/ivytek/write-transaction-note', async (c) => {
+  let body: { transactionId?: number; note?: string; db?: any };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, message: 'Invalid JSON body.' }, 400);
+  }
+
+  const { transactionId, note } = body;
+  if (!transactionId || typeof transactionId !== 'number') {
+    return c.json({ success: false, message: 'transactionId is required and must be a number.' }, 400);
+  }
+  if (!note || typeof note !== 'string' || !note.trim()) {
+    return c.json({ success: false, message: 'note is required and must be a non-empty string.' }, 400);
+  }
+
+  const dbConfig = body.db || { host: 'localhost', port: 5432, dbname: 'fineract_default', user: 'root', password: '' };
+  const client = new Client({
+    host: dbConfig.host,
+    port: dbConfig.port ?? 5432,
+    database: dbConfig.dbname,
+    user: dbConfig.user,
+    password: dbConfig.password || ''
+  });
+
+  try {
+    await client.connect();
+    await ensureImportNoteTable(client);
+    await client.query(
+      `insert into ${DETAILS_TABLE} (id, note) values ($1, $2) on conflict (id) do update set note = excluded.note`,
+      [
+        transactionId,
+        note.trim()
+      ]
+    );
+    try {
+      await ensureImportNoteReport(client);
+    } catch (e: any) {
+      console.warn('Could not upsert stretchy report:', e.message);
+    }
+    return c.json({ success: true, message: 'Transaction note saved.' });
+  } catch (e: any) {
+    console.error('write-transaction-note error:', e);
+    return c.json({ success: false, message: `Failed to save transaction note: ${e.message}` }, 500);
+  } finally {
+    await client.end().catch(() => {});
+  }
+});
+
 console.log(`IvyTek SQL Import Server starting on http://localhost:${PORT}`);
 console.log(`  GET  http://localhost:${PORT}/api/ivytek/health`);
 console.log(`  POST http://localhost:${PORT}/api/ivytek/sql-import       (JSON, pre-processed from Stage 3)`);

@@ -181,13 +181,11 @@ export class ViewTransactionComponent extends LoanAccountActionsBaseComponent im
     if (!transactionId) {
       return;
     }
-    this.loansService.getTransactionImportNote(String(transactionId)).subscribe({
-      next: (response: any) => {
-        this.ivyTekImportNote = this.getIvyTekImportNoteFromReport(response);
+    this.loansService.getTransactionImportNote(String(transactionId), this.loanId).subscribe({
+      next: (result) => {
+        this.ivyTekImportNote = result;
       },
-      error: (error) => {
-        // Gracefully handle report load failure (report may not exist yet)
-        console.warn('Failed to load transaction import note:', error);
+      error: () => {
         this.ivyTekImportNote = null;
       }
     });
