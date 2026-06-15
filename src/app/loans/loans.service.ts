@@ -680,13 +680,11 @@ export class LoansService {
   }
 
   /**
-   * @param {string} transactionExternalId Imported transaction external id.
-   * @returns IvyTek transaction import note report row.
+   * @param {string} transactionId Mifos Fineract transaction id.
+   * @returns Transaction import note report row.
    */
-  getIvyTekTransactionImportNote(transactionExternalId: string): Observable<any> {
-    const httpParams = new HttpParams()
-      .set('R_transactionExternalId', transactionExternalId)
-      .set('genericResultSet', 'false');
+  getTransactionImportNote(transactionId: string): Observable<any> {
+    const httpParams = new HttpParams().set('R_transactionId', transactionId).set('genericResultSet', 'false');
     return this.http.get('/runreports/IvyTek Transaction Import Note', { params: httpParams });
   }
 

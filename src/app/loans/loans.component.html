@@ -76,19 +76,37 @@
 
         <ng-container matColumnDef="balanceNow">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Balance Now' | translate }}</th>
-          <td mat-cell *matCellDef="let loan">{{ getBalanceNow(loan) | formatNumber }}</td>
+          <td mat-cell *matCellDef="let loan">
+            @if (isLoanLoading(loan.id)) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              {{ getBalanceNow(loan) | formatNumber }}
+            }
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="amountNowDue">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Amount Now Due' | translate }}</th>
-          <td mat-cell *matCellDef="let loan">{{ getAmountNowDue(loan) | formatNumber }}</td>
+          <td mat-cell *matCellDef="let loan">
+            @if (isLoanLoading(loan.id)) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              {{ getAmountNowDue(loan) | formatNumber }}
+            }
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="projectedAccruedInterest">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>
             {{ 'labels.inputs.Projected Accrued Interest' | translate }}
           </th>
-          <td mat-cell *matCellDef="let loan">{{ getProjectedAccruedInterest(loan) | formatNumber }}</td>
+          <td mat-cell *matCellDef="let loan">
+            @if (isLoanLoading(loan.id)) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              {{ getProjectedAccruedInterest(loan) | formatNumber }}
+            }
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="interestRate">
@@ -113,7 +131,13 @@
 
         <ng-container matColumnDef="company">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Company Code' | translate }}</th>
-          <td mat-cell *matCellDef="let loan">{{ getLoanCompany(loan) }}</td>
+          <td mat-cell *matCellDef="let loan">
+            @if (isLoanLoading(loan.id)) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              {{ getLoanCompany(loan) }}
+            }
+          </td>
         </ng-container>
 
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>

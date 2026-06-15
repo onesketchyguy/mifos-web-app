@@ -29,6 +29,7 @@ import {
 } from '@angular/material/table';
 import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
+import { MatProgressSpinner } from '@angular/material/progress-spinner';
 
 /** rxjs Imports */
 import { forkJoin, Observable, of, Subject, Subscription } from 'rxjs';
@@ -55,6 +56,7 @@ export const DEBOUNCE_MS = 500;
     MatCheckbox,
     FaIconComponent,
     MatProgressBar,
+    MatProgressSpinner,
     MatTable,
     MatSort,
     MatColumnDef,
@@ -106,6 +108,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
       .join(' ');
   }
 
+  /** Check if a specific client row is loading its details */
+  isClientLoading(clientId: number): boolean {
+    return this.loadingClientIds.has(clientId);
+  }
+
   @ViewChild('showClosedAccounts') showClosedAccounts: MatCheckbox;
 
   displayedColumns = [
@@ -127,6 +134,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   totalRows: number;
   isLoading = false;
+  loadingClientIds = new Set<number>();
 
   pageSize = 50;
   currentPage = 0;
@@ -316,6 +324,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.loadingClientIds = new Set(clients.map((client: any) => client.id));
+
     this.entityIdsRequestSub = forkJoin(clients.map((client: any) => this.getClientRowDetails(client)))
       .pipe(takeUntil(this.destroy$))
       .subscribe(
@@ -332,6 +342,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
             loanOfficer: clientDetails[index].loanOfficer,
             activeBalance: clientDetails[index].activeBalance
           }));
+          this.loadingClientIds.clear();
           this.refreshDuplicateClientGroups();
         }
       );

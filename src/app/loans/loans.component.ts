@@ -12,6 +12,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatPaginator, PageEvent } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
 import { MatIcon } from '@angular/material/icon';
+import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import {
   MatTable,
   MatTableDataSource,
@@ -71,6 +72,7 @@ interface LoanFilterOption {
     MatSort,
     MatSortHeader,
     MatIcon,
+    MatProgressSpinner,
     FormatNumberPipe
   ]
 })
@@ -127,6 +129,8 @@ export class LoansComponent implements OnInit {
   filterRequest = 0;
   /** Whether full loan index is loaded for filters. */
   allLoansLoaded = false;
+  /** Track which loan IDs are currently being enriched. */
+  loadingLoanIds = new Set<string>();
   /** Raw text query used for API-backed search fallbacks. */
   textFilterQuery = '';
   /** Text filter value. */
@@ -225,6 +229,15 @@ export class LoansComponent implements OnInit {
     this.loansService.getLoans(this.currentPage * this.pageSize, this.pageSize).subscribe((loansData: any) => {
       this.setLoans(loansData);
     });
+  }
+
+  /**
+   * Check if a specific loan is being enriched.
+   * @param loanId Loan ID to check.
+   * @returns true if the loan is currently being enriched.
+   */
+  isLoanLoading(loanId: string | number): boolean {
+    return this.loadingLoanIds.has(loanId.toString());
   }
 
   /**
@@ -480,6 +493,8 @@ export class LoansComponent implements OnInit {
       return;
     }
 
+    this.loadingLoanIds = new Set(this.loans.map((loan: any) => loan.id.toString()));
+
     forkJoin(
       this.loans.map((loan: any) =>
         this.loansService.getLoanAccountAssociationDetails(loan.id).pipe(
@@ -496,6 +511,7 @@ export class LoansComponent implements OnInit {
       }
       this.loans = loans;
       this.dataSource.data = this.loans;
+      this.loadingLoanIds.clear();
       if (this.sort) {
         this.dataSource.sort = this.sort;
       }

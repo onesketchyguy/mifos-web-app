@@ -169,18 +169,28 @@
       <!-- EntityID Column -->
       <ng-container matColumnDef="entityIdNumber">
         <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.EntityID' | translate }}</th>
-        <td mat-cell *matCellDef="let row">{{ row.entityIdNumber }}</td>
+        <td mat-cell *matCellDef="let row">
+          @if (isClientLoading(row.id)) {
+            <mat-spinner diameter="20"></mat-spinner>
+          } @else {
+            {{ row.entityIdNumber }}
+          }
+        </td>
       </ng-container>
 
       <!-- Active Balance Column -->
       <ng-container matColumnDef="activeBalance">
         <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Active Balance' | translate }}</th>
         <td mat-cell *matCellDef="let row">
-          {{
-            row.activeBalance !== null && row.activeBalance !== undefined
-              ? (row.activeBalance | currency: 'USD' : 'symbol-narrow' : '1.2-2')
-              : ''
-          }}
+          @if (isClientLoading(row.id)) {
+            <mat-spinner diameter="20"></mat-spinner>
+          } @else {
+            {{
+              row.activeBalance !== null && row.activeBalance !== undefined
+                ? (row.activeBalance | currency: 'USD' : 'symbol-narrow' : '1.2-2')
+                : ''
+            }}
+          }
         </td>
       </ng-container>
 

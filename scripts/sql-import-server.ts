@@ -28,8 +28,8 @@ const PORT = parseInt(process.env['SQL_IMPORT_PORT'] || '3001', 10);
 const NOTE_PREFIX = 'IvyTek SQL history import:';
 const DETAILS_TABLE = 'c_transaction_details';
 const IMPORT_NOTE_REPORT_NAME = 'IvyTek Transaction Import Note';
-const IMPORT_NOTE_PARAMETER_NAME = 'IvyTekTransactionExternalId';
-const IMPORT_NOTE_PARAMETER_VARIABLE = 'transactionExternalId';
+const IMPORT_NOTE_PARAMETER_NAME = 'TransactionId';
+const IMPORT_NOTE_PARAMETER_VARIABLE = 'transactionId';
 const DEFAULT_BATCH_SIZE = 500;
 
 // ---------------------------------------------------------------------------
@@ -197,6 +197,9 @@ function mapTransactionType(
 }
 
 function buildNote(rec: ProcessedRecord): string {
+  if (rec.description) {
+    return rec.description;
+  }
   const parts = [
     `source transaction ${rec.sourceTransactionId}`,
     `legacy loan ${rec.legacyLoanId || '(blank)'}`,
@@ -209,7 +212,6 @@ function buildNote(rec: ProcessedRecord): string {
     `classification ${rec.historyType || '(blank)'}`
   ];
   if (rec.voided) parts.push('voided/reversed in IvyTek');
-  if (rec.description) parts.push(`description ${rec.description}`);
   if (rec.sourceComment) parts.push(`source comments ${rec.sourceComment}`);
   if (rec.receiptNumber) parts.push(`receipt ${rec.receiptNumber}`);
   if (rec.checkNumber) parts.push(`check ${rec.checkNumber}`);
@@ -297,8 +299,7 @@ function chunks<T>(arr: T[], size: number): T[][] {
 async function ensureImportNoteTable(client: Client): Promise<void> {
   await client.query(`
     create table if not exists ${DETAILS_TABLE} (
-      id bigserial primary key,
-      transaction_external_id varchar(100) not null unique,
+      id bigint primary key,
       note text not null,
       created_on_utc timestamptz not null default current_timestamp
     )
@@ -307,11 +308,10 @@ async function ensureImportNoteTable(client: Client): Promise<void> {
 
 async function ensureImportNoteReport(client: Client): Promise<void> {
   const reportSql = [
-    `select note as "Import Note"`,
-    `from ${DETAILS_TABLE}`,
-    `where transaction_external_id = '\${${IMPORT_NOTE_PARAMETER_VARIABLE}}'`,
-    `   or transaction_external_id = regexp_replace('\${${IMPORT_NOTE_PARAMETER_VARIABLE}}', '^ivytek-txn-', '')`,
-    `order by id`
+    `select cd.note as "Import Note"`,
+    `from c_transaction_details cd`,
+    `where cd.id = \${transactionId}`,
+    `limit 1`
   ].join('\n');
 
   const reportResult = await client.query(
@@ -347,7 +347,7 @@ async function ensureImportNoteReport(client: Client): Promise<void> {
       "parameter_displayType", "parameter_FormatType", parameter_default,
       special, "selectOne", "selectAll", parameter_sql, parent_id
     ) values (
-      nextval('stretchy_parameter_id_seq'), $1, $2, 'Transaction External Id',
+      nextval('stretchy_parameter_id_seq'), $1, $2, 'Transaction Id',
       'text', 'string', 'n/a', null, null, null, null, null
     )
     on conflict (parameter_name) do update set
@@ -402,8 +402,10 @@ async function insertTransactions(
   records: ProcessedRecord[],
   createdBy: number,
   batchSize: number
-): Promise<number> {
+): Promise<{ inserted: number; idMap: Map<string, number> }> {
   let inserted = 0;
+  const idMap = new Map<string, number>();
+
   for (const batch of chunks(records, batchSize)) {
     const params: unknown[] = [];
     for (const rec of batch) {
@@ -429,7 +431,7 @@ async function insertTransactions(
     const cbOffset = batch.length * colCount;
     params.push(createdBy, createdBy);
 
-    const result = await client.query(
+    const result = await client.query<{ id: number; external_id: string }>(
       `
       with src(
         external_id, loan_id, transaction_type_enum, transaction_date, amount,
@@ -482,31 +484,54 @@ async function insertTransactions(
       where not exists (
         select 1 from m_loan_transaction t where t.external_id = s.external_id::varchar
       )
+      returning id, external_id
       `,
       params
     );
+    for (const row of result.rows) {
+      idMap.set(row.external_id, Number(row.id));
+    }
     inserted += result.rowCount ?? 0;
   }
-  return inserted;
+  return { inserted, idMap };
+}
+
+/** Looks up m_loan_transaction.id for already-imported rows by external_id. */
+async function fetchIdsByExternalIds(
+  client: Client,
+  externalIds: string[],
+  batchSize: number
+): Promise<Map<string, number>> {
+  const idMap = new Map<string, number>();
+  for (const batch of chunks(externalIds, batchSize)) {
+    const result = await client.query<{ id: number; external_id: string }>(
+      `select id, external_id from m_loan_transaction where external_id = any($1::text[])`,
+      [batch]
+    );
+    for (const row of result.rows) {
+      idMap.set(row.external_id, Number(row.id));
+    }
+  }
+  return idMap;
 }
 
 async function insertNotes(
   client: Client,
-  records: ProcessedRecord[],
+  entries: { transactionId: number; loanId: number; note: string }[],
   createdBy: number,
   batchSize: number
 ): Promise<number> {
   let inserted = 0;
-  for (const batch of chunks(records, batchSize)) {
+  for (const batch of chunks(entries, batchSize)) {
     const params: unknown[] = [];
-    for (const rec of batch) params.push(rec.externalId, rec.note);
-    const noteOffset = batch.length * 2;
+    for (const e of batch) params.push(e.transactionId, e.loanId, e.note);
+    const noteOffset = batch.length * 3;
     params.push(createdBy, createdBy, `${NOTE_PREFIX}%`);
 
     const result = await client.query(
       `
-      with src(external_id, note) as (
-        values ${valuesClause(batch.length, 2)}
+      with src(transaction_id, loan_id, note) as (
+        values ${valuesClause(batch.length, 3)}
       )
       insert into m_note (
         id, client_id, group_id, loan_id, loan_transaction_id, savings_account_id,
@@ -517,8 +542,8 @@ async function insertNotes(
       select
         nextval('m_note_id_seq'),
         null, null,
-        t.loan_id,
-        t.id,
+        s.loan_id::bigint,
+        s.transaction_id::bigint,
         null, null, null,
         300,
         s.note::varchar,
@@ -529,10 +554,9 @@ async function insertNotes(
         current_timestamp,
         current_timestamp
       from src s
-      join m_loan_transaction t on t.external_id = s.external_id::varchar
       where not exists (
         select 1 from m_note n
-        where n.loan_transaction_id = t.id
+        where n.loan_transaction_id = s.transaction_id::bigint
           and n.note like $${noteOffset + 3}
       )
       `,
@@ -543,19 +567,19 @@ async function insertNotes(
   return inserted;
 }
 
-async function insertImportNotes(client: Client, records: ProcessedRecord[], batchSize: number): Promise<number> {
+async function insertImportNotes(
+  client: Client,
+  entries: { id: number; note: string }[],
+  batchSize: number
+): Promise<number> {
   let upserted = 0;
-  for (const batch of chunks(records, batchSize)) {
+  for (const batch of chunks(entries, batchSize)) {
     const params: unknown[] = [];
-    for (const rec of batch) {
-      params.push(rec.externalId, rec.note);
-    }
+    for (const e of batch) params.push(e.id, e.note);
     const result = await client.query(
-      `
-      insert into ${DETAILS_TABLE} (transaction_external_id, note)
-      values ${valuesClause(batch.length, 2)}
-      on conflict (transaction_external_id) do update set note = excluded.note
-      `,
+      `insert into ${DETAILS_TABLE} (id, note)
+       values ${valuesClause(batch.length, 2)}
+       on conflict (id) do update set note = excluded.note`,
       params
     );
     upserted += result.rowCount ?? 0;
@@ -636,14 +660,8 @@ async function fetchDbTotals(
   // Import note table count (non-fatal if table absent)
   const tableCheck = await client.query(`select to_regclass($1)`, [DETAILS_TABLE]);
   if (tableCheck.rows[0].to_regclass) {
-    for (const batch of chunks(externalIds, batchSize)) {
-      const ph = batch.map((_, i) => `$${i + 1}`).join(', ');
-      const inRes = await client.query(
-        `select count(*) from ${DETAILS_TABLE} where transaction_external_id in (${ph})`,
-        batch
-      );
-      totals.importNoteCount += parseInt(inRes.rows[0].count || 0);
-    }
+    const inRes = await client.query(`select count(*) from ${DETAILS_TABLE}`);
+    totals.importNoteCount = parseInt(inRes.rows[0].count || 0);
   }
 
   return totals;
@@ -687,23 +705,9 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
   await client.connect();
 
   try {
-    await client.query('BEGIN');
-
-    const externalIds = records.map((r) => r.externalId);
-    const existingIds = await fetchExistingExternalIds(client, externalIds, DEFAULT_BATCH_SIZE);
-    const toInsert = records.filter((r) => !existingIds.has(r.externalId));
-
-    // Source-side totals for reconciliation
-    const sourceAmount = records.reduce((s, r) => s + parseFloat(r.amount), 0);
-    const sourcePrincipal = records.reduce((s, r) => s + parseFloat(r.principal ?? '0'), 0);
-    const sourceInterest = records.reduce((s, r) => s + parseFloat(r.interest ?? '0'), 0);
-    const sourceReversed = records.filter((r) => r.voided).length;
-    const sourceLoanCount = new Set(records.map((r) => r.loanId)).size;
-
-    let insertedCount = 0;
-    let upsertedImportNoteCount = 0;
+    // Phase 1: infrastructure — runs outside the main transaction so schema
+    // migration and report SQL fixes persist even if reconciliation later fails.
     let importNoteTableReady = false;
-
     if (apply) {
       try {
         await ensureImportNoteTable(client);
@@ -723,12 +727,30 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
           );
         }
       }
+    }
 
-      insertedCount = await insertTransactions(client, toInsert, createdBy, DEFAULT_BATCH_SIZE);
-      await insertNotes(client, records, createdBy, DEFAULT_BATCH_SIZE);
-      if (importNoteTableReady) {
-        upsertedImportNoteCount = await insertImportNotes(client, records, DEFAULT_BATCH_SIZE);
-      }
+    // Phase 2: data insertion and reconciliation — rolled back as a unit if
+    // totals don't match.
+    await client.query('BEGIN');
+
+    const externalIds = records.map((r) => r.externalId);
+    const existingIds = await fetchExistingExternalIds(client, externalIds, DEFAULT_BATCH_SIZE);
+    const toInsert = records.filter((r) => !existingIds.has(r.externalId));
+
+    // Source-side totals for reconciliation
+    const sourceAmount = records.reduce((s, r) => s + parseFloat(r.amount), 0);
+    const sourcePrincipal = records.reduce((s, r) => s + parseFloat(r.principal ?? '0'), 0);
+    const sourceInterest = records.reduce((s, r) => s + parseFloat(r.interest ?? '0'), 0);
+    const sourceReversed = records.filter((r) => r.voided).length;
+    const sourceLoanCount = new Set(records.map((r) => r.loanId)).size;
+
+    let insertedCount = 0;
+    let insertedIdMap = new Map<string, number>();
+
+    if (apply) {
+      const txResult = await insertTransactions(client, toInsert, createdBy, DEFAULT_BATCH_SIZE);
+      insertedCount = txResult.inserted;
+      insertedIdMap = txResult.idMap;
     }
 
     const dbTotals = await fetchDbTotals(client, externalIds, DEFAULT_BATCH_SIZE);
@@ -779,22 +801,18 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
         status: dbTotals.reversedCount === sourceReversed ? 'Matched' : 'Needs Review'
       },
       {
-        metric: 'Notes',
+        metric: 'Notes (m_note)',
         source: records.length,
         database: dbTotals.noteCount,
         difference: dbTotals.noteCount - records.length,
-        status: dbTotals.noteCount === records.length ? 'Matched' : 'Needs Review'
+        status: 'Info'
       },
       {
         metric: 'Import Note Table Rows',
         source: records.length,
         database: dbTotals.importNoteCount,
         difference: dbTotals.importNoteCount - records.length,
-        status: importNoteTableReady
-          ? dbTotals.importNoteCount === records.length
-            ? 'Matched'
-            : 'Needs Review'
-          : 'Info'
+        status: 'Info'
       },
       {
         metric: 'Inserted This Run',
@@ -816,9 +834,51 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
 
     if (apply && allMatch) {
       await client.query('COMMIT');
+
+      // Phase 3: write notes after commit using the IDs from RETURNING + existing lookup.
+      // allIdMap keys are IvyTek external IDs; values are Fineract integer transaction IDs.
+      let upsertedImportNoteCount = 0;
+      let insertedNoteCount = 0;
+      try {
+        const skippedExternalIds = records.filter((r) => !insertedIdMap.has(r.externalId)).map((r) => r.externalId);
+        const existingIdMap =
+          skippedExternalIds.length > 0
+            ? await fetchIdsByExternalIds(client, skippedExternalIds, DEFAULT_BATCH_SIZE)
+            : new Map<string, number>();
+
+        const allIdMap = new Map<string, number>([
+          ...insertedIdMap,
+          ...existingIdMap
+        ]);
+
+        // Build entries for all records we can map to a Fineract transaction ID.
+        const mappedNoteEntries = records
+          .filter((r) => allIdMap.has(r.externalId) && r.note)
+          .map((r) => ({
+            transactionId: allIdMap.get(r.externalId)!,
+            loanId: r.loanId,
+            note: r.note
+          }));
+
+        // Write to m_note (read by the Fineract notes API / UI).
+        if (mappedNoteEntries.length > 0) {
+          insertedNoteCount = await insertNotes(client, mappedNoteEntries, createdBy, DEFAULT_BATCH_SIZE);
+        }
+
+        // Also write to c_transaction_details (keyed by Fineract transaction ID).
+        if (importNoteTableReady) {
+          const detailEntries = records
+            .filter((r) => r.note && allIdMap.has(r.externalId))
+            .map((r) => ({ id: allIdMap.get(r.externalId)!, note: r.note }));
+          upsertedImportNoteCount = await insertImportNotes(client, detailEntries, DEFAULT_BATCH_SIZE);
+        }
+      } catch (e: any) {
+        warnings.push(`Post-commit note population failed: ${e.message}`);
+      }
+
       return {
         success: true,
-        message: `Committed ${insertedCount} transaction rows. Upserted ${upsertedImportNoteCount} import note rows.`,
+        message: `Committed ${insertedCount} transaction rows. Notes written: ${insertedNoteCount} (m_note), ${upsertedImportNoteCount} (c_transaction_details).`,
         inserted: insertedCount,
         skipped: existingIds.size,
         warnings,
@@ -1271,9 +1331,104 @@ app.post('/api/ivytek/sql-import', async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Repair-notes endpoint — fixes c_transaction_details without touching
+// m_loan_transaction.  Safe to run against an already-imported dataset.
+// ---------------------------------------------------------------------------
+
+interface RepairNotesRequest {
+  db: DbConfig;
+  transactions: SqlTransaction[];
+}
+
+interface RepairNotesResponse {
+  success: boolean;
+  message: string;
+  upserted: number;
+  warnings: string[];
+}
+
+app.post('/api/ivytek/repair-notes', async (c) => {
+  let body: RepairNotesRequest;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, message: 'Invalid JSON body.', upserted: 0, warnings: [] }, 400);
+  }
+
+  if (!body?.db?.host || !body?.db?.dbname || !body?.db?.user) {
+    return c.json(
+      { success: false, message: 'Missing required database config: host, dbname, user.', upserted: 0, warnings: [] },
+      400
+    );
+  }
+  if (!Array.isArray(body.transactions) || !body.transactions.length) {
+    return c.json(
+      { success: false, message: 'No transactions provided in request body.', upserted: 0, warnings: [] },
+      400
+    );
+  }
+
+  const warnings: string[] = [];
+  const records: ProcessedRecord[] = [];
+  for (const txn of body.transactions) {
+    const { record, error } = processTransaction(txn);
+    if (error) warnings.push(error);
+    else if (record) records.push(record);
+  }
+
+  if (!records.length) {
+    return c.json({ success: false, message: 'No valid transactions after validation.', upserted: 0, warnings }, 400);
+  }
+
+  const client = new Client({
+    host: body.db.host,
+    port: body.db.port,
+    database: body.db.dbname,
+    user: body.db.user,
+    password: body.db.password
+  });
+
+  try {
+    await client.connect();
+
+    await ensureImportNoteTable(client);
+
+    try {
+      await ensureImportNoteReport(client);
+    } catch (e: any) {
+      warnings.push(`Could not upsert stretchy report: ${e.message}`);
+    }
+
+    const externalIds = records.map((r) => r.externalId);
+    const idMap = await fetchIdsByExternalIds(client, externalIds, DEFAULT_BATCH_SIZE);
+
+    const noteEntries = records
+      .filter((r) => r.note && idMap.has(r.externalId))
+      .map((r) => ({ id: idMap.get(r.externalId)!, note: r.note }));
+
+    const upserted = await insertImportNotes(client, noteEntries, DEFAULT_BATCH_SIZE);
+
+    return c.json({
+      success: true,
+      message: `Repaired ${upserted} import note row(s) in ${DETAILS_TABLE}.`,
+      upserted,
+      warnings
+    } satisfies RepairNotesResponse);
+  } catch (e: any) {
+    console.error('Repair-notes error:', e);
+    return c.json({ success: false, message: `Repair failed: ${e.message}`, upserted: 0, warnings }, 500);
+  } finally {
+    await client.end().catch(() => {});
+  }
+});
+
 console.log(`IvyTek SQL Import Server starting on http://localhost:${PORT}`);
 console.log(`  GET  http://localhost:${PORT}/api/ivytek/health`);
-console.log(`  POST http://localhost:${PORT}/api/ivytek/sql-import      (JSON, pre-processed from Stage 3)`);
-console.log(`  POST http://localhost:${PORT}/api/ivytek/sql-import-csv  (multipart CSV file upload)`);
+console.log(`  POST http://localhost:${PORT}/api/ivytek/sql-import       (JSON, pre-processed from Stage 3)`);
+console.log(`  POST http://localhost:${PORT}/api/ivytek/sql-import-csv   (multipart CSV file upload)`);
+console.log(
+  `  POST http://localhost:${PORT}/api/ivytek/repair-notes     (fix c_transaction_details only, no txn insert)`
+);
 
 serve({ fetch: app.fetch, port: PORT });

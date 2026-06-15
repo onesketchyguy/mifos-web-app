@@ -174,18 +174,20 @@ export class ViewTransactionComponent extends LoanAccountActionsBaseComponent im
   }
 
   /**
-   * Loads the IvyTek SQL import note through the read-only Fineract report.
+   * Loads the transaction import note through the read-only Fineract report.
    */
   loadIvyTekImportNote(): void {
-    const externalId = this.transactionData?.externalId;
-    if (!externalId) {
+    const transactionId = this.transactionData?.id;
+    if (!transactionId) {
       return;
     }
-    this.loansService.getIvyTekTransactionImportNote(String(externalId)).subscribe({
+    this.loansService.getTransactionImportNote(String(transactionId)).subscribe({
       next: (response: any) => {
         this.ivyTekImportNote = this.getIvyTekImportNoteFromReport(response);
       },
-      error: () => {
+      error: (error) => {
+        // Gracefully handle report load failure (report may not exist yet)
+        console.warn('Failed to load transaction import note:', error);
         this.ivyTekImportNote = null;
       }
     });

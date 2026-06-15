@@ -7,6 +7,8 @@
  */
 
 import { Component, OnInit, ViewChild, inject } from '@angular/core';
+import { forkJoin, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 import { ActivatedRoute } from '@angular/router';
 import { UntypedFormControl, Validators } from '@angular/forms';
 import { MatPaginator } from '@angular/material/paginator';
@@ -49,8 +51,6 @@ import { FormatNumberPipe } from '../../../pipes/format-number.pipe';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
-import { forkJoin, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
 
 @Component({
   selector: 'mifosx-transactions-tab',
@@ -103,8 +103,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
   /** Columns to be displayed in original schedule table. */
   displayedColumns: string[] = [
     'row',
-    'id',
-    'office',
     'date',
     'transactionType',
     'amount',
@@ -118,8 +116,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
   ];
   displayedHeader1Columns: string[] = [
     'h1-row',
-    'h1-id',
-    'h1-office',
     'h1-transaction-date',
     'h1-transaction-type',
     'h1-space',
@@ -166,46 +162,26 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
   }
 
   loadTransactionNotes(): void {
-    const withExternalId = this.transactionsData.filter((t: LoanTransaction) => t.externalId);
-    if (!withExternalId.length) {
+    if (!this.transactionsData.length) {
       return;
     }
-    const requests = withExternalId.map((t: LoanTransaction) =>
-      this.loansService.getIvyTekTransactionImportNote(String(t.externalId)).pipe(
-        map((response: any) => ({ externalId: t.externalId, note: this.extractImportNote(response) })),
-        catchError(() => of({ externalId: t.externalId, note: null as string | null }))
+    const requests = this.transactionsData.map((t) =>
+      this.loansService.getTransactionImportNote(String(t.id)).pipe(
+        map((rows: any[]) => ({ id: t.id, note: rows?.[0]?.['Import Note'] ?? '' })),
+        catchError(() => of({ id: t.id, note: '' }))
       )
     );
-    forkJoin(requests).subscribe((results: { externalId: string; note: string | null }[]) => {
-      results.forEach(({ externalId, note }) => {
-        if (note) {
-          this.transactionNotes.set(externalId, note);
+    forkJoin(requests).subscribe((results) => {
+      results.forEach((r) => {
+        if (r.note) {
+          this.transactionNotes.set(String(r.id), r.note);
         }
       });
     });
   }
 
-  private extractImportNote(response: any): string | null {
-    const row = response?.data?.[0]?.row;
-    const headers: any[] = response?.columnHeaders || [];
-    if (!row || !headers.length) {
-      return null;
-    }
-    const idx = headers.findIndex(
-      (h) =>
-        String(h.columnName || '')
-          .trim()
-          .toLowerCase()
-          .replace(/\s+/g, '') === 'importnote'
-    );
-    return idx >= 0 ? row[idx] : null;
-  }
-
   getTransactionNote(transaction: LoanTransaction): string | null {
-    if (!transaction.externalId) {
-      return null;
-    }
-    return this.transactionNotes.get(transaction.externalId) || null;
+    return this.transactionNotes.get(String(transaction.id)) || null;
   }
 
   setLoanTransactions() {
