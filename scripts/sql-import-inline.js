@@ -21,6 +21,7 @@ const { Client } = require('pg');
 const PORT = parseInt(process.env['SQL_IMPORT_PORT'] || '3001', 10);
 const NOTE_PREFIX = 'IvyTek SQL history import:';
 const DETAILS_TABLE = 'c_transaction_details';
+const IVYTEK_NOTE_TABLE = 'c_ivytek_txn_note';
 const DEFAULT_BATCH_SIZE = 500;
 const IMPORT_NOTE_REPORT_NAME = 'IvyTek Transaction Import Note';
 const IMPORT_NOTE_PARAMETER_NAME = 'IvyTekTransactionExternalId';
@@ -574,6 +575,51 @@ async function insertTransactionDetails(client, records, batchSize) {
   return upserted;
 }
 
+async function ensureIvyTekNoteTable(client) {
+  await client.query(`
+    create table if not exists ${IVYTEK_NOTE_TABLE} (
+      id bigserial primary key,
+      loan_id bigint not null references m_loan(id),
+      transaction_id decimal(19,6),
+      note varchar(1000)
+    )
+  `);
+  await client.query(`
+    do $$ begin
+      if not exists (
+        select 1 from pg_constraint
+        where conrelid = '${IVYTEK_NOTE_TABLE}'::regclass and contype = 'u'
+          and conname = '${IVYTEK_NOTE_TABLE}_loan_txn_unique'
+      ) then
+        alter table ${IVYTEK_NOTE_TABLE}
+          add constraint ${IVYTEK_NOTE_TABLE}_loan_txn_unique unique (loan_id, transaction_id);
+      end if;
+    end $$
+  `);
+}
+
+async function insertIvyTekNotes(client, records, batchSize) {
+  let upserted = 0;
+  const noteRecords = records.filter((r) => r.note);
+  for (const batch of chunks(noteRecords, batchSize)) {
+    const params = [];
+    for (const rec of batch) params.push(rec.externalId, rec.note);
+    const res = await client.query(
+      `
+      with src(external_id, note) as (values ${valuesClause(batch.length, 2)})
+      insert into ${IVYTEK_NOTE_TABLE} (loan_id, transaction_id, note)
+      select t.loan_id, t.id, s.note
+      from src s
+      join m_loan_transaction t on t.external_id = s.external_id::varchar
+      on conflict (loan_id, transaction_id) do update set note = excluded.note
+      `,
+      params
+    );
+    upserted += res.rowCount ?? 0;
+  }
+  return upserted;
+}
+
 async function insertTransactions(client, records, createdBy, batchSize) {
   // Uses UNNEST with typed arrays — avoids CTE VALUES null-type-inference issues
   // that cause "could not determine data type of parameter $N" in PostgreSQL.
@@ -767,12 +813,15 @@ async function fetchDbTotals(client, externalIds, batchSize) {
     totals.noteCount += parseInt(noteRes.rows[0].note_count || 0);
   }
   totals.loanCount = loanIds.size;
-  const tableCheck = await client.query('select to_regclass($1) as tbl', [DETAILS_TABLE]);
+  const tableCheck = await client.query('select to_regclass($1) as tbl', [IVYTEK_NOTE_TABLE]);
   if (tableCheck.rows[0].tbl) {
     for (const batch of chunks(externalIds, batchSize)) {
       const ph = batch.map((_, i) => `$${i + 1}`).join(', ');
       const inRes = await client.query(
-        `select count(*)::bigint as note_count from ${DETAILS_TABLE} where transaction_external_id in (${ph})`,
+        `select count(*)::bigint as note_count
+         from ${IVYTEK_NOTE_TABLE} n
+         join m_loan_transaction t on t.id = n.transaction_id::bigint
+         where t.external_id in (${ph})`,
         batch
       );
       totals.importNoteCount += parseInt(inRes.rows[0].note_count || 0);
@@ -821,21 +870,22 @@ async function runImport({ db, transactions, createdBy = 4, apply = false }) {
     const sourceLoanCount = new Set(records.map((r) => r.loanId)).size;
     let insertedCount = 0,
       updatedCount = 0,
-      detailsTableReady = false;
+      noteTableReady = false;
 
     if (apply) {
       try {
-        await ensureDetailsTable(client);
-        detailsTableReady = true;
+        await ensureIvyTekNoteTable(client);
+        noteTableReady = true;
       } catch (e) {
-        warnings.push(`Could not create ${DETAILS_TABLE} (${e.message}). Grant CREATE on schema public to enable it.`);
+        warnings.push(
+          `Could not create ${IVYTEK_NOTE_TABLE} (${e.message}). Grant CREATE on schema public to enable it.`
+        );
       }
       const upsertResult = await insertTransactions(client, records, createdBy, DEFAULT_BATCH_SIZE);
       insertedCount = upsertResult.inserted;
       updatedCount = upsertResult.updated;
-      if (detailsTableReady) {
-        await insertTransactionDetails(client, records, DEFAULT_BATCH_SIZE);
-        await ensureImportNoteReport(client);
+      if (noteTableReady) {
+        await insertIvyTekNotes(client, records, DEFAULT_BATCH_SIZE);
       }
     }
 
@@ -884,13 +934,16 @@ async function runImport({ db, transactions, createdBy = 4, apply = false }) {
         difference: dbTotals.reversedCount - sourceReversed,
         status: dbTotals.reversedCount === sourceReversed ? 'Matched' : 'Needs Review'
       },
-      { metric: 'Notes', source: '-', database: dbTotals.noteCount, difference: 0, status: 'Info' },
       {
-        metric: 'Transaction Details Rows',
-        source: records.length,
+        metric: 'Notes (REST)',
+        source: records.filter((r) => r.note).length,
         database: dbTotals.importNoteCount,
-        difference: dbTotals.importNoteCount - records.length,
-        status: detailsTableReady ? (dbTotals.importNoteCount === records.length ? 'Matched' : 'Needs Review') : 'Info'
+        difference: dbTotals.importNoteCount - records.filter((r) => r.note).length,
+        status: noteTableReady
+          ? dbTotals.importNoteCount === records.filter((r) => r.note).length
+            ? 'Matched'
+            : 'Needs Review'
+          : 'Info'
       },
       { metric: 'Inserted This Run', source: '-', database: insertedCount, difference: 0, status: 'Info' },
       { metric: 'Updated This Run', source: '-', database: updatedCount, difference: 0, status: 'Info' }

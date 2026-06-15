@@ -36,6 +36,7 @@ import { LoanTransactionType } from 'app/loans/models/loan-transaction-type.mode
 import { AlertService } from 'app/core/alert/alert.service';
 import { TranslateService } from '@ngx-translate/core';
 import { NgClass, CurrencyPipe } from '@angular/common';
+import { MatIconButton } from '@angular/material/button';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { ExternalIdentifierComponent } from '../../../../shared/external-identifier/external-identifier.component';
 import { MatDivider } from '@angular/material/divider';
@@ -74,7 +75,8 @@ import { LoanAccountActionsBaseComponent } from '../../loan-account-actions/loan
     MatRow,
     TransactionPaymentDetailComponent,
     CurrencyPipe,
-    DateFormatPipe
+    DateFormatPipe,
+    MatIconButton
   ]
 })
 export class ViewTransactionComponent extends LoanAccountActionsBaseComponent implements OnInit {
@@ -95,7 +97,7 @@ export class ViewTransactionComponent extends LoanAccountActionsBaseComponent im
   /** Is able to be Chargeback */
   allowChargeback = true;
   /** IvyTek SQL import note shown for historical imported transactions. */
-  ivyTekImportNote: any | null = null;
+  ivyTekImportNote: any = null;
   existTransactionRelations = false;
 
   paymentTypeOptions: {}[] = [];
@@ -400,6 +402,47 @@ export class ViewTransactionComponent extends LoanAccountActionsBaseComponent im
         }
       }
     });
+  }
+
+  editNote(): void {
+    const formfields: FormfieldBase[] = [
+      new InputBase({
+        controlName: 'note',
+        label: this.translateService.instant('labels.inputs.Note'),
+        value: this.ivyTekImportNote?.importNote ?? '',
+        type: 'text',
+        required: false,
+        order: 1
+      })
+    ];
+    const data = {
+      title: this.translateService.instant('labels.inputs.Note'),
+      layout: { addButtonText: 'Submit' },
+      formfields,
+      pristine: false
+    };
+    this.dialog
+      .open(FormDialogComponent, { data, width: '40rem' })
+      .afterClosed()
+      .subscribe((response: any) => {
+        if (!response?.data) {
+          return;
+        }
+        const note: string = response.data.value.note ?? '';
+        const transactionId = String(this.transactionData.id);
+        const rowId = this.ivyTekImportNote?.rowId;
+        if (rowId) {
+          this.loansService.updateTransactionNote(String(this.loanId), rowId, note).subscribe({
+            next: () => this.loadIvyTekImportNote(),
+            error: () => this.alertService.alert({ type: 'Error', message: 'Failed to update note.' })
+          });
+        } else {
+          this.loansService.saveTransactionNote(String(this.loanId), transactionId, note).subscribe({
+            next: () => this.loadIvyTekImportNote(),
+            error: () => this.alertService.alert({ type: 'Error', message: 'Failed to save note.' })
+          });
+        }
+      });
   }
 
   loanTransactionRelatedLink(transactionId: number) {

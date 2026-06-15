@@ -111,17 +111,18 @@
           </div>
         }
 
-        @if (ivyTekImportNote) {
-          <mat-divider [inset]="true"></mat-divider>
+        <mat-divider [inset]="true"></mat-divider>
 
-          <div class="flex-50 mat-body-strong">
-            {{ 'labels.inputs.Note' | translate }}
-          </div>
+        <div class="flex-50 mat-body-strong">
+          {{ 'labels.inputs.Note' | translate }}
+        </div>
 
-          <div class="flex-50 no-break-content ivytek-import-note-value">
-            {{ ivyTekImportNote.importNote }}
-          </div>
-        }
+        <div class="flex-50 no-break-content ivytek-import-note-value layout-row layout-align-start-center gap-1">
+          <span>{{ ivyTekImportNote?.importNote }}</span>
+          <button mat-icon-button color="primary" (click)="editNote()" [matTooltip]="'Edit Note' | translate">
+            <fa-icon icon="edit"></fa-icon>
+          </button>
+        </div>
 
         @if (ivyTekImportNote?.comment) {
           <div class="flex-50 mat-body-strong">

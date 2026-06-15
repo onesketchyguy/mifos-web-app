@@ -685,14 +685,20 @@ export class LoansService {
   /**
    * @param {string} transactionId Fineract transaction id.
    * @param {string} loanId Fineract loan id.
-   * @returns { importNote: string } or null.
+   * @returns { importNote: string, rowId: number } or null.
    */
-  getTransactionImportNote(transactionId: string, loanId: string): Observable<{ importNote: string } | null> {
+  getTransactionImportNote(
+    transactionId: string,
+    loanId: string
+  ): Observable<{ importNote: string; rowId: number } | null> {
     const fetch = () =>
       this.http.get<any[]>(`/datatables/${this.ivyTekTxnNoteTable}/${loanId}`).pipe(
         map((rows) => {
-          const row = rows?.find((r) => String(r.transaction_id) === String(transactionId));
-          return row?.note ? { importNote: row.note } : null;
+          const matching = rows?.filter((r) => String(r.transaction_id) === String(transactionId)) ?? [];
+          const row = matching.length
+            ? matching.reduce((latest, r) => (!latest || r.id > latest.id ? r : latest), null as any)
+            : null;
+          return row?.note ? { importNote: row.note, rowId: row.id } : null;
         }),
         catchError(() => of(null))
       );
@@ -700,6 +706,17 @@ export class LoansService {
       return fetch();
     }
     return this.ensureIvyTekTxnNoteTable().pipe(switchMap(() => fetch()));
+  }
+
+  /**
+   * Updates an existing note row in the c_ivytek_txn_note datatable.
+   * @param {string} loanId Fineract loan id.
+   * @param {number} rowId Datatable row id.
+   * @param {string} note Updated note text.
+   */
+  updateTransactionNote(loanId: string, rowId: number, note: string): Observable<any> {
+    const payload = { note, locale: 'en', dateFormat: 'dd MMMM yyyy' };
+    return this.http.put(`/datatables/${this.ivyTekTxnNoteTable}/${loanId}/${rowId}`, payload);
   }
 
   /**
