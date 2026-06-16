@@ -26,10 +26,7 @@ import { Client } from 'pg';
 
 const PORT = parseInt(process.env['SQL_IMPORT_PORT'] || '3001', 10);
 const NOTE_PREFIX = 'IvyTek SQL history import:';
-const DETAILS_TABLE = 'c_transaction_details';
-const IMPORT_NOTE_REPORT_NAME = 'IvyTek Transaction Import Note';
-const IMPORT_NOTE_PARAMETER_NAME = 'TransactionId';
-const IMPORT_NOTE_PARAMETER_VARIABLE = 'transactionId';
+const NOTE_TABLE = 'c_txn_note';
 const DEFAULT_BATCH_SIZE = 500;
 
 // ---------------------------------------------------------------------------
@@ -197,25 +194,7 @@ function mapTransactionType(
 }
 
 function buildNote(rec: ProcessedRecord): string {
-  if (rec.description) {
-    return rec.description;
-  }
-  const parts = [
-    `source transaction ${rec.sourceTransactionId}`,
-    `legacy loan ${rec.legacyLoanId || '(blank)'}`,
-    `source loan ${rec.sourceLoanId || '(blank)'}`,
-    `payment type ${rec.paymentType || '(blank)'}`,
-    `special code ${rec.specialCode || '(blank)'}`,
-    `source amount ${rec.amount}`,
-    `principal ${rec.principal ?? '(blank)'}`,
-    `interest ${rec.interest ?? '(blank)'}`,
-    `classification ${rec.historyType || '(blank)'}`
-  ];
-  if (rec.voided) parts.push('voided/reversed in IvyTek');
-  if (rec.sourceComment) parts.push(`source comments ${rec.sourceComment}`);
-  if (rec.receiptNumber) parts.push(`receipt ${rec.receiptNumber}`);
-  if (rec.checkNumber) parts.push(`check ${rec.checkNumber}`);
-  return `${NOTE_PREFIX} ${parts.join('; ')}`;
+  return rec.description || '';
 }
 
 function processTransaction(txn: SqlTransaction): { record: ProcessedRecord | null; error: string | null } {
@@ -296,88 +275,27 @@ function chunks<T>(arr: T[], size: number): T[][] {
 // Database operations
 // ---------------------------------------------------------------------------
 
-async function ensureImportNoteTable(client: Client): Promise<void> {
+async function ensureNoteTable(client: Client): Promise<void> {
   await client.query(`
-    create table if not exists ${DETAILS_TABLE} (
-      id bigint primary key,
-      note text not null,
-      created_on_utc timestamptz not null default current_timestamp
+    create table if not exists ${NOTE_TABLE} (
+      id bigserial primary key,
+      loan_id bigint not null references m_loan(id),
+      transaction_id decimal(19,6),
+      note varchar(1000)
     )
   `);
-}
-
-async function ensureImportNoteReport(client: Client): Promise<void> {
-  const reportSql = [
-    `select cd.note as "Import Note"`,
-    `from c_transaction_details cd`,
-    `where cd.id = \${transactionId}`,
-    `limit 1`
-  ].join('\n');
-
-  const reportResult = await client.query(
-    `
-    insert into stretchy_report (
-      id, report_name, report_type, report_subtype, report_category,
-      report_sql, description, core_report, use_report, self_service_user_report
-    ) values (
-      nextval('stretchy_report_id_seq'), $1, 'Table', null, 'Loan',
-      $2, 'Read-only IvyTek imported transaction note lookup by transaction external id.',
-      false, true, false
-    )
-    on conflict (report_name) do update set
-      report_type = excluded.report_type,
-      report_subtype = excluded.report_subtype,
-      report_category = excluded.report_category,
-      report_sql = excluded.report_sql,
-      description = excluded.description,
-      use_report = true
-    returning id
-    `,
-    [
-      IMPORT_NOTE_REPORT_NAME,
-      reportSql
-    ]
-  );
-  const reportId = reportResult.rows[0].id;
-
-  const paramResult = await client.query(
-    `
-    insert into stretchy_parameter (
-      id, parameter_name, parameter_variable, parameter_label,
-      "parameter_displayType", "parameter_FormatType", parameter_default,
-      special, "selectOne", "selectAll", parameter_sql, parent_id
-    ) values (
-      nextval('stretchy_parameter_id_seq'), $1, $2, 'Transaction Id',
-      'text', 'string', 'n/a', null, null, null, null, null
-    )
-    on conflict (parameter_name) do update set
-      parameter_variable = excluded.parameter_variable,
-      parameter_label = excluded.parameter_label,
-      "parameter_displayType" = excluded."parameter_displayType",
-      "parameter_FormatType" = excluded."parameter_FormatType",
-      parameter_default = excluded.parameter_default
-    returning id
-    `,
-    [
-      IMPORT_NOTE_PARAMETER_NAME,
-      IMPORT_NOTE_PARAMETER_VARIABLE
-    ]
-  );
-  const parameterId = paramResult.rows[0].id;
-
-  await client.query(
-    `
-    insert into stretchy_report_parameter (id, report_id, parameter_id, report_parameter_name)
-    values (nextval('stretchy_report_parameter_id_seq'), $1, $2, $3)
-    on conflict (report_id, parameter_id) do update set
-      report_parameter_name = excluded.report_parameter_name
-    `,
-    [
-      reportId,
-      parameterId,
-      IMPORT_NOTE_PARAMETER_VARIABLE
-    ]
-  );
+  await client.query(`
+    do $$ begin
+      if not exists (
+        select 1 from pg_constraint
+        where conrelid = '${NOTE_TABLE}'::regclass and contype = 'u'
+          and conname = '${NOTE_TABLE}_loan_txn_unique'
+      ) then
+        alter table ${NOTE_TABLE}
+          add constraint ${NOTE_TABLE}_loan_txn_unique unique (loan_id, transaction_id);
+      end if;
+    end $$
+  `);
 }
 
 async function fetchExistingExternalIds(
@@ -521,17 +439,29 @@ async function insertNotes(
   createdBy: number,
   batchSize: number
 ): Promise<number> {
-  let inserted = 0;
+  let written = 0;
   for (const batch of chunks(entries, batchSize)) {
     const params: unknown[] = [];
     for (const e of batch) params.push(e.transactionId, e.loanId, e.note);
     const noteOffset = batch.length * 3;
-    params.push(createdBy, createdBy, `${NOTE_PREFIX}%`);
+    params.push(createdBy, `${NOTE_PREFIX}%`);
 
-    const result = await client.query(
+    // Update existing import notes, then insert for transactions with no note yet.
+    await client.query(
       `
       with src(transaction_id, loan_id, note) as (
         values ${valuesClause(batch.length, 3)}
+      ),
+      updated as (
+        update m_note n
+        set note = s.note::varchar,
+            lastmodified_date = current_timestamp,
+            last_modified_by = $${noteOffset + 1},
+            last_modified_on_utc = current_timestamp
+        from src s
+        where n.loan_transaction_id = s.transaction_id::bigint
+          and n.note like $${noteOffset + 2}
+        returning n.loan_transaction_id
       )
       insert into m_note (
         id, client_id, group_id, loan_id, loan_transaction_id, savings_account_id,
@@ -550,36 +480,35 @@ async function insertNotes(
         current_timestamp,
         $${noteOffset + 1},
         current_timestamp,
-        $${noteOffset + 2},
+        $${noteOffset + 1},
         current_timestamp,
         current_timestamp
       from src s
       where not exists (
         select 1 from m_note n
         where n.loan_transaction_id = s.transaction_id::bigint
-          and n.note like $${noteOffset + 3}
       )
       `,
       params
     );
-    inserted += result.rowCount ?? 0;
+    written += batch.length;
   }
-  return inserted;
+  return written;
 }
 
-async function insertImportNotes(
+async function insertIvyTekNotes(
   client: Client,
-  entries: { id: number; note: string }[],
+  entries: { transactionId: number; loanId: number; note: string }[],
   batchSize: number
 ): Promise<number> {
   let upserted = 0;
   for (const batch of chunks(entries, batchSize)) {
     const params: unknown[] = [];
-    for (const e of batch) params.push(e.id, e.note);
+    for (const e of batch) params.push(e.loanId, e.transactionId, e.note);
     const result = await client.query(
-      `insert into ${DETAILS_TABLE} (id, note)
-       values ${valuesClause(batch.length, 2)}
-       on conflict (id) do update set note = excluded.note`,
+      `insert into ${NOTE_TABLE} (loan_id, transaction_id, note)
+       values ${valuesClause(batch.length, 3)}
+       on conflict (loan_id, transaction_id) do update set note = excluded.note`,
       params
     );
     upserted += result.rowCount ?? 0;
@@ -658,10 +587,19 @@ async function fetchDbTotals(
   totals.loanCount = loanIds.size;
 
   // Import note table count (non-fatal if table absent)
-  const tableCheck = await client.query(`select to_regclass($1)`, [DETAILS_TABLE]);
+  const tableCheck = await client.query(`select to_regclass($1)`, [NOTE_TABLE]);
   if (tableCheck.rows[0].to_regclass) {
-    const inRes = await client.query(`select count(*) from ${DETAILS_TABLE}`);
-    totals.importNoteCount = parseInt(inRes.rows[0].count || 0);
+    for (const batch of chunks(externalIds, batchSize)) {
+      const ph = batch.map((_, i) => `$${i + 1}`).join(', ');
+      const inRes = await client.query(
+        `select count(*)::bigint as note_count
+         from ${NOTE_TABLE} n
+         join m_loan_transaction t on t.id = n.transaction_id::bigint
+         where t.external_id in (${ph})`,
+        batch
+      );
+      totals.importNoteCount += parseInt(inRes.rows[0].note_count || 0);
+    }
   }
 
   return totals;
@@ -710,22 +648,12 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
     let importNoteTableReady = false;
     if (apply) {
       try {
-        await ensureImportNoteTable(client);
+        await ensureNoteTable(client);
         importNoteTableReady = true;
       } catch (e: any) {
         warnings.push(
           `Could not create import note table (${e.message}). Import note rows will be skipped — grant CREATE on schema public to the DB user to enable them.`
         );
-      }
-
-      if (importNoteTableReady) {
-        try {
-          await ensureImportNoteReport(client);
-        } catch (e: any) {
-          warnings.push(
-            `Could not upsert IvyTek import note stretchy report: ${e.message}. Transactions will still be inserted.`
-          );
-        }
       }
     }
 
@@ -865,12 +793,9 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
           insertedNoteCount = await insertNotes(client, mappedNoteEntries, createdBy, DEFAULT_BATCH_SIZE);
         }
 
-        // Also write to c_transaction_details (keyed by Fineract transaction ID).
+        // Also write to c_txn_note (keyed by Fineract transaction ID + loan ID).
         if (importNoteTableReady) {
-          const detailEntries = records
-            .filter((r) => r.note && allIdMap.has(r.externalId))
-            .map((r) => ({ id: allIdMap.get(r.externalId)!, note: r.note }));
-          upsertedImportNoteCount = await insertImportNotes(client, detailEntries, DEFAULT_BATCH_SIZE);
+          upsertedImportNoteCount = await insertIvyTekNotes(client, mappedNoteEntries, DEFAULT_BATCH_SIZE);
         }
       } catch (e: any) {
         warnings.push(`Post-commit note population failed: ${e.message}`);
@@ -878,7 +803,7 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
 
       return {
         success: true,
-        message: `Committed ${insertedCount} transaction rows. Notes written: ${insertedNoteCount} (m_note), ${upsertedImportNoteCount} (c_transaction_details).`,
+        message: `Committed ${insertedCount} transaction rows. Notes written: ${insertedNoteCount} (m_note), ${upsertedImportNoteCount} (c_txn_note).`,
         inserted: insertedCount,
         skipped: existingIds.size,
         warnings,
@@ -1392,26 +1317,20 @@ app.post('/api/ivytek/repair-notes', async (c) => {
   try {
     await client.connect();
 
-    await ensureImportNoteTable(client);
-
-    try {
-      await ensureImportNoteReport(client);
-    } catch (e: any) {
-      warnings.push(`Could not upsert stretchy report: ${e.message}`);
-    }
+    await ensureNoteTable(client);
 
     const externalIds = records.map((r) => r.externalId);
     const idMap = await fetchIdsByExternalIds(client, externalIds, DEFAULT_BATCH_SIZE);
 
     const noteEntries = records
       .filter((r) => r.note && idMap.has(r.externalId))
-      .map((r) => ({ id: idMap.get(r.externalId)!, note: r.note }));
+      .map((r) => ({ transactionId: idMap.get(r.externalId)!, loanId: r.loanId, note: r.note }));
 
-    const upserted = await insertImportNotes(client, noteEntries, DEFAULT_BATCH_SIZE);
+    const upserted = await insertIvyTekNotes(client, noteEntries, DEFAULT_BATCH_SIZE);
 
     return c.json({
       success: true,
-      message: `Repaired ${upserted} import note row(s) in ${DETAILS_TABLE}.`,
+      message: `Repaired ${upserted} import note row(s) in ${NOTE_TABLE}.`,
       upserted,
       warnings
     } satisfies RepairNotesResponse);
@@ -1428,16 +1347,19 @@ app.post('/api/ivytek/repair-notes', async (c) => {
 // ---------------------------------------------------------------------------
 
 app.post('/api/ivytek/write-transaction-note', async (c) => {
-  let body: { transactionId?: number; note?: string; db?: any };
+  let body: { transactionId?: number; loanId?: number; note?: string; db?: any };
   try {
     body = await c.req.json();
   } catch {
     return c.json({ success: false, message: 'Invalid JSON body.' }, 400);
   }
 
-  const { transactionId, note } = body;
+  const { transactionId, loanId, note } = body;
   if (!transactionId || typeof transactionId !== 'number') {
     return c.json({ success: false, message: 'transactionId is required and must be a number.' }, 400);
+  }
+  if (!loanId || typeof loanId !== 'number') {
+    return c.json({ success: false, message: 'loanId is required and must be a number.' }, 400);
   }
   if (!note || typeof note !== 'string' || !note.trim()) {
     return c.json({ success: false, message: 'note is required and must be a non-empty string.' }, 400);
@@ -1454,19 +1376,16 @@ app.post('/api/ivytek/write-transaction-note', async (c) => {
 
   try {
     await client.connect();
-    await ensureImportNoteTable(client);
+    await ensureNoteTable(client);
     await client.query(
-      `insert into ${DETAILS_TABLE} (id, note) values ($1, $2) on conflict (id) do update set note = excluded.note`,
+      `insert into ${NOTE_TABLE} (loan_id, transaction_id, note) values ($1, $2, $3)
+       on conflict (loan_id, transaction_id) do update set note = excluded.note`,
       [
+        loanId,
         transactionId,
         note.trim()
       ]
     );
-    try {
-      await ensureImportNoteReport(client);
-    } catch (e: any) {
-      console.warn('Could not upsert stretchy report:', e.message);
-    }
     return c.json({ success: true, message: 'Transaction note saved.' });
   } catch (e: any) {
     console.error('write-transaction-note error:', e);

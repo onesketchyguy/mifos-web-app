@@ -41,7 +41,7 @@ export class ApiPrefixInterceptor implements HttpInterceptor {
      * Ignore URLs that are complete for i18n
      * **__NOTE__** OAuth2 endpoints are handled by angular-oauth2-oidc library
      */
-    if (!request.url.includes('http:') && !request.url.includes('https:')) {
+    if (!request.url.includes('http:') && !request.url.includes('https:') && !request.url.startsWith('/api/ivytek/')) {
       request = request.clone({ url: baseUrl + request.url });
     }
     return next.handle(request);

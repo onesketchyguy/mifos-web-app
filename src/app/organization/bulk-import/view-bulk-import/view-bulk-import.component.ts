@@ -4146,18 +4146,12 @@ export class ViewBulkImportComponent implements OnInit {
       throw new Error('Client saved, but Mifos did not return a client id for the tribal data update.');
     }
 
-    await this.upsertIvyTekClientTribalData(clientId.toString(), row);
     warnings.push(...(await this.upsertIvyTekClientIdentifiers(clientId.toString(), row)));
     const addressStatus = await this.upsertIvyTekClientAddress(clientId.toString(), row);
     if (addressStatus.warning) {
       warnings.push(addressStatus.warning);
     }
-    const customFieldDatatablesUpdated = await this.upsertIvyTekMappedCustomFields(
-      'm_client',
-      clientId.toString(),
-      row,
-      [this.ivyTekClientTribalDatatableName]
-    );
+    const customFieldDatatablesUpdated = 0;
     return {
       status,
       clientId,
@@ -4385,10 +4379,14 @@ export class ViewBulkImportComponent implements OnInit {
         await firstValueFrom(this.systemService.getEntityDatatables(appTable))
       );
     } catch {
-      datatables =
-        appTable === 'm_client'
-          ? this.normalizeIvyTekListResponse(await firstValueFrom(this.clientsService.getClientDatatables()))
-          : this.normalizeIvyTekListResponse(await firstValueFrom(this.loansService.getLoanDataTables()));
+      try {
+        datatables =
+          appTable === 'm_client'
+            ? this.normalizeIvyTekListResponse(await firstValueFrom(this.clientsService.getClientDatatables()))
+            : this.normalizeIvyTekListResponse(await firstValueFrom(this.loansService.getLoanDataTables()));
+      } catch {
+        datatables = [];
+      }
     }
 
     const definitions = await Promise.all(
@@ -4481,6 +4479,13 @@ export class ViewBulkImportComponent implements OnInit {
           .map((tableName: string) => this.normalizeIvyTekText(tableName))
           .includes(this.normalizeIvyTekText(datatableName))
       ) {
+        continue;
+      }
+
+      // Multi-row datatables (first column is 'id') cannot be generically upserted
+      // without a row ID — skip them to avoid 404 errors on update attempts.
+      const allColumns = this.getIvyTekDatatableColumns(datatable);
+      if (allColumns.length > 0 && (allColumns[0].columnName || allColumns[0].name) === 'id') {
         continue;
       }
 
@@ -5548,14 +5553,6 @@ export class ViewBulkImportComponent implements OnInit {
       payload.submittedOnDate = activationDate;
       payload.activationDate = activationDate;
     }
-    if (includeDatatables && this.getIvyTekEntityId(row)) {
-      payload.datatables = [
-        {
-          registeredTableName: this.ivyTekClientTribalDatatableName,
-          data: this.getIvyTekClientTribalDataPayload(row)
-        }
-      ];
-    }
     const birthdate = this.getIvyTekClientBirthdate(row);
     if (birthdate) {
       payload.dateOfBirth = birthdate;
@@ -6402,7 +6399,10 @@ export class ViewBulkImportComponent implements OnInit {
       amountPaid: this.getIvyTekTransactionAmount(row),
       principalPaid: this.getIvyTekTransactionPrincipalPaid(row) ?? '',
       interestPaid: this.getIvyTekTransactionInterestPaid(row) ?? '',
-      paymentType: this.getCsvValue(row, 'IvytekTestPkg__TypPay__c'),
+      paymentType: this.resolveIvyTekMifosPaymentType(
+        this.getCsvValue(row, 'IvytekTestPkg__TypPay__c'),
+        this.getCsvValue(row, 'IvytekTestPkg__Description__c')
+      ),
       specialTransCode: this.getCsvValue(row, 'IvytekTestPkg__SpecialTransCode__c'),
       description: this.getCsvValue(row, 'IvytekTestPkg__Description__c'),
       restHistoricalImport: 'No - SQL backend history import',
@@ -6739,6 +6739,7 @@ export class ViewBulkImportComponent implements OnInit {
     const numericGroup = this.getIvyTekLoanGroupNumber(normalizedGroup);
     const paddedNumericGroup = this.getIvyTekLoanGroupDigits(normalizedGroup).padStart(3, '0');
     const candidates = [
+      this.getIvyTekProductLookupOverride(normalizedGroup),
       this.getIvyTekProductName(group),
       this.getIvyTekProductName(normalizedGroup),
       group,
@@ -7316,10 +7317,8 @@ export class ViewBulkImportComponent implements OnInit {
       return;
     }
     syncedClientIds.add(clientId);
-    await this.upsertIvyTekClientTribalData(clientId, row);
     await this.upsertIvyTekClientIdentifiers(clientId, row);
     await this.upsertIvyTekClientAddress(clientId, row);
-    await this.upsertIvyTekMappedCustomFields('m_client', clientId, row, [this.ivyTekClientTribalDatatableName]);
   }
 
   /**
@@ -10264,6 +10263,19 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Gets the Mifos product name override for product lookup purposes.
+   * Some groups (e.g. code 80 / Estates Pending) share a product with another
+   * group but keep their own loan group in the datatable.
+   * @param {string} group Normalized IvyTek loan group.
+   */
+  private getIvyTekProductLookupOverride(group: string): string {
+    const overrides: Record<string, string> = {
+      '80': 'Personal Loan'
+    };
+    return overrides[group] || '';
+  }
+
+  /**
    * Gets the generated loan external id.
    * @param {any} row IvyTek loan row.
    */
@@ -10640,6 +10652,59 @@ export class ViewBulkImportComponent implements OnInit {
       isSalesforceId ? '' : trimmed.toLowerCase(),
       ...this.getSalesforceIdKeys(trimmed)
     ]);
+  }
+
+  /**
+   * Maps a raw IvyTek payment type value (or description fallback) to the canonical Mifos payment type name.
+   * Checks TypPay__c first, then Description__c, so that "Pension payment" → PENSION even when the type field is blank.
+   */
+  private resolveIvyTekMifosPaymentType(typPay: string, description: string): string {
+    const mifosPaymentTypes: Array<{ name: string; keys: string[] }> = [
+      { name: 'PENSION', keys: [
+          'pension',
+          'pensionpayment'
+        ] },
+      { name: 'PAYROLL', keys: [
+          'payroll',
+          'payrollpayment'
+        ] },
+      { name: 'PERCAPITA', keys: [
+          'percapita',
+          'percapitapayment',
+          'per capita',
+          'percapitapay'
+        ] },
+      { name: 'REFUND', keys: [
+          'refund',
+          'repaymentadjustmentrefund'
+        ] },
+      { name: 'REG PAYMENT', keys: [
+          'regpayment',
+          'repaymentadjustmentchargeback',
+          'regularpayment'
+        ] }
+    ];
+
+    const normalize = (v: string) =>
+      (v || '')
+        .toString()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+    const candidates = [
+      typPay,
+      description
+    ]
+      .map(normalize)
+      .filter(Boolean);
+
+    for (const candidate of candidates) {
+      const match = mifosPaymentTypes.find((pt) => pt.keys.some((k) => candidate.includes(k) || k.includes(candidate)));
+      if (match) {
+        return match.name;
+      }
+    }
+
+    return typPay || '';
   }
 
   /**
