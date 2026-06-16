@@ -11,7 +11,8 @@ import { Injectable, inject } from '@angular/core';
 import { ActivatedRouteSnapshot } from '@angular/router';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 /** Custom Services */
 import { OrganizationService } from '../organization.service';
@@ -43,6 +44,6 @@ export class BulkImportResolver {
    */
   resolve(route: ActivatedRouteSnapshot): Observable<any> {
     const entity = this.getEntityName(route.params['import-name']);
-    return this.organizationService.getImports(entity);
+    return this.organizationService.getImports(entity).pipe(catchError(() => of([])));
   }
 }

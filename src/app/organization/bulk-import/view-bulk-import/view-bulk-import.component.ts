@@ -10672,7 +10672,8 @@ export class ViewBulkImportComponent implements OnInit {
           'percapita',
           'percapitapayment',
           'per capita',
-          'percapitapay'
+          'percapitapay',
+          'percap'
         ] },
       { name: 'REFUND', keys: [
           'refund',
@@ -10704,7 +10705,7 @@ export class ViewBulkImportComponent implements OnInit {
       }
     }
 
-    return typPay || '';
+    return 'REG PMNT';
   }
 
   /**

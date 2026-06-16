@@ -10,7 +10,8 @@
 import { Injectable, inject } from '@angular/core';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 /** Custom Services */
 import { OrganizationService } from '../../organization.service';
@@ -27,6 +28,6 @@ export class OfficesResolver {
    * @returns {Observable<any>}
    */
   resolve(): Observable<any> {
-    return this.organizationService.getOffices();
+    return this.organizationService.getOffices().pipe(catchError(() => of([])));
   }
 }

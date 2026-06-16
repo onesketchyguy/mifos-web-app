@@ -167,6 +167,48 @@ function normalizeText(value) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+function resolvePaymentTypeName(typPay, description) {
+  const mifosTypes = [
+    { name: 'PENSION', keys: [
+        'pension',
+        'pensionpayment'
+      ] },
+    { name: 'PAYROLL', keys: [
+        'payroll',
+        'payrollpayment'
+      ] },
+    { name: 'PERCAPITA', keys: [
+        'percapita',
+        'percapitapayment',
+        'percapitapay',
+        'percap'
+      ] },
+    { name: 'REFUND', keys: [
+        'refund',
+        'repaymentadjustmentrefund'
+      ] },
+    { name: 'REG PAYMENT', keys: [
+        'regpayment',
+        'repaymentadjustmentchargeback',
+        'regularpayment'
+      ] }
+  ];
+  const normalize = (v) =>
+    String(v || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '');
+  for (const candidate of [
+    typPay,
+    description
+  ]
+    .map(normalize)
+    .filter(Boolean)) {
+    const match = mifosTypes.find((pt) => pt.keys.some((k) => candidate.includes(k) || k.includes(candidate)));
+    if (match) return match.name;
+  }
+  return 'REG PMNT';
+}
+
 function normalizeCode(value) {
   const text = String(value ?? '').trim();
   if (!text) return '';
@@ -326,7 +368,10 @@ function csvRowToSqlTransaction(row, loanIdMap, loanIdentifierMap) {
           'Deferred Interest Paid'
         ]
       ]) ?? '',
-    paymentType: csvVal(row, 'IvytekTestPkg__TypPay__c'),
+    paymentType: resolvePaymentTypeName(
+      csvVal(row, 'IvytekTestPkg__TypPay__c'),
+      csvVal(row, 'IvytekTestPkg__Description__c')
+    ),
     specialCode: csvVal(row, 'IvytekTestPkg__SpecialTransCode__c'),
     historyType: csvHistoryType(row),
     description: csvVal(row, 'IvytekTestPkg__Description__c'),
@@ -497,6 +542,100 @@ async function insertIvyTekNotes(client, records, batchSize) {
     upserted += res.rowCount ?? 0;
   }
   return upserted;
+}
+
+async function upsertPaymentDetails(client, records) {
+  const processable = records.filter((r) => r.paymentType && r.externalId);
+  if (!processable.length) return 0;
+
+  // 1. Resolve payment type names → IDs (one query)
+  const uniqueNames = [...new Set(processable.map((r) => r.paymentType))];
+  const ptPh = uniqueNames.map((_, i) => `$${i + 1}`).join(', ');
+  const ptRes = await client.query(`SELECT id, value FROM m_payment_type WHERE value IN (${ptPh})`, uniqueNames);
+  const paymentTypeIdMap = new Map(
+    ptRes.rows.map((r) => [
+      r.value,
+      Number(r.id)
+    ])
+  );
+  if (!paymentTypeIdMap.size) return 0;
+
+  const withType = processable.filter((r) => paymentTypeIdMap.has(r.paymentType));
+  if (!withType.length) return 0;
+
+  // 2. Batch-fetch existing payment_detail_id for all records (one query)
+  const extIds = withType.map((r) => r.externalId);
+  const txRes = await client.query(
+    `SELECT external_id, payment_detail_id FROM m_loan_transaction
+     WHERE external_id = ANY($1::text[])`,
+    [extIds]
+  );
+  const existingPdMap = new Map(
+    txRes.rows.map((r) => [
+      r.external_id,
+      r.payment_detail_id ? Number(r.payment_detail_id) : null
+    ])
+  );
+
+  const toUpdate = withType.filter((r) => existingPdMap.get(r.externalId));
+  const toInsert = withType.filter((r) => !existingPdMap.get(r.externalId));
+
+  // 3. Batch-update existing payment_detail rows (one query)
+  if (toUpdate.length) {
+    await client.query(
+      `UPDATE m_payment_detail pd
+       SET payment_type_id = t.pt_id,
+           receipt_number  = t.rcpt,
+           check_number    = t.chk
+       FROM unnest($1::bigint[], $2::bigint[], $3::text[], $4::text[])
+            AS t(pd_id, pt_id, rcpt, chk)
+       WHERE pd.id = t.pd_id`,
+      [
+        toUpdate.map((r) => existingPdMap.get(r.externalId)),
+        toUpdate.map((r) => paymentTypeIdMap.get(r.paymentType)),
+        toUpdate.map((r) => r.receiptNumber || null),
+        toUpdate.map((r) => r.checkNumber || null)
+      ]
+    );
+  }
+
+  // 4. Batch-insert new payment_detail rows, using bank_number as a temporary
+  //    external_id carrier so we can link them back without per-row round trips.
+  if (toInsert.length) {
+    await client.query(
+      `INSERT INTO m_payment_detail
+         (payment_type_id, account_number, check_number, routing_code, receipt_number, bank_number)
+       SELECT pt_id, null, chk, null, rcpt, ext_id
+       FROM unnest($1::bigint[], $2::text[], $3::text[], $4::text[])
+            AS t(pt_id, chk, rcpt, ext_id)`,
+      [
+        toInsert.map((r) => paymentTypeIdMap.get(r.paymentType)),
+        toInsert.map((r) => r.checkNumber || null),
+        toInsert.map((r) => r.receiptNumber || null),
+        toInsert.map((r) => r.externalId)
+      ]
+    );
+
+    // Link new rows back to their transactions via bank_number = external_id
+    await client.query(
+      `UPDATE m_loan_transaction txn
+       SET payment_detail_id = pd.id
+       FROM m_payment_detail pd
+       WHERE pd.bank_number = txn.external_id
+         AND txn.external_id = ANY($1::text[])
+         AND txn.payment_detail_id IS NULL`,
+      [toInsert.map((r) => r.externalId)]
+    );
+
+    // Clear the temporary bank_number values
+    await client.query(
+      `UPDATE m_payment_detail SET bank_number = null
+       WHERE bank_number = ANY($1::text[])`,
+      [toInsert.map((r) => r.externalId)]
+    );
+  }
+
+  return withType.length;
 }
 
 async function insertTransactions(client, records, createdBy, batchSize) {
@@ -778,6 +917,20 @@ async function runImport({ db, transactions, createdBy = 4, apply = false }) {
       const upsertResult = await insertTransactions(client, records, createdBy, DEFAULT_BATCH_SIZE);
       insertedCount = upsertResult.inserted;
       updatedCount = upsertResult.updated;
+
+      // Update payment types within the same transaction so they commit or roll back
+      // together with the financial data. SAVEPOINT isolates any schema/permission
+      // failure so it logs a warning without aborting the whole transaction.
+      await client.query('SAVEPOINT sp_payment_details');
+      try {
+        const pdCount = await upsertPaymentDetails(client, records);
+        if (pdCount > 0) warnings.push(`Payment details: ${pdCount} transaction(s) linked.`);
+        await client.query('RELEASE SAVEPOINT sp_payment_details');
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp_payment_details');
+        await client.query('RELEASE SAVEPOINT sp_payment_details');
+        warnings.push(`Payment detail update failed (non-fatal): ${e.message}`);
+      }
     }
 
     const dbTotals = await fetchDbTotals(client, externalIds, DEFAULT_BATCH_SIZE);
