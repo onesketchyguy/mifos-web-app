@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, Input, OnChanges, inject } from '@angular/core';
+import { Component, OnInit, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { UntypedFormGroup, UntypedFormBuilder, Validators, UntypedFormControl } from '@angular/forms';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute } from '@angular/router';
@@ -189,7 +189,10 @@ export class LoansAccountTermsStepComponent extends LoanProductBaseComponent imp
   /**
    * Executes on change of input values
    */
-  ngOnChanges() {
+  ngOnChanges(changes: SimpleChanges) {
+    if (!changes['loansAccountProductTemplate']) {
+      return;
+    }
     if (this.loanProductService.isLoanProduct) {
       if (this.loansAccountProductTemplate) {
         this.currency = this.loansAccountProductTemplate.currency;
@@ -445,6 +448,7 @@ export class LoansAccountTermsStepComponent extends LoanProductBaseComponent imp
       this.setCustomValidators();
       this.setLoanTermListener();
       this.setNumericFieldListeners();
+      this.setPrincipalSyncListener();
 
       if (this.allowAddDisbursementDetails()) {
         this.loansAccountTermsForm.removeControl('maxOutstandingLoanBalance');
@@ -462,6 +466,7 @@ export class LoansAccountTermsStepComponent extends LoanProductBaseComponent imp
         );
       }
     } else if (this.loanProductService.isWorkingCapital) {
+      this.setPrincipalSyncListener();
       if (this.loansAccountTermsData) {
         this.loansAccountTermsForm.patchValue({
           principalAmount: this.loansAccountTermsData.principal || this.loansAccountTermsData.product.principal,
@@ -564,6 +569,22 @@ export class LoansAccountTermsStepComponent extends LoanProductBaseComponent imp
         }
       });
     }
+  }
+
+  /** Keep related amount fields in sync with principalAmount as the user types */
+  setPrincipalSyncListener(): void {
+    this.loansAccountTermsForm.get('principalAmount')?.valueChanges.subscribe((value) => {
+      if (this.loanProductService.isWorkingCapital) {
+        if (!this.loansAccountTermsForm.get('totalPayment')?.dirty) {
+          this.loansAccountTermsForm.patchValue({ totalPayment: value }, { emitEvent: false });
+        }
+      } else if (this.loanProductService.isLoanProduct && this.multiDisburseLoan) {
+        const maxControl = this.loansAccountTermsForm.get('maxOutstandingLoanBalance');
+        if (maxControl && !maxControl.dirty) {
+          maxControl.patchValue(value, { emitEvent: false });
+        }
+      }
+    });
   }
 
   setAdvancedPaymentStrategyControls(): void {

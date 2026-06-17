@@ -8,7 +8,15 @@
 
 /** Angular Imports */
 import { Component, OnInit, Input, Output, EventEmitter, OnDestroy, inject } from '@angular/core';
-import { UntypedFormGroup, UntypedFormBuilder, Validators, UntypedFormControl } from '@angular/forms';
+import {
+  UntypedFormGroup,
+  UntypedFormBuilder,
+  Validators,
+  UntypedFormControl,
+  AbstractControl,
+  ValidationErrors,
+  AsyncValidatorFn
+} from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { SettingsService } from 'app/settings/settings.service';
 import { TranslateService } from '@ngx-translate/core';
@@ -16,8 +24,8 @@ import { TranslateService } from '@ngx-translate/core';
 /** Custom Services */
 import { LoansService } from '../../loans.service';
 import { Commons } from 'app/core/utils/commons';
-import { takeUntil } from 'rxjs/operators';
-import { ReplaySubject, Subject } from 'rxjs';
+import { takeUntil, switchMap, map, catchError } from 'rxjs/operators';
+import { ReplaySubject, Subject, Observable, of, timer } from 'rxjs';
 import { MatTooltip } from '@angular/material/tooltip';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { AsyncPipe } from '@angular/common';
@@ -134,7 +142,8 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
         expectedDisbursementDate:
           this.loansAccountTemplate.timeline.expectedDisbursementDate &&
           new Date(this.loansAccountTemplate.timeline.expectedDisbursementDate),
-        externalId: this.loansAccountTemplate.externalId
+        // Only restore externalId when editing an existing loan, not on new loan creation
+        ...(this.loanId ? { externalId: this.loansAccountTemplate.externalId } : {})
       });
       if (this.loansAccountTemplate.loanProductId) {
         loanProductId = this.loansAccountTemplate.loanProductId;
@@ -204,6 +213,23 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
       ],
       externalId: ['']
     });
+    this.loansAccountDetailsForm.get('externalId').setAsyncValidators(this.loanIdUniquenessValidator());
+  }
+
+  private loanIdUniquenessValidator(): AsyncValidatorFn {
+    return (control: AbstractControl): Observable<ValidationErrors | null> => {
+      if (!control.value || control.value.trim() === '') {
+        return of(null);
+      }
+      return timer(500).pipe(
+        switchMap(() =>
+          this.loansService.checkLoanExternalIdExists(control.value).pipe(
+            map(() => ({ loanIdNotUnique: true })),
+            catchError(() => of(null))
+          )
+        )
+      );
+    };
   }
 
   /**

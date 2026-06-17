@@ -84,6 +84,8 @@ export class LoansAccountPreviewStepComponent extends LoanProductBaseComponent i
 
   /** Submit Loans Account */
   @Output() submitEvent = new EventEmitter();
+  /** Submit and Approve Loans Account */
+  @Output() submitAndApproveEvent = new EventEmitter();
 
   /** Charges Displayed Columns */
   chargesDisplayedColumns: string[] = [

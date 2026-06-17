@@ -67,10 +67,8 @@
 
   @if (loansAccount.externalId) {
     <div class="flex-fill">
-      <span class="flex-30">{{ 'labels.inputs.External id' | translate }}:</span>
-      <span class="flex-70">
-        <mifosx-external-identifier externalId="{{ loansAccount.externalId }}"></mifosx-external-identifier>
-      </span>
+      <span class="flex-30">Loan ID:</span>
+      <span class="flex-70">{{ loansAccount.externalId }}</span>
     </div>
   }
 
@@ -494,7 +492,6 @@
   >
     {{ 'labels.buttons.Cancel' | translate }}
   </button>
-  <button mat-raised-button color="primary" (click)="submitEvent.emit()">
-    {{ 'labels.buttons.Submit' | translate }}
-  </button>
+  <button mat-raised-button color="primary" (click)="submitEvent.emit()">Submit for Approval</button>
+  <button mat-raised-button color="accent" (click)="submitAndApproveEvent.emit()">Submit and Approve</button>
 </div>

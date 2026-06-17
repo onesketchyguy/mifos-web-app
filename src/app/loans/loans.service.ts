@@ -8,7 +8,8 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
+import { SKIP_ERROR_HANDLER } from 'app/core/http/error-handler.interceptor';
 
 /** rxjs Imports */
 import { Observable, catchError, map, of } from 'rxjs';
@@ -194,6 +195,12 @@ export class LoansService {
    */
   getLoanByExternalId(externalId: string): Observable<any> {
     return this.http.get(`/loans/external-id/${encodeURIComponent(externalId)}`);
+  }
+
+  checkLoanExternalIdExists(externalId: string): Observable<any> {
+    return this.http.get(`/loans/external-id/${encodeURIComponent(externalId)}`, {
+      context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+    });
   }
 
   /**
@@ -878,7 +885,9 @@ export class LoansService {
       delete loansAccountData.disbursementData;
     }
     delete loansAccountData.isValid;
-    delete loansAccountData.externalId;
+    if (loansAccountData.externalId) {
+      loansAccountData.accountNo = loansAccountData.externalId;
+    }
     loansAccountData.principal = parseFloat(loansAccountData.principalAmount);
     delete loansAccountData.principalAmount;
     delete loansAccountData.multiDisburseLoan; // this was just added so that disbursement data can be send in the backend

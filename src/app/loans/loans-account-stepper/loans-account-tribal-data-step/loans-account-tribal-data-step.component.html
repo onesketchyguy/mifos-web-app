@@ -1,0 +1,75 @@
+<!--
+  Copyright since 2025 Mifos Initiative
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+
+<form [formGroup]="tribalDataForm">
+  <h3 class="mat-subtitle-1">Tribal Loan Data</h3>
+
+  <div class="layout-row-wrap gap-2px responsive-column">
+    <mat-form-field class="flex-48">
+      <mat-label>Mortgage Code</mat-label>
+      @if (mortgageCodeOptions.length > 0) {
+        <mat-select formControlName="mortgageCode">
+          <mat-option value="">-- None --</mat-option>
+          @for (option of mortgageCodeOptions; track option) {
+            <mat-option [value]="option.id">{{ option.value }}</mat-option>
+          }
+        </mat-select>
+      } @else {
+        <input matInput formControlName="mortgageCode" />
+      }
+    </mat-form-field>
+
+    <mat-form-field class="flex-48">
+      <mat-label>Loan Group <span class="required-star">*</span></mat-label>
+      @if (loanGroupOptions.length > 0) {
+        <mat-select formControlName="loanGroup" required>
+          @for (option of loanGroupOptions; track option) {
+            <mat-option [value]="option.id">{{ option.value }}</mat-option>
+          }
+        </mat-select>
+      } @else {
+        <input matInput formControlName="loanGroup" required />
+      }
+      @if (tribalDataForm.get('loanGroup')?.hasError('required') && tribalDataForm.get('loanGroup')?.touched) {
+        <mat-error>Loan Group is required</mat-error>
+      }
+    </mat-form-field>
+
+    <div class="flex-48 flex-align-center checkbox-row">
+      <mat-checkbox formControlName="relation">Relation</mat-checkbox>
+    </div>
+
+    <div class="flex-48"></div>
+
+    <mat-form-field class="flex-48">
+      <mat-label>Percap</mat-label>
+      <input matInput type="number" formControlName="percap" min="0" />
+    </mat-form-field>
+
+    <mat-form-field class="flex-48">
+      <mat-label>Payroll</mat-label>
+      <input matInput type="number" formControlName="payroll" min="0" />
+    </mat-form-field>
+
+    <mat-form-field class="flex-48">
+      <mat-label>Pension</mat-label>
+      <input matInput type="number" formControlName="pension" min="0" />
+    </mat-form-field>
+  </div>
+
+  <div class="layout-row align-center gap-2percent margin-t responsive-column stepper-buttons">
+    <button mat-raised-button matStepperPrevious>
+      <fa-icon icon="arrow-left" class="m-r-10"></fa-icon>
+      {{ 'labels.buttons.Previous' | translate }}
+    </button>
+    <button mat-raised-button matStepperNext [disabled]="tribalDataForm.invalid">
+      {{ 'labels.buttons.Next' | translate }}
+      <fa-icon icon="arrow-right" class="m-l-10"></fa-icon>
+    </button>
+  </div>
+</form>

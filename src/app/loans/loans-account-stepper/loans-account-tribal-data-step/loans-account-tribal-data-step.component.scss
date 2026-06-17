@@ -6,11 +6,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-.entity-id-step {
-  padding: 16px 0 24px;
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+}
 
-  .full-width {
-    width: 100%;
-    max-width: 400px;
-  }
+.required-star {
+  color: red;
 }

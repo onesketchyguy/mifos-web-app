@@ -9,6 +9,11 @@
 /** Angular Imports */
 import { Component, QueryList, ViewChild, ViewChildren, inject } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { FormControl } from '@angular/forms';
+
+/** rxjs Imports */
+import { of } from 'rxjs';
+import { switchMap, catchError, map } from 'rxjs/operators';
 
 /** Custom Services */
 import { ClientsService } from '../clients.service';
@@ -21,7 +26,14 @@ import { ClientDatatableStepComponent } from '../client-stepper/client-datatable
 
 /** Custom Services */
 import { SettingsService } from 'app/settings/settings.service';
-import { MatStepper, MatStepperIcon, MatStep, MatStepLabel } from '@angular/material/stepper';
+import {
+  MatStepper,
+  MatStepperIcon,
+  MatStep,
+  MatStepLabel,
+  MatStepperNext,
+  MatStepperPrevious
+} from '@angular/material/stepper';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { ClientPreviewStepComponent } from '../client-stepper/client-preview-step/client-preview-step.component';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
@@ -37,6 +49,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     ...STANDALONE_SHARED_IMPORTS,
     MatStepper,
     MatStepperIcon,
+    MatStepperNext,
+    MatStepperPrevious,
     FaIconComponent,
     MatStep,
     MatStepLabel,
@@ -64,6 +78,7 @@ export class CreateClientComponent {
 
   datatables: any = [];
   legalFormType = 1;
+  entityIdControl = new FormControl<string>('');
 
   /** Client Template */
   clientTemplate: any;
@@ -166,24 +181,57 @@ export class CreateClientComponent {
       }
     }
 
-    this.clientsService.createClient(clientData).subscribe((response: any) => {
-      const returnToLoan = this.route.snapshot.queryParamMap.get('returnToLoan');
-      if (returnToLoan) {
-        this.router.navigate([
-          '/clients',
-          response.resourceId,
-          'loans-accounts',
-          'create'
-        ]);
-      } else {
-        this.router.navigate(
-          [
-            '../',
-            response.resourceId
-          ],
-          { relativeTo: this.route }
-        );
-      }
-    });
+    const entityId = (this.entityIdControl.value || '').trim();
+
+    this.clientsService
+      .createClient(clientData)
+      .pipe(
+        switchMap((response: any) => {
+          const clientId: string = response.resourceId.toString();
+          if (!entityId) {
+            return of(clientId);
+          }
+          return this.clientsService.getClientIdentifierTemplate(clientId).pipe(
+            switchMap((template: any) => {
+              const entityDocType = (template.allowedDocumentTypes || []).find((dt: any) =>
+                /^entity.?id$/i.test(dt.name)
+              );
+              if (!entityDocType) {
+                return of(clientId);
+              }
+              return this.clientsService
+                .addClientIdentifier(clientId, {
+                  documentTypeId: entityDocType.id,
+                  documentKey: entityId,
+                  status: 'Active'
+                })
+                .pipe(
+                  map(() => clientId),
+                  catchError(() => of(clientId))
+                );
+            }),
+            catchError(() => of(clientId))
+          );
+        })
+      )
+      .subscribe((clientId: string) => {
+        const returnToLoan = this.route.snapshot.queryParamMap.get('returnToLoan');
+        if (returnToLoan) {
+          this.router.navigate([
+            '/clients',
+            clientId,
+            'loans-accounts',
+            'create'
+          ]);
+        } else {
+          this.router.navigate(
+            [
+              '../',
+              clientId
+            ],
+            { relativeTo: this.route }
+          );
+        }
+      });
   }
 }

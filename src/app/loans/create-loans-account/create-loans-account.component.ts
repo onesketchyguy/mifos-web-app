@@ -8,6 +8,7 @@
 
 /** Angular Imports */
 import { AfterViewInit, ChangeDetectorRef, Component, QueryList, ViewChild, ViewChildren, inject } from '@angular/core';
+import { of } from 'rxjs';
 import { ActivatedRoute } from '@angular/router';
 
 /** Custom Services */
@@ -24,10 +25,12 @@ import { MatStepper, MatStepperIcon, MatStep, MatStepLabel } from '@angular/mate
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { LoansAccountScheduleStepComponent } from '../loans-account-stepper/loans-account-schedule-step/loans-account-schedule-step.component';
 import { LoansAccountPreviewStepComponent } from '../loans-account-stepper/loans-account-preview-step/loans-account-preview-step.component';
+import { LoansAccountTribalDataStepComponent } from '../loans-account-stepper/loans-account-tribal-data-step/loans-account-tribal-data-step.component';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { LoanProductBasicDetails } from '../models/loan-product.model';
 import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan-product-base.component';
 import { Dates } from 'app/core/utils/dates';
+import { switchMap, map } from 'rxjs/operators';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
 
 /**
@@ -49,7 +52,8 @@ import { accountFeatures } from 'app/shared/account-features/account-features.co
     LoansAccountChargesStepComponent,
     LoansAccountScheduleStepComponent,
     LoansAccountDatatableStepComponent,
-    LoansAccountPreviewStepComponent
+    LoansAccountPreviewStepComponent,
+    LoansAccountTribalDataStepComponent
   ]
 })
 export class CreateLoansAccountComponent extends LoanProductBaseComponent implements AfterViewInit {
@@ -68,6 +72,7 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
   loansAccountChargesStep: LoansAccountChargesStepComponent;
   /** Get handle on dtloan tags in the template */
   @ViewChildren('dtloan') loanDatatables: QueryList<LoansAccountDatatableStepComponent>;
+  @ViewChild('tribalDataStep') tribalDataStep: LoansAccountTribalDataStepComponent;
 
   /** Loans Account Template */
   loansAccountTemplate: any;
@@ -179,6 +184,10 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
     return this.loansAccountTermsStep?.loansAccountTermsForm;
   }
 
+  get tribalDataForm() {
+    return this.tribalDataStep?.tribalDataForm;
+  }
+
   /** Checks wheter all the forms in different steps are valid or not */
   get loansAccountFormValid() {
     return this.loansAccountDetailsForm?.valid && this.loansAccountTermsForm?.valid;
@@ -226,6 +235,14 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
     }
   }
 
+  submitAndApprove(): void {
+    if (this.loanProductService.isLoanProduct) {
+      this.submitAndApproveLoanProduct();
+    } else if (this.loanProductService.isWorkingCapital) {
+      this.submitAndApproveWorkingCapitalProduct();
+    }
+  }
+
   submitLoanProduct() {
     const locale = this.settingsService.language.code;
     const dateFormat = this.settingsService.dateFormat;
@@ -247,6 +264,15 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
 
     this.loansService
       .createLoansAccount(this.loanProductService.loanAccountPath, payload)
+      .pipe(
+        switchMap((response: any) => {
+          const loanId = String(response.resourceId);
+          return this.loansService.addLoanDatatableEntry(loanId, 'Tribal Loan Data', this.tribalDataStep.payload).pipe(
+            map(() => response),
+            switchMap(() => of(response))
+          );
+        })
+      )
       .subscribe((response: any) => {
         this.router.navigate(
           [
@@ -254,10 +280,167 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
             response.resourceId,
             'general'
           ],
+          { queryParams: { productType: this.loanProductService.productType.value }, relativeTo: this.route }
+        );
+      });
+  }
+
+  submitAndApproveLoanProduct() {
+    const locale = this.settingsService.language.code;
+    const dateFormat = this.settingsService.dateFormat;
+    const payload = this.loansService.buildLoanRequestPayload(
+      this.loansAccount,
+      this.loansAccountTemplate,
+      this.loansAccountProductTemplate.calendarOptions,
+      locale,
+      dateFormat
+    );
+
+    if (this.loansAccountProductTemplate.datatables && this.loansAccountProductTemplate.datatables.length > 0) {
+      const datatables: any[] = [];
+      this.loanDatatables.forEach((loanDatatable: LoansAccountDatatableStepComponent) => {
+        datatables.push(loanDatatable.payload);
+      });
+      payload['datatables'] = datatables;
+    }
+
+    const disbursementDate = this.dateUtils.formatDate(this.loansAccount.expectedDisbursementDate, dateFormat);
+    const approvePayload = {
+      approvedOnDate: disbursementDate,
+      dateFormat,
+      locale
+    };
+    const disbursePayload = {
+      actualDisbursementDate: disbursementDate,
+      transactionAmount: this.loansAccount.principalAmount,
+      dateFormat,
+      locale
+    };
+
+    this.loansService
+      .createLoansAccount(this.loanProductService.loanAccountPath, payload)
+      .pipe(
+        switchMap((createResponse: any) => {
+          const loanId = createResponse.resourceId;
+          return this.loansService
+            .addLoanDatatableEntry(String(loanId), 'Tribal Loan Data', this.tribalDataStep.payload)
+            .pipe(
+              switchMap(() => this.loansService.loanActionButtons(loanId, 'approve', approvePayload)),
+              switchMap(() => this.loansService.loanActionButtons(loanId, 'disburse', disbursePayload)),
+              switchMap(() => [loanId])
+            );
+        })
+      )
+      .subscribe((loanId: any) => {
+        this.router.navigate(
+          [
+            '../',
+            loanId,
+            'general'
+          ],
           {
-            queryParams: {
-              productType: this.loanProductService.productType.value
-            },
+            queryParams: { productType: this.loanProductService.productType.value },
+            relativeTo: this.route
+          }
+        );
+      });
+  }
+
+  submitAndApproveWorkingCapitalProduct() {
+    const locale = this.settingsService.language.code;
+    const dateFormat = this.settingsService.dateFormat;
+    const loansAccount = this.loansAccount;
+    const payload = {
+      ...loansAccount,
+      clientId: this.loansAccountProductTemplate.client.id,
+      submittedOnDate: this.dateUtils.formatDate(loansAccount.submittedOnDate, dateFormat),
+      expectedDisbursementDate: this.dateUtils.formatDate(loansAccount.expectedDisbursementDate, dateFormat),
+      locale,
+      dateFormat
+    };
+
+    if (this.productDetails.allowAttributeOverrides) {
+      if (
+        !Object.hasOwn(this.productDetails.allowAttributeOverrides, 'periodPaymentFrequency') ||
+        this.productDetails.allowAttributeOverrides.periodPaymentFrequency === false
+      ) {
+        delete payload['repaymentEvery'];
+      }
+      if (
+        !Object.hasOwn(this.productDetails.allowAttributeOverrides, 'periodPaymentFrequencyType') ||
+        this.productDetails.allowAttributeOverrides.periodPaymentFrequencyType === false
+      ) {
+        delete payload['repaymentFrequencyType'];
+      }
+      if (
+        !Object.hasOwn(this.productDetails.allowAttributeOverrides, 'discountDefault') ||
+        this.productDetails.allowAttributeOverrides.discountDefault === false
+      ) {
+        delete payload['discount'];
+      }
+      if (
+        !Object.hasOwn(this.productDetails.allowAttributeOverrides, 'breach') ||
+        this.productDetails.allowAttributeOverrides.breach === false
+      ) {
+        delete payload['breachId'];
+        delete payload['nearBreachId'];
+      }
+    }
+
+    [
+      'discount',
+      'delinquencyGraceDays',
+      'delinquencyStartType'
+    ].forEach((attr: string) => {
+      if (payload[attr] === null || payload[attr] === '') {
+        delete payload[attr];
+      }
+    });
+
+    if (payload['externalId']) {
+      payload['accountNo'] = payload['externalId'];
+    }
+
+    const disbursementDate = this.dateUtils.formatDate(loansAccount.expectedDisbursementDate, dateFormat);
+    const approvePayload = {
+      approvedOnDate: disbursementDate,
+      dateFormat,
+      locale
+    };
+    const disbursePayload = {
+      actualDisbursementDate: disbursementDate,
+      transactionAmount: loansAccount.principalAmount,
+      dateFormat,
+      locale
+    };
+
+    this.loansService
+      .createLoansAccount(this.loanProductService.loanAccountPath, payload)
+      .pipe(
+        switchMap((createResponse: any) => {
+          const loanId = createResponse.resourceId;
+          return this.loansService
+            .addLoanDatatableEntry(String(loanId), 'Tribal Loan Data', this.tribalDataStep.payload)
+            .pipe(
+              switchMap(() =>
+                this.loansService.applyWorkingCapitalLoanAccountCommand(loanId, 'approve', approvePayload)
+              ),
+              switchMap(() =>
+                this.loansService.applyWorkingCapitalLoanAccountCommand(loanId, 'disburse', disbursePayload)
+              ),
+              switchMap(() => [loanId])
+            );
+        })
+      )
+      .subscribe((loanId: any) => {
+        this.router.navigate(
+          [
+            '../',
+            loanId,
+            'general'
+          ],
+          {
+            queryParams: { productType: this.loanProductService.productType.value },
             relativeTo: this.route
           }
         );
@@ -315,8 +498,21 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
       }
     });
 
+    if (payload['externalId']) {
+      payload['accountNo'] = payload['externalId'];
+    }
+
     this.loansService
       .createLoansAccount(this.loanProductService.loanAccountPath, payload)
+      .pipe(
+        switchMap((response: any) => {
+          const loanId = String(response.resourceId);
+          return this.loansService.addLoanDatatableEntry(loanId, 'Tribal Loan Data', this.tribalDataStep.payload).pipe(
+            map(() => response),
+            switchMap(() => of(response))
+          );
+        })
+      )
       .subscribe((response: any) => {
         this.router.navigate(
           [
@@ -324,12 +520,7 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
             response.resourceId,
             'general'
           ],
-          {
-            queryParams: {
-              productType: this.loanProductService.productType.value
-            },
-            relativeTo: this.route
-          }
+          { queryParams: { productType: this.loanProductService.productType.value }, relativeTo: this.route }
         );
       });
   }

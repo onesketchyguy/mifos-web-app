@@ -46,10 +46,8 @@ export class InputAmountComponent implements OnInit {
   numberOnly(event: any): boolean {
     const charCode = event.which ? event.which : event.keyCode;
     if (charCode === 46) {
-      if (!(this.inputFormControl.value.indexOf('.') > -1)) {
-        return true;
-      }
-      return false;
+      const currentValue = String(this.inputFormControl.value ?? '');
+      return currentValue.indexOf('.') === -1;
     } else if (charCode > 31 && (charCode < 48 || charCode > 57)) {
       return false;
     }

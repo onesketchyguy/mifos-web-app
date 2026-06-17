@@ -63,6 +63,11 @@
           </mifosx-loans-account-terms-step>
         </mat-step>
 
+        <mat-step [stepControl]="tribalDataForm">
+          <ng-template matStepLabel>Tribal Loan Data</ng-template>
+          <mifosx-loans-account-tribal-data-step #tribalDataStep></mifosx-loans-account-tribal-data-step>
+        </mat-step>
+
         @if (loanProductService.isLoanProduct) {
           <mat-step>
             <ng-template matStepLabel>{{ 'labels.inputs.CHARGES' | translate }}</ng-template>
@@ -111,6 +116,7 @@
               [loansAccount]="loansAccount"
               [loanProductsBasicDetails]="loanProductsBasicDetails"
               (submitEvent)="submit()"
+              (submitAndApproveEvent)="submitAndApprove()"
             >
             </mifosx-loans-account-preview-step>
           </mat-step>

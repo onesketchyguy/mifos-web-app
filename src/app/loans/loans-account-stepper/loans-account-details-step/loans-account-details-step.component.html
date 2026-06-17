@@ -52,12 +52,14 @@
   @if (loanProductSelected) {
     <div class="layout-row-wrap layout-lt-md-column gap-2percent">
       <mat-form-field class="flex-48">
-        <mat-label>{{ 'labels.inputs.External id' | translate }}</mat-label>
-        <input
-          matInput
-          formControlName="externalId"
-          matTooltip="{{ 'tooltips.Provides an external id' | translate }}"
-        />
+        <mat-label>Loan ID</mat-label>
+        <input matInput formControlName="externalId" matTooltip="Enter your unique loan identifier" />
+        @if (loansAccountDetailsForm.get('externalId')?.pending) {
+          <mat-hint>Checking availability...</mat-hint>
+        }
+        @if (loansAccountDetailsForm.get('externalId')?.hasError('loanIdNotUnique')) {
+          <mat-error>This Loan ID is already in use</mat-error>
+        }
       </mat-form-field>
       @if (loanProductService.isLoanProduct) {
         <mat-form-field class="flex-48">
@@ -165,7 +167,9 @@
       [disabled]="
         !loansAccountDetailsForm.get('productId')?.value ||
         !loansAccountDetailsForm.get('expectedDisbursementDate')?.value ||
-        !loansAccountDetailsForm.get('submittedOnDate')?.value
+        !loansAccountDetailsForm.get('submittedOnDate')?.value ||
+        loansAccountDetailsForm.get('externalId')?.invalid ||
+        loansAccountDetailsForm.get('externalId')?.pending
       "
     >
       {{ 'labels.buttons.Next' | translate }}
