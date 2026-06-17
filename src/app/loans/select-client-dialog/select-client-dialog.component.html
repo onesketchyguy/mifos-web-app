@@ -1,0 +1,34 @@
+<!--
+  Copyright since 2025 Mifos Initiative
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+
+<h2 mat-dialog-title>{{ 'labels.heading.Select Client' | translate }}</h2>
+
+<mat-dialog-content>
+  <p>{{ 'labels.text.Search for an existing client or create a new one.' | translate }}</p>
+
+  <mat-form-field class="full-width">
+    <mat-label>{{ 'labels.inputs.Client Name' | translate }}</mat-label>
+    <input matInput [formControl]="clientSearchControl" [matAutocomplete]="clientAuto" autocomplete="off" />
+    <mat-autocomplete
+      #clientAuto="matAutocomplete"
+      [displayWith]="displayClient"
+      (optionSelected)="selectClient($event.option.value)"
+    >
+      @for (client of clientOptions; track client.id) {
+        <mat-option [value]="client">{{ client.displayName }}</mat-option>
+      }
+    </mat-autocomplete>
+  </mat-form-field>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">{{ 'labels.buttons.Cancel' | translate }}</button>
+  <button mat-stroked-button color="accent" (click)="createNewClient()">
+    {{ 'labels.buttons.Create New Client' | translate }}
+  </button>
+</mat-dialog-actions>

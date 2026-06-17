@@ -481,7 +481,7 @@ export class LoansService {
    * @param {any} productId Product ID
    */
   getLoansAccountTemplateResource(entityId: any, isGroup: boolean, productId?: any): Observable<any> {
-    let httpParams = new HttpParams().set('activeOnly', 'true').set('staffInSelectedOfficeOnly', 'true');
+    let httpParams = new HttpParams().set('activeOnly', 'true').set('staffInSelectedOfficeOnly', 'false');
     httpParams = productId ? httpParams.set('productId', productId) : httpParams;
     httpParams = isGroup
       ? httpParams.set('groupId', entityId).set('templateType', 'group')
@@ -871,9 +871,6 @@ export class LoansService {
       );
     }
 
-    if (loansAccountData.interestCalculationPeriodType === 0) {
-      loansAccountData.allowPartialPeriodInterestCalculation = false;
-    }
     if (!(loansAccountData.isFloatingInterestRate === false)) {
       delete loansAccountData.isFloatingInterestRate;
     }
@@ -881,14 +878,22 @@ export class LoansService {
       delete loansAccountData.disbursementData;
     }
     delete loansAccountData.isValid;
-    loansAccountData.principal = loansAccountData.principalAmount;
+    delete loansAccountData.externalId;
+    loansAccountData.principal = parseFloat(loansAccountData.principalAmount);
     delete loansAccountData.principalAmount;
     delete loansAccountData.multiDisburseLoan; // this was just added so that disbursement data can be send in the backend
-
-    // In Fineract, the POST and PUT endpoints for /v1/loans have a typo in the field
-    // allowPartialPeriodInterestCalculation. Until that is fixed, we need to replace the field name in the payload.
-    loansAccountData.allowPartialPeriodInterestCalculation = loansAccountData.allowPartialPeriodInterestCalculation;
+    delete loansAccountData.allowFullTermForTranche;
+    delete loansAccountData.interestRecognitionOnDisbursementDate;
     delete loansAccountData.allowPartialPeriodInterestCalculation;
+
+    // Strip empty-string values — Fineract throws 500 when it tries to deserialize
+    // "" as a number (e.g. balloonRepaymentAmount, fixedEmiAmount).
+    Object.keys(loansAccountData).forEach((key) => {
+      if (loansAccountData[key] === '') {
+        delete loansAccountData[key];
+      }
+    });
+
     return loansAccountData;
   }
 

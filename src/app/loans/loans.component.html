@@ -8,6 +8,10 @@
 
 <div class="container">
   <div class="loan-actions">
+    <button mat-raised-button color="primary" (click)="addNewLoan()" *mifosxHasPermission="'CREATE_LOAN'">
+      <mat-icon aria-hidden="true">add</mat-icon>
+      {{ 'labels.buttons.Add new' | translate }}
+    </button>
     <button
       mat-raised-button
       color="primary"

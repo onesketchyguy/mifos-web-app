@@ -252,6 +252,11 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
           .subscribe((response: any) => {
             this.loansAccountProductTemplate.emit(response);
             this.loanOfficerOptions = response.loanOfficerOptions;
+            const currentOfficerId = this.loansAccountDetailsForm.get('loanOfficerId')?.value;
+            const officerValid = this.loanOfficerOptions?.some((o: any) => o.id === currentOfficerId);
+            if (!officerValid) {
+              this.loansAccountDetailsForm.patchValue({ loanOfficerId: '' });
+            }
             this.loanPurposeOptions = response.loanPurposeOptions;
             this.fundOptions = response.fundOptions;
             this.accountLinkingOptions = this.accountFeatures.savings ? response.accountLinkingOptions : [];

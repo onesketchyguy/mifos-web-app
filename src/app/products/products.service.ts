@@ -8,10 +8,11 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
+import { SKIP_ERROR_HANDLER } from 'app/core/http/error-handler.interceptor';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, forkJoin, map, catchError, of } from 'rxjs';
 
 /** Custom Services */
 import { SettingsService } from 'app/settings/settings.service';
@@ -33,11 +34,22 @@ export class ProductsService {
     return this.http.get(`/${productType}`);
   }
 
-  /**
-   * @returns {Observable<any>} Loan Products basis details data.
-   */
   getLoanProductsBasicDetails(): Observable<any> {
-    return this.http.get('/loanproducts/basic-details');
+    const skipErrors = { context: new HttpContext().set(SKIP_ERROR_HANDLER, true) };
+    return forkJoin([
+      this.http.get<any[]>('/loanproducts', skipErrors).pipe(catchError(() => of([]))),
+      this.http.get<any[]>('/working-capital-loan-products', skipErrors).pipe(catchError(() => of([])))
+    ]).pipe(
+      map(
+        ([
+          loans,
+          workingCapital
+        ]) => [
+          ...(loans || []).map((p: any) => ({ ...p, productType: 'loan' })),
+          ...(workingCapital || []).map((p: any) => ({ ...p, productType: 'working-capital' }))
+        ]
+      )
+    );
   }
 
   createLoanProduct(productType: string, loanProduct: any): Observable<any> {

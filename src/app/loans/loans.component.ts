@@ -13,6 +13,7 @@ import { MatPaginator, PageEvent } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
 import { MatIcon } from '@angular/material/icon';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
+import { MatDialog } from '@angular/material/dialog';
 import {
   MatTable,
   MatTableDataSource,
@@ -35,6 +36,12 @@ import { catchError, map } from 'rxjs/operators';
 import { LoansService } from './loans.service';
 import { SettingsService } from 'app/settings/settings.service';
 import { OrganizationService } from 'app/organization/organization.service';
+
+/** Custom Dialog */
+import {
+  SelectClientDialogComponent,
+  SelectClientDialogResult
+} from './select-client-dialog/select-client-dialog.component';
 
 /** Custom Imports */
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
@@ -83,6 +90,7 @@ export class LoansComponent implements OnInit {
   private searchService = inject(SearchService);
   private settingsService = inject(SettingsService);
   private organizationService = inject(OrganizationService);
+  private dialog = inject(MatDialog);
 
   /** Loans data. */
   loans: any[] = [];
@@ -462,6 +470,30 @@ export class LoansComponent implements OnInit {
     }
 
     return Math.max(Math.floor((Date.now() - overdueSinceTime) / 86400000), 0);
+  }
+
+  /**
+   * Opens the client selection dialog to begin a new loan creation flow.
+   * Navigates to loan creation under the selected client, or to client
+   * creation with a return flag so the user lands on loan creation after.
+   */
+  addNewLoan(): void {
+    const dialogRef = this.dialog.open(SelectClientDialogComponent, { width: '480px' });
+    dialogRef.afterClosed().subscribe((result: SelectClientDialogResult | undefined) => {
+      if (!result) {
+        return;
+      }
+      if (result.createNew) {
+        this.router.navigate(['/clients/create'], { queryParams: { returnToLoan: true } });
+      } else if (result.clientId) {
+        this.router.navigate([
+          '/clients',
+          result.clientId,
+          'loans-accounts',
+          'create'
+        ]);
+      }
+    });
   }
 
   /**

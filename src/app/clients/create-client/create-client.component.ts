@@ -167,13 +167,23 @@ export class CreateClientComponent {
     }
 
     this.clientsService.createClient(clientData).subscribe((response: any) => {
-      this.router.navigate(
-        [
-          '../',
-          response.resourceId
-        ],
-        { relativeTo: this.route }
-      );
+      const returnToLoan = this.route.snapshot.queryParamMap.get('returnToLoan');
+      if (returnToLoan) {
+        this.router.navigate([
+          '/clients',
+          response.resourceId,
+          'loans-accounts',
+          'create'
+        ]);
+      } else {
+        this.router.navigate(
+          [
+            '../',
+            response.resourceId
+          ],
+          { relativeTo: this.route }
+        );
+      }
     });
   }
 }
