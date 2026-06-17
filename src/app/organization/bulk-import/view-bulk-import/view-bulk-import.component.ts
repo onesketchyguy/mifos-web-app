@@ -257,6 +257,22 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekFeedPostImportResult: any = null;
   /** Error message from the last FeedPost import attempt. */
   ivyTekFeedPostImportError: string | null = null;
+  /** IvyTek ContentVersion attachments CSV file. */
+  ivyTekContentVersionFile: File | null = null;
+  /** Actual attachment files found in the ContentVersion/ subfolder. */
+  ivyTekContentVersionFiles: File[] = [];
+  /** Whether the ContentVersion attachment import is running. */
+  ivyTekContentVersionImportRunning = false;
+  /** Result from the last ContentVersion import attempt. */
+  ivyTekContentVersionImportResult: any = null;
+  /** Error from the last ContentVersion import attempt. */
+  ivyTekContentVersionImportError: string | null = null;
+  /** Whether the ContentVersion attachment upload loop is running. */
+  ivyTekAttachmentImporting = false;
+  /** Number of attachments uploaded so far in the current run. */
+  ivyTekAttachmentProcessedRecords = 0;
+  /** Total attachments to upload in the current run. */
+  ivyTekAttachmentTotalRecords = 0;
   /** IvyTek reconciliation status translation key. */
   ivyTekReconciliationStatusKey = 'labels.text.Reconciliation Not Run';
   /** IvyTek reconciliation summary message. */
@@ -307,7 +323,12 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   get isIvyTekPipelineRunning(): boolean {
-    return this.ivyTekImporting || this.ivyTekLoanImporting || this.ivyTekTransactionImporting;
+    return (
+      this.ivyTekImporting ||
+      this.ivyTekLoanImporting ||
+      this.ivyTekTransactionImporting ||
+      this.ivyTekAttachmentImporting
+    );
   }
 
   get hasPendingIvyTekPipelineRun(): boolean {
@@ -325,6 +346,7 @@ export class ViewBulkImportComponent implements OnInit {
       this.ivyTekImportForm.get('startStage').valid &&
       (this.ivyTekStartStage === 'transactions' ||
         this.ivyTekStartStage === 'notes' ||
+        this.ivyTekStartStage === 'attachments' ||
         this.ivyTekImportForm.get('officeId').valid) &&
       this.ivyTekLoanImportForm.valid &&
       !this.isIvyTekPipelineRunning &&
@@ -339,6 +361,7 @@ export class ViewBulkImportComponent implements OnInit {
       this.ivyTekImportForm.get('startStage').valid &&
       (this.ivyTekStartStage === 'transactions' ||
         this.ivyTekStartStage === 'notes' ||
+        this.ivyTekStartStage === 'attachments' ||
         this.ivyTekImportForm.get('officeId').valid) &&
       this.ivyTekLoanImportForm.valid &&
       !this.isIvyTekPipelineRunning
@@ -370,6 +393,9 @@ export class ViewBulkImportComponent implements OnInit {
    * Checks whether the selected IvyTek start stage has its required CSV files.
    */
   private hasIvyTekRequiredFilesForStartStage(): boolean {
+    if (this.ivyTekStartStage === 'attachments') {
+      return !!this.ivyTekContentVersionFile;
+    }
     if (this.ivyTekStartStage === 'notes') {
       return !!this.ivyTekFeedPostFile;
     }
@@ -401,7 +427,8 @@ export class ViewBulkImportComponent implements OnInit {
       'clients',
       'loans',
       'transactions',
-      'notes'
+      'notes',
+      'attachments'
     ].indexOf(stage);
   }
 
@@ -414,7 +441,8 @@ export class ViewBulkImportComponent implements OnInit {
       clients: 'labels.heading.Stage 1 Clients',
       loans: 'labels.heading.Stage 2 Loans',
       transactions: 'labels.heading.Stage 3 Transactions',
-      notes: 'labels.heading.Stage 4 Notes'
+      notes: 'labels.heading.Stage 4 Notes',
+      attachments: 'labels.heading.Stage 5 Attachments'
     };
     return labels[stage] || labels.clients;
   }
@@ -681,6 +709,11 @@ export class ViewBulkImportComponent implements OnInit {
       return n.includes('transactions') && !n.includes('details');
     });
     const feedPostFile = csvFiles.find((f) => norm(f.name).includes('feedpost'));
+    const contentVersionCsvFile = csvFiles.find((f) => norm(f.name).includes('contentversion'));
+    const contentVersionFiles = files.filter((f) => {
+      const parts = f.webkitRelativePath.split('/');
+      return parts.length >= 2 && parts[parts.length - 2].toLowerCase() === 'contentversion';
+    });
 
     // Always overwrite (including with null) so stale File handles from a previous
     // directory pick don't silently return empty content when re-read.
@@ -691,6 +724,8 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekTransactionFile = transactionFile ?? null;
     this.ivyTekSqlCsvFile = transactionFile ?? null;
     this.ivyTekFeedPostFile = feedPostFile ?? null;
+    this.ivyTekContentVersionFile = contentVersionCsvFile ?? null;
+    this.ivyTekContentVersionFiles = contentVersionFiles;
 
     this.ivyTekImportResults = [];
     this.ivyTekLoanImportResults = [];
@@ -700,6 +735,8 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekSqlImportError = null;
     this.ivyTekFeedPostImportResult = null;
     this.ivyTekFeedPostImportError = null;
+    this.ivyTekContentVersionImportResult = null;
+    this.ivyTekContentVersionImportError = null;
   }
 
   onFileSelect($event: any) {
@@ -825,6 +862,7 @@ export class ViewBulkImportComponent implements OnInit {
       const shouldRunLoans = this.shouldRunIvyTekStage('loans');
       const shouldRunTransactions = this.shouldRunIvyTekStage('transactions') && !!this.ivyTekTransactionFile;
       const shouldRunNotes = this.shouldRunIvyTekStage('notes') && !!this.ivyTekFeedPostFile;
+      const shouldRunAttachments = this.shouldRunIvyTekStage('attachments') && !!this.ivyTekContentVersionFile;
       const contactRows =
         shouldRunClients || shouldRunLoans ? this.parseCsv(await this.readFileAsText(this.ivyTekFile)) : [];
       const applicationRows =
@@ -918,7 +956,7 @@ export class ViewBulkImportComponent implements OnInit {
 
       if (shouldRunTransactions) {
         await this.runIvyTekSqlCsvImport(true);
-        if (!shouldRunNotes) {
+        if (!shouldRunNotes && !shouldRunAttachments) {
           this.finishIvyTekPipelineRun(
             this.ivyTekSqlImportResult?.success ? 'labels.inputs.Completed' : 'labels.inputs.Needs Review',
             this.ivyTekSqlImportError ?? ''
@@ -929,9 +967,20 @@ export class ViewBulkImportComponent implements OnInit {
 
       if (shouldRunNotes) {
         await this.runIvyTekFeedPostImport(true);
+        if (!shouldRunAttachments) {
+          this.finishIvyTekPipelineRun(
+            this.ivyTekFeedPostImportResult?.success ? 'labels.inputs.Completed' : 'labels.inputs.Needs Review',
+            this.ivyTekFeedPostImportError ?? ''
+          );
+          return;
+        }
+      }
+
+      if (shouldRunAttachments) {
+        await this.runIvyTekContentVersionImport(true);
         this.finishIvyTekPipelineRun(
-          this.ivyTekFeedPostImportResult?.success ? 'labels.inputs.Completed' : 'labels.inputs.Needs Review',
-          this.ivyTekFeedPostImportError ?? ''
+          this.ivyTekContentVersionImportResult?.success ? 'labels.inputs.Completed' : 'labels.inputs.Needs Review',
+          this.ivyTekContentVersionImportError ?? ''
         );
         return;
       }
@@ -2136,6 +2185,10 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekTotalRecords = 0;
     this.ivyTekLoanTotalRecords = 0;
     this.ivyTekTransactionTotalRecords = 0;
+    this.ivyTekContentVersionImportResult = null;
+    this.ivyTekContentVersionImportError = null;
+    this.ivyTekAttachmentProcessedRecords = 0;
+    this.ivyTekAttachmentTotalRecords = 0;
   }
 
   /**
@@ -6704,30 +6757,12 @@ export class ViewBulkImportComponent implements OnInit {
 
   /**
    * Finds the configured Mifos product for an IvyTek loan group.
+   * Always returns the Personal Loan product regardless of group.
    * @param {string} group IvyTek loan group.
    * @param {Map<string, any>} productsByName Loan products keyed by normalized name.
    */
   private findIvyTekLoanProductByGroup(group: string, productsByName: Map<string, any>) {
-    const directMatch = this.getIvyTekProductNameCandidates(group)
-      .map((name: string) => productsByName.get(this.normalizeIvyTekText(name)))
-      .find((product: any) => !!product?.id);
-    if (directMatch) {
-      return directMatch;
-    }
-
-    const groupNumber = this.getIvyTekLoanGroupNumber(group);
-    if (!groupNumber) {
-      return null;
-    }
-
-    const products = Array.from(new Set(productsByName.values()));
-    return (
-      this.findIvyTekLoanProductByNumericValue(groupNumber, products, ['shortName']) ||
-      this.findIvyTekLoanProductByNumericValue(groupNumber, products, [
-        'externalId',
-        'name'
-      ])
-    );
+    return productsByName.get(this.normalizeIvyTekText('Personal Loan')) || null;
   }
 
   /**
@@ -10245,21 +10280,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} group IvyTek loan group.
    */
   private getIvyTekProductName(group: string): string {
-    const productMap: any = {
-      '80': 'Estates Pending Loan',
-      '080': 'Estates Pending Loan',
-      '99': 'G099',
-      '099': 'G099',
-      '101': 'Personal Loan',
-      '303': 'Home Construction Loan',
-      '304': 'Home Modernization Loan',
-      '407': 'Mobile Home and Trailer Loan',
-      '408': 'G408',
-      '510': 'Education Loan',
-      '615': 'Business Enterprise Loan',
-      '817': 'Tribal Enterprise Loan'
-    };
-    return productMap[group] || '';
+    return 'Personal Loan';
   }
 
   /**
@@ -10269,10 +10290,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} group Normalized IvyTek loan group.
    */
   private getIvyTekProductLookupOverride(group: string): string {
-    const overrides: Record<string, string> = {
-      '80': 'Personal Loan'
-    };
-    return overrides[group] || '';
+    return 'Personal Loan';
   }
 
   /**
@@ -10884,6 +10902,161 @@ export class ViewBulkImportComponent implements OnInit {
         'Could not reach the SQL import server. Make sure the app was started with ng serve --proxy-config proxy.conf.js.';
     } finally {
       this.ivyTekFeedPostImportRunning = false;
+    }
+  }
+
+  onIvyTekContentVersionFileSelect($event: any): void {
+    if ($event.target.files.length > 0) {
+      this.ivyTekContentVersionFile = $event.target.files[0];
+      this.ivyTekContentVersionImportResult = null;
+      this.ivyTekContentVersionImportError = null;
+    }
+  }
+
+  async runIvyTekContentVersionImport(apply: boolean): Promise<void> {
+    if (!this.ivyTekContentVersionFile) {
+      this.ivyTekContentVersionImportError = 'Select a ContentVersion CSV file first.';
+      return;
+    }
+
+    this.ivyTekContentVersionImportRunning = true;
+    this.ivyTekContentVersionImportError = null;
+    this.ivyTekContentVersionImportResult = null;
+
+    try {
+      const [
+        contentVersionCsvText,
+        loanCsvText
+      ] = await Promise.all([
+        this.readFileAsText(this.ivyTekContentVersionFile),
+        this.ivyTekLoanFile ? this.readFileAsText(this.ivyTekLoanFile) : Promise.resolve(null)
+      ]);
+
+      if (!contentVersionCsvText?.trim()) {
+        this.ivyTekContentVersionImportError = `ContentVersion file "${this.ivyTekContentVersionFile.name}" was read but is empty. Re-pick the directory to refresh the file reference.`;
+        this.ivyTekContentVersionImportRunning = false;
+        return;
+      }
+
+      const resolveResponse = await fetch('/api/ivytek/content-version-resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          db: this.ivyTekSqlDbForm.value,
+          contentVersionCsvText,
+          loanCsvText
+        })
+      });
+      const resolveResult = await resolveResponse.json();
+      if (!resolveResponse.ok || !resolveResult.success) {
+        this.ivyTekContentVersionImportError =
+          resolveResult.message || 'Failed to resolve ContentVersion records to loans.';
+        this.ivyTekContentVersionImportRunning = false;
+        return;
+      }
+
+      const records: {
+        versionId: string;
+        contentDocumentId: string;
+        loanId: number;
+        title: string;
+        fileType: string;
+      }[] = resolveResult.records;
+      if (!records.length) {
+        this.ivyTekContentVersionImportError = 'No ContentVersion records could be matched to a loan.';
+        this.ivyTekContentVersionImportRunning = false;
+        return;
+      }
+
+      let uploaded = 0;
+      let skipped = 0;
+      let failed = 0;
+      const uploadErrors: string[] = [];
+
+      if (apply) {
+        this.ivyTekAttachmentImporting = true;
+        this.ivyTekAttachmentProcessedRecords = 0;
+        this.ivyTekAttachmentTotalRecords = records.length;
+
+        for (const record of records) {
+          // Files in ContentVersion/ subfolder are named by the ContentVersion Id (068...),
+          // optionally with an extension. Fall back to ContentDocumentId if versionId is absent.
+          const fileId = record.versionId || record.contentDocumentId;
+          const file = this.ivyTekContentVersionFiles.find((f) => {
+            const fname = f.name;
+            return fname === fileId || fname.startsWith(fileId + '.');
+          });
+
+          if (!file) {
+            skipped++;
+            this.ivyTekAttachmentProcessedRecords++;
+            uploadErrors.push(`No file found in ContentVersion/ subfolder for Id ${fileId}`);
+            continue;
+          }
+
+          try {
+            const docName = record.title || fileId;
+            const ext = record.fileType ? `.${record.fileType.toLowerCase()}` : '';
+            const safeFileName = `${docName.replace(/[/\\:*?"<>|]/g, '_')}${ext}`;
+            const formData = new FormData();
+            formData.append('name', docName);
+            formData.append('file', file, safeFileName);
+            formData.append('description', `IvyTek ContentVersion import: ${record.contentDocumentId || fileId}`);
+            await firstValueFrom(this.loansService.loadLoanDocument(record.loanId, formData));
+            uploaded++;
+          } catch (err: any) {
+            failed++;
+            uploadErrors.push(
+              `Upload failed for ${fileId}: ${err?.error?.errors?.[0]?.defaultUserMessage || err?.message || 'Unknown error'}`
+            );
+          }
+          this.ivyTekAttachmentProcessedRecords++;
+        }
+        this.ivyTekAttachmentImporting = false;
+      }
+
+      const success = failed === 0;
+      this.ivyTekContentVersionImportResult = {
+        success,
+        message: apply
+          ? `Uploaded ${uploaded} attachment(s), skipped ${skipped} (no file found), failed ${failed}.`
+          : `Dry run: ${records.length} attachment(s) ready. Re-run with Apply to upload.`,
+        uploaded,
+        skipped,
+        failed,
+        warnings: [
+          ...(resolveResult.warnings || []),
+          ...uploadErrors
+        ],
+        reconciliation: [
+          { metric: 'Resolved Records', source: records.length, database: '-', difference: '-', status: 'Info' },
+          { metric: 'Uploaded This Run', source: '-', database: uploaded, difference: '-', status: 'Info' },
+          {
+            metric: 'Skipped (no file)',
+            source: '-',
+            database: skipped,
+            difference: '-',
+            status: skipped > 0 ? 'Needs Review' : 'Info'
+          },
+          {
+            metric: 'Failed Uploads',
+            source: '-',
+            database: failed,
+            difference: '-',
+            status: failed > 0 ? 'Needs Review' : 'Info'
+          }
+        ]
+      };
+
+      if (!success) {
+        this.ivyTekContentVersionImportError = `${failed} upload(s) failed. See warnings for details.`;
+      }
+    } catch {
+      this.ivyTekContentVersionImportError =
+        'Could not reach the SQL import server. Make sure the app was started with ng serve --proxy-config proxy.conf.js.';
+    } finally {
+      this.ivyTekAttachmentImporting = false;
+      this.ivyTekContentVersionImportRunning = false;
     }
   }
 

@@ -1392,6 +1392,138 @@ async function handleFeedPostImport(req, res) {
 }
 
 // ---------------------------------------------------------------------------
+// ContentVersion attachment resolve
+// ---------------------------------------------------------------------------
+
+function parseContentVersionCsv(text) {
+  const rows = parseCsv(text);
+  const records = [];
+  const errors = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const versionId = (row['Id'] || '').trim();
+    const contentDocumentId = (row['ContentDocumentId'] || '').trim();
+    if (!versionId && !contentDocumentId) {
+      errors.push(`CSV row ${i + 2}: missing both Id and ContentDocumentId`);
+      continue;
+    }
+    const parentId = (
+      row['LinkedEntityId'] ||
+      row['FirstPublishLocationId'] ||
+      row['ParentId'] ||
+      row['IvytekTestPkg__Loan__c'] ||
+      ''
+    ).trim();
+    if (!parentId) {
+      errors.push(`CSV row ${i + 2} (Id=${versionId}): no loan reference field found`);
+      continue;
+    }
+    const title = (row['Title'] || row['PathOnClient'] || versionId || contentDocumentId).trim();
+    const fileType = (row['FileType'] || row['File_Type'] || row['FileExtension'] || '').trim().replace(/^\./, '');
+    records.push({ versionId, contentDocumentId, parentId, title, fileType });
+  }
+  return { records, errors };
+}
+
+async function runContentVersionResolve({ db, contentVersionCsvText, loanCsvText }) {
+  const { records: parsedRecords, errors } = parseContentVersionCsv(contentVersionCsvText);
+  const warnings = [...errors];
+
+  if (!parsedRecords.length) {
+    return { success: false, message: 'No valid ContentVersion records found.', records: [], warnings };
+  }
+
+  const loanIdentifierMap = loanCsvText ? buildLoanIdentifierMap(parseCsv(loanCsvText)) : null;
+  if (loanIdentifierMap)
+    warnings.push(`Loan cross-reference: ${loanIdentifierMap.size} identifier(s) loaded from loan CSV.`);
+
+  const client = new Client({
+    host: db.host,
+    port: db.port ?? 5432,
+    database: db.dbname,
+    user: db.user,
+    password: db.password
+  });
+  await client.connect();
+  _lastDbConfig = { host: db.host, port: db.port ?? 5432, dbname: db.dbname, user: db.user, password: db.password };
+  try {
+    const uniqueParentIds = [...new Set(parsedRecords.map((r) => r.parentId))];
+    const resolvedAccountNos = loanIdentifierMap
+      ? uniqueParentIds.map((id) => loanIdentifierMap.get(id)).filter(Boolean)
+      : uniqueParentIds;
+    const directIds = loanIdentifierMap ? uniqueParentIds.filter((id) => !loanIdentifierMap.has(id)) : [];
+
+    const loanLookup = new Map();
+    if (resolvedAccountNos.length) {
+      const accountNoMap = await lookupLoanIds(client, resolvedAccountNos);
+      for (const parentId of uniqueParentIds) {
+        const accountNo = loanIdentifierMap?.get(parentId);
+        if (accountNo) {
+          const loanId = accountNoMap.get(accountNo);
+          if (loanId !== undefined) loanLookup.set(parentId, loanId);
+        }
+      }
+    }
+    if (directIds.length) {
+      const fallback = await lookupLoansByParentId(client, directIds, DEFAULT_BATCH_SIZE);
+      fallback.forEach((loanId, parentId) => loanLookup.set(parentId, loanId));
+    }
+
+    const resolved = [];
+    const unmatched = [];
+    for (const rec of parsedRecords) {
+      const loanId = loanLookup.get(rec.parentId);
+      if (loanId === undefined) unmatched.push(rec.parentId);
+      else resolved.push({ ...rec, loanId });
+    }
+    if (unmatched.length) {
+      warnings.push(
+        `${unmatched.length} parent ID(s) not matched to a loan: ${[...new Set(unmatched)].slice(0, 10).join(', ')}${unmatched.length > 10 ? ' ...' : ''}`
+      );
+    }
+
+    return {
+      success: true,
+      message: `Resolved ${resolved.length} of ${parsedRecords.length} ContentVersion records to loans.`,
+      records: resolved,
+      warnings
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+async function handleContentVersionResolve(req, res) {
+  let body;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return jsonResponse(res, 400, { success: false, message: 'Invalid JSON body.' });
+  }
+
+  const { db, contentVersionCsvText, loanCsvText } = body;
+  if (!db?.host || !db?.dbname || !db?.user)
+    return jsonResponse(res, 400, { success: false, message: 'Missing required db fields: host, dbname, user.' });
+  if (!contentVersionCsvText)
+    return jsonResponse(res, 400, { success: false, message: 'contentVersionCsvText is required.' });
+
+  const rows = parseCsv(contentVersionCsvText);
+  if (!rows.length) return jsonResponse(res, 400, { success: false, message: 'ContentVersion CSV has no data rows.' });
+
+  try {
+    const result = await runContentVersionResolve({ db, contentVersionCsvText, loanCsvText });
+    jsonResponse(res, 200, result);
+  } catch (e) {
+    console.error('[IvyTek ContentVersion] Resolve error:', e);
+    jsonResponse(res, 500, {
+      success: false,
+      message: `ContentVersion resolve failed: ${e.message}`,
+      error: pgErrorDetail(e)
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
 
@@ -1592,6 +1724,9 @@ function startInlineServer() {
     }
     if (req.url === '/api/ivytek/feedpost-import' && req.method === 'POST') {
       return handleFeedPostImport(req, res);
+    }
+    if (req.url === '/api/ivytek/content-version-resolve' && req.method === 'POST') {
+      return handleContentVersionResolve(req, res);
     }
     jsonResponse(res, 404, { message: 'Not found' });
   });

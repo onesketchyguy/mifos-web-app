@@ -198,6 +198,7 @@
               <mat-option value="loans">{{ 'labels.heading.Stage 2 Loans' | translate }}</mat-option>
               <mat-option value="transactions">{{ 'labels.heading.Stage 3 Transactions' | translate }}</mat-option>
               <mat-option value="notes">{{ 'labels.heading.Stage 4 Notes' | translate }}</mat-option>
+              <mat-option value="attachments">{{ 'labels.heading.Stage 5 Attachments' | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
         </mat-card-content>
@@ -307,6 +308,44 @@
             ivyTekFeedPostFile?.name || ('labels.text.No file selected' | translate)
           }}</span>
         </div>
+        <div
+          class="ivytek-file-status-row"
+          [class.found]="!!ivyTekContentVersionFile"
+          [class.optional]="!ivyTekContentVersionFile"
+        >
+          <i
+            class="fa"
+            [class.fa-check-circle]="ivyTekContentVersionFile"
+            [class.fa-circle-o]="!ivyTekContentVersionFile"
+          ></i>
+          <span
+            >{{ 'labels.heading.Stage 5 Attachments' | translate }} —
+            {{ 'labels.heading.Select ContentVersion CSV File' | translate }}
+            <em>({{ 'labels.text.optional' | translate }})</em></span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekContentVersionFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
+        </div>
+        <div
+          class="ivytek-file-status-row"
+          [class.found]="ivyTekContentVersionFiles.length > 0"
+          [class.optional]="ivyTekContentVersionFiles.length === 0"
+        >
+          <i
+            class="fa"
+            [class.fa-check-circle]="ivyTekContentVersionFiles.length > 0"
+            [class.fa-circle-o]="ivyTekContentVersionFiles.length === 0"
+          ></i>
+          <span
+            >{{ 'labels.heading.Stage 5 Attachments' | translate }} —
+            {{ 'labels.heading.ContentVersion Files' | translate }}
+            <em>({{ 'labels.text.optional' | translate }})</em></span
+          >
+          <span class="ivytek-file-status-name"
+            >{{ ivyTekContentVersionFiles.length }} {{ 'labels.text.file(s) found' | translate }}</span
+          >
+        </div>
       </div>
 
       <details class="ivytek-file-overrides">
@@ -366,10 +405,19 @@
               acceptFilter=".csv"
             ></mifosx-file-upload>
           </div>
+          <div>
+            <strong class="ivytek-stage-label">{{ 'labels.heading.Stage 5 Attachments' | translate }}</strong>
+            <h4>{{ 'labels.heading.Select ContentVersion CSV File' | translate }}</h4>
+            <mifosx-file-upload
+              flex="75%"
+              (change)="onIvyTekContentVersionFileSelect($event)"
+              acceptFilter=".csv"
+            ></mifosx-file-upload>
+          </div>
         </div>
       </details>
 
-      @if (ivyTekTransactionFile || ivyTekFeedPostFile) {
+      @if (ivyTekTransactionFile || ivyTekFeedPostFile || ivyTekContentVersionFile) {
         <div class="ivytek-sql-db-section">
           <strong class="ivytek-stage-label">{{ 'labels.heading.SQL Database Connection' | translate }}</strong>
           <form [formGroup]="ivyTekSqlDbForm" class="ivytek-sql-db-form">
@@ -434,6 +482,19 @@
         </mat-hint>
       }
 
+      @if (ivyTekAttachmentImporting) {
+        <mat-progress-bar
+          mode="determinate"
+          [value]="
+            ivyTekAttachmentTotalRecords ? (ivyTekAttachmentProcessedRecords / ivyTekAttachmentTotalRecords) * 100 : 0
+          "
+        ></mat-progress-bar>
+        <mat-hint>
+          {{ 'labels.text.Uploaded IvyTek attachments' | translate }}
+          {{ ivyTekAttachmentProcessedRecords }} / {{ ivyTekAttachmentTotalRecords }}
+        </mat-hint>
+      }
+
       @if (ivyTekPipelineStopped) {
         <p class="ivytek-import-note">
           {{ 'labels.text.IvyTek import stopped because an earlier stage has records to review.' | translate }}
@@ -492,6 +553,51 @@
             </thead>
             <tbody>
               @for (row of ivyTekSqlImportResult.reconciliation; track row.metric) {
+                <tr
+                  [class.reconciliation-matched]="row.status === 'Matched'"
+                  [class.reconciliation-review]="row.status === 'Needs Review'"
+                  [class.reconciliation-info]="row.status === 'Info'"
+                >
+                  <td>{{ row.metric }}</td>
+                  <td>{{ row.source }}</td>
+                  <td>{{ row.database }}</td>
+                  <td>{{ row.difference }}</td>
+                  <td>{{ row.status }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      @if (ivyTekContentVersionImportError) {
+        <div class="ivytek-error-message">
+          <strong>{{ 'labels.heading.Error Details' | translate }}</strong>
+          <p>{{ ivyTekContentVersionImportError }}</p>
+        </div>
+      }
+
+      @if (ivyTekContentVersionImportResult) {
+        <div class="ivytek-sql-import-result">
+          <p class="ivytek-import-note">{{ ivyTekContentVersionImportResult.message }}</p>
+          @if (ivyTekContentVersionImportResult.warnings?.length) {
+            <p class="ivytek-import-note">
+              <strong>{{ 'labels.heading.Warnings' | translate }}:</strong>
+              {{ ivyTekContentVersionImportResult.warnings.join(' | ') }}
+            </p>
+          }
+          <table class="ivytek-reconciliation-table">
+            <thead>
+              <tr>
+                <th>{{ 'labels.heading.Metric' | translate }}</th>
+                <th>{{ 'labels.heading.Source' | translate }}</th>
+                <th>{{ 'labels.heading.Database' | translate }}</th>
+                <th>{{ 'labels.heading.Difference' | translate }}</th>
+                <th>{{ 'labels.inputs.Status' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of ivyTekContentVersionImportResult.reconciliation; track row.metric) {
                 <tr
                   [class.reconciliation-matched]="row.status === 'Matched'"
                   [class.reconciliation-review]="row.status === 'Needs Review'"
