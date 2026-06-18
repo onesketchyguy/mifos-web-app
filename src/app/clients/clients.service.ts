@@ -118,6 +118,15 @@ export class ClientsService {
     return this.http.get(`/clients/${clientId}/accounts`);
   }
 
+  getClientLoans(clientId: string) {
+    const httpParams = new HttpParams().set('clientId', clientId);
+    return this.http.get('/loans', { params: httpParams });
+  }
+
+  getLoanDetails(loanId: string) {
+    return this.http.get(`/loans/${loanId}`);
+  }
+
   getClientChargesData(clientId: string) {
     const httpParams = new HttpParams().set('pendingPayment', 'true');
     return this.http.get(`/clients/${clientId}/charges`, { params: httpParams });

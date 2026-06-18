@@ -1611,6 +1611,9 @@
     },
     "inputs": {
       "Active Balance": "Active Balance",
+      "Overdue Balance": "Overdue Balance",
+      "Arrears": "Days in Arrears",
+      "Active Loans": "Active Loans",
       "Loan Account Status": "Loan Account Status",
       "Floating rate": "Floating Rate",
       "Differential rate": "Differential Rate",

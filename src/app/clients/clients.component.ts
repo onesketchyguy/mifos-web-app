@@ -32,12 +32,22 @@ import { MatIcon } from '@angular/material/icon';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 
 /** rxjs Imports */
-import { forkJoin, Observable, of, Subject, Subscription } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, map, switchMap, takeUntil } from 'rxjs/operators';
+import { forkJoin, from, Observable, of, Subject, Subscription } from 'rxjs';
+import {
+  catchError,
+  concatMap,
+  debounceTime,
+  distinctUntilChanged,
+  map,
+  mergeMap,
+  switchMap,
+  takeUntil
+} from 'rxjs/operators';
 
 /** Custom Services */
 import { environment } from '../../environments/environment';
 import { ClientsService } from './clients.service';
+import { ClientListCacheService } from './services/client-list-cache.service';
 import { Dates } from 'app/core/utils/dates';
 import { SettingsService } from 'app/settings/settings.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
@@ -82,6 +92,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   private settingsService = inject(SettingsService);
   private snackBar = inject(MatSnackBar);
   private translateService = inject(TranslateService);
+  private clientCache = inject(ClientListCacheService);
 
   private destroy$ = new Subject<void>();
   private searchInput$ = new Subject<string>();
@@ -118,7 +129,10 @@ export class ClientsComponent implements OnInit, OnDestroy {
   displayedColumns = [
     'displayName',
     'entityIdNumber',
-    'activeBalance'
+    'activeBalance',
+    'overdueBalance',
+    'daysInArrears',
+    'activeLoansCount'
   ];
   dataSource: MatTableDataSource<any> = new MatTableDataSource();
   duplicateClientGroups: Array<{ name: string; clients: any[]; primaryClient: any }> = [];
@@ -134,6 +148,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   totalRows: number;
   isLoading = false;
+  localSort = false;
   loadingClientIds = new Set<number>();
 
   pageSize = 50;
@@ -208,9 +223,28 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   private getClients() {
+    this.localSort = false;
+    this.dataSource.paginator = null;
     this.clientsRequestSub?.unsubscribe();
     this.entityIdsRequestSub?.unsubscribe();
-    this.isLoading = true;
+
+    const cacheKey = this.clientCache.pageKey(this.filterText, this.currentPage, this.pageSize);
+    const cached = this.clientCache.get(cacheKey);
+
+    if (cached) {
+      this.dataSource.data = cached.clients;
+      this.totalRows = cached.totalRows;
+      this.existsClientsToFilter = cached.clients.length > 0;
+      this.notExistsClientsToFilter = !this.existsClientsToFilter;
+      this.refreshDuplicateClientGroups();
+      if (!this.clientCache.isStale(cached)) {
+        return;
+      }
+      // Stale: show cached, refresh in background without loading spinner
+    } else {
+      this.isLoading = true;
+    }
+
     this.clientsRequestSub = this.clientService
       .searchByText(this.filterText, this.currentPage, this.pageSize, this.sortAttribute, this.sortDirection)
       .pipe(
@@ -248,7 +282,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
           this.existsClientsToFilter = data.numberOfElements > 0;
           this.notExistsClientsToFilter = !this.existsClientsToFilter;
           this.isLoading = false;
-          this.loadClientRowDetails(clients);
+          this.loadClientRowDetails(clients, undefined, cacheKey);
         },
         (error: any) => {
           this.isLoading = false;
@@ -317,10 +351,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
     return (client?.id || client?.clientId || client?.entityId || '').toString();
   }
 
-  private loadClientRowDetails(clients: any[]): void {
+  private loadClientRowDetails(clients: any[], sortEvent?: Sort, cacheKey?: string): void {
     this.entityIdsRequestSub?.unsubscribe();
 
     if (clients.length === 0) {
+      this.isLoading = false;
       return;
     }
 
@@ -334,18 +369,38 @@ export class ClientsComponent implements OnInit, OnDestroy {
             entityIdNumber: string | number | null;
             loanOfficer: string;
             activeBalance: number | null;
+            overdueBalance: number | null;
+            daysInArrears: number | null;
+            activeLoansCount: number | null;
           }>
         ) => {
-          this.dataSource.data = clients.map((client: any, index: number) => ({
+          const enrichedClients = clients.map((client: any, index: number) => ({
             ...client,
             entityIdNumber: clientDetails[index].entityIdNumber,
             loanOfficer: clientDetails[index].loanOfficer,
-            activeBalance: clientDetails[index].activeBalance
+            activeBalance: clientDetails[index].activeBalance,
+            overdueBalance: clientDetails[index].overdueBalance,
+            daysInArrears: clientDetails[index].daysInArrears,
+            activeLoansCount: clientDetails[index].activeLoansCount
           }));
+          this.dataSource.data = enrichedClients;
+          if (cacheKey) {
+            this.clientCache.set(cacheKey, enrichedClients, this.totalRows);
+          }
           this.loadingClientIds.clear();
           this.refreshDuplicateClientGroups();
+          if (sortEvent) {
+            this.applyLocalSort(sortEvent);
+            this.localSort = true;
+            this.dataSource.paginator = this.paginator;
+          }
+          this.isLoading = false;
         }
       );
+  }
+
+  private applyLocalSort(event: Sort): void {
+    this.dataSource.data = [...this.dataSource.data].sort(this.makeSortComparator(event));
   }
 
   toggleAdvancedOptions(): void {
@@ -454,15 +509,118 @@ export class ClientsComponent implements OnInit, OnDestroy {
     });
   }
 
-  private getClientRowDetails(
-    client: any
-  ): Observable<{ entityIdNumber: string | number | null; loanOfficer: string; activeBalance: number | null }> {
+  private getClientRowDetails(client: any): Observable<{
+    entityIdNumber: string | number | null;
+    loanOfficer: string;
+    activeBalance: number | null;
+    overdueBalance: number | null;
+    daysInArrears: number | null;
+    activeLoansCount: number | null;
+  }> {
     const clientId = client.id?.toString();
+    if (!clientId) {
+      return forkJoin({
+        entityIdNumber: of(null),
+        loanOfficer: this.getClientLoanOfficer(client),
+        activeBalance: of(null),
+        overdueBalance: of(null),
+        daysInArrears: of(null),
+        activeLoansCount: of(null)
+      });
+    }
+
+    const loanMetrics$ = this.clientService.getClientLoans(clientId).pipe(
+      switchMap((data: any) => {
+        const allLoans: any[] = data?.pageItems || data?.content || [];
+        const activeLoans = allLoans.filter((loan: any) => {
+          const status = loan?.status;
+          if (!status) return false;
+          if (typeof status === 'string') return status.toLowerCase() === 'active';
+          if (typeof status === 'object') return status?.value?.toLowerCase() === 'active' || status?.active === true;
+          return false;
+        });
+        const activeBalance = activeLoans.reduce(
+          (sum: number, l: any) => sum + (l.loanBalance ?? l.summary?.totalOutstanding ?? l.totalOutstanding ?? 0),
+          0
+        );
+        const overdueBalance = activeLoans.reduce(
+          (sum: number, l: any) => sum + (l.amountInArrears ?? l.totalOverdue ?? l.summary?.totalOverdue ?? 0),
+          0
+        );
+        const activeLoansCount = activeLoans.length;
+
+        // Try to get days from the list response first (works when delinquency module is active)
+        const daysFromList = activeLoans.reduce(
+          (max: number, l: any) => Math.max(max, this.getLoanDaysInArrears(l)),
+          0
+        );
+        if (daysFromList > 0) {
+          return of({ activeBalance, overdueBalance, daysInArrears: daysFromList, activeLoansCount });
+        }
+
+        // Fall back to per-loan detail calls for in-arrears loans
+        const inArrearsLoans = activeLoans.filter((l: any) => l.inArrears === true);
+        if (!inArrearsLoans.length) {
+          return of({ activeBalance, overdueBalance, daysInArrears: 0, activeLoansCount });
+        }
+
+        return forkJoin(
+          inArrearsLoans.map((loan: any) =>
+            this.clientService.getLoanDetails(loan.id.toString()).pipe(
+              map((detail: any) => this.getLoanDaysInArrears(detail)),
+              catchError(() => of(0 as number))
+            )
+          )
+        ).pipe(
+          map((days: number[]) => ({
+            activeBalance,
+            overdueBalance,
+            daysInArrears: days.reduce((max, d) => Math.max(max, d), 0),
+            activeLoansCount
+          }))
+        );
+      }),
+      catchError(() => of({ activeBalance: null, overdueBalance: null, daysInArrears: null, activeLoansCount: null }))
+    );
+
     return forkJoin({
       entityIdNumber: this.getClientEntityId(clientId),
       loanOfficer: this.getClientLoanOfficer(client),
-      activeBalance: this.getClientActiveBalance(clientId)
-    });
+      loanMetrics: loanMetrics$
+    }).pipe(
+      map(({ loanMetrics, ...rest }) => ({ ...rest, ...loanMetrics })),
+      catchError(() =>
+        forkJoin({
+          entityIdNumber: this.getClientEntityId(clientId),
+          loanOfficer: this.getClientLoanOfficer(client),
+          activeBalance: of(null) as Observable<number | null>,
+          overdueBalance: of(null) as Observable<number | null>,
+          daysInArrears: of(null) as Observable<number | null>,
+          activeLoansCount: of(null) as Observable<number | null>
+        })
+      )
+    );
+  }
+
+  private getLoanDaysInArrears(loanDetail: any): number {
+    const direct =
+      loanDetail?.pastDueDays ??
+      loanDetail?.daysLate ??
+      loanDetail?.delinquent?.delinquentDays ??
+      loanDetail?.delinquent?.pastDueDays ??
+      loanDetail?.summary?.pastDueDays ??
+      loanDetail?.summary?.numberOfDaysInArrears;
+    if (direct != null) {
+      return direct as number;
+    }
+    const overdueSince = loanDetail?.summary?.overdueSinceDate;
+    if (!overdueSince) {
+      return 0;
+    }
+    const date = Array.isArray(overdueSince)
+      ? new Date(overdueSince[0], overdueSince[1] - 1, overdueSince[2])
+      : new Date(overdueSince);
+    return Math.max(Math.floor((Date.now() - date.getTime()) / 86400000), 0);
   }
 
   private getClientEntityId(clientId: string | null | undefined): Observable<string | number | null> {
@@ -470,33 +628,13 @@ export class ClientsComponent implements OnInit, OnDestroy {
       return of(null);
     }
 
-    return this.clientService.getClientIdentifiers(clientId).pipe(
+    return (this.clientService.getClientIdentifiers(clientId) as Observable<any[]>).pipe(
       map((identifiers: any[]) => {
         const normalizedNames = this.entityIdColumnNames.map((n: string) => this.normalizeColumnName(n));
         const match = (identifiers || []).find((identifier: any) =>
           normalizedNames.includes(this.normalizeColumnName(identifier?.documentType?.name))
         );
         return match?.documentKey ?? null;
-      }),
-      catchError(() => of(null))
-    );
-  }
-
-  private getClientActiveBalance(clientId: string | null | undefined): Observable<number | null> {
-    if (!clientId) {
-      return of(null);
-    }
-
-    return this.clientService.getClientAccountData(clientId).pipe(
-      map((accounts: any) => {
-        const activeLoans = (accounts?.loanAccounts || []).filter((loan: any) => {
-          const status = loan?.status;
-          if (!status) return false;
-          if (typeof status === 'string') return status.toLowerCase() === 'active';
-          if (typeof status === 'object' && status.value) return status.value.toLowerCase() === 'active';
-          return false;
-        });
-        return activeLoans.reduce((sum: number, loan: any) => sum + (loan.loanBalance || 0), 0);
       }),
       catchError(() => of(null))
     );
@@ -539,11 +677,32 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   pageChanged(event: PageEvent) {
     this.pageSize = event.pageSize;
+    if (this.localSort) {
+      return;
+    }
     this.currentPage = event.pageIndex;
     this.getClients();
   }
 
   sortChanged(event: Sort) {
+    const clientSideColumns = [
+      'activeBalance',
+      'overdueBalance',
+      'entityIdNumber',
+      'daysInArrears',
+      'activeLoansCount'
+    ];
+    if (clientSideColumns.includes(event.active)) {
+      if (event.direction === '') {
+        return;
+      }
+      if (this.localSort) {
+        this.applyLocalSort(event);
+      } else {
+        this.loadAllClientsAndSort(event);
+      }
+      return;
+    }
     if (event.direction === '') {
       this.sortDirection = '';
       this.sortAttribute = '';
@@ -553,6 +712,139 @@ export class ClientsComponent implements OnInit, OnDestroy {
     }
     this.resetPaginator();
     this.getClients();
+  }
+
+  private loadAllClientsAndSort(sortEvent: Sort): void {
+    const fullCacheKey = this.clientCache.fullKey(this.filterText);
+    const cached = this.clientCache.get(fullCacheKey);
+    const sortFn = this.makeSortComparator(sortEvent);
+
+    if (cached) {
+      this.dataSource.data = [...cached.clients].sort(sortFn);
+      this.totalRows = cached.totalRows;
+      this.localSort = true;
+      this.dataSource.paginator = this.paginator;
+      if (!this.clientCache.isStale(cached)) {
+        return;
+      }
+      // Stale: show cached sorted, refresh all clients in background
+      this.clientsRequestSub?.unsubscribe();
+      this.entityIdsRequestSub?.unsubscribe();
+      const enriched = [...cached.clients];
+      const loadedIds = new Set<number>(enriched.map((c: any) => c.id));
+      this.runPageByPageLoad(sortFn, fullCacheKey, false, enriched, loadedIds, true);
+      return;
+    }
+
+    // No cache: seed with current page, load rest with loading indicator
+    this.isLoading = true;
+    this.clientsRequestSub?.unsubscribe();
+    this.entityIdsRequestSub?.unsubscribe();
+
+    const enriched: any[] = [...this.dataSource.data];
+    const loadedIds = new Set<number>(enriched.map((c: any) => c.id));
+    this.dataSource.data = [...enriched].sort(sortFn);
+    this.localSort = true;
+    this.dataSource.paginator = this.paginator;
+
+    this.runPageByPageLoad(sortFn, fullCacheKey, true, enriched, loadedIds, false);
+  }
+
+  private runPageByPageLoad(
+    sortFn: (a: any, b: any) => number,
+    cacheKey: string,
+    showLoading: boolean,
+    enriched: any[],
+    loadedIds: Set<number>,
+    refreshExisting: boolean
+  ): void {
+    const totalPages = Math.ceil((this.totalRows || 0) / this.pageSize);
+    const pages = Array.from({ length: totalPages }, (_, i) => i).filter((p) =>
+      showLoading ? p !== this.currentPage : true
+    );
+
+    if (pages.length === 0) {
+      if (showLoading) {
+        this.isLoading = false;
+        this.clientCache.set(cacheKey, enriched, this.totalRows);
+      }
+      return;
+    }
+
+    this.entityIdsRequestSub = from(pages)
+      .pipe(
+        concatMap((page) =>
+          this.clientService.searchByText(this.filterText, page, this.pageSize, '', '').pipe(
+            switchMap((data: any) => {
+              const pageClients: any[] = data.content || [];
+              if (refreshExisting) {
+                // Background refresh: re-fetch details for ALL clients, add truly new ones to enriched
+                pageClients.forEach((c: any) => {
+                  if (!loadedIds.has(c.id)) {
+                    loadedIds.add(c.id);
+                    enriched.push({ ...c });
+                  }
+                });
+                return from(pageClients).pipe(
+                  mergeMap(
+                    (client: any) =>
+                      this.getClientRowDetails(client).pipe(
+                        map((details) => ({ client, details })),
+                        catchError(() => of({ client, details: null }))
+                      ),
+                    20
+                  )
+                );
+              } else {
+                // Initial load: only fetch details for clients not yet in enriched
+                const newClients = pageClients.filter((c: any) => {
+                  if (!loadedIds.has(c.id)) {
+                    loadedIds.add(c.id);
+                    enriched.push({ ...c });
+                    return true;
+                  }
+                  return false;
+                });
+                return from(newClients).pipe(
+                  mergeMap(
+                    (client: any) =>
+                      this.getClientRowDetails(client).pipe(
+                        map((details) => ({ client, details })),
+                        catchError(() => of({ client, details: null }))
+                      ),
+                    20
+                  )
+                );
+              }
+            }),
+            catchError(() => of(null))
+          )
+        ),
+        takeUntil(this.destroy$)
+      )
+      .subscribe({
+        next: (result: any) => {
+          if (!result) return;
+          const { client, details } = result;
+          const idx = enriched.findIndex((c: any) => c.id === client.id);
+          if (idx !== -1 && details) enriched[idx] = { ...enriched[idx], ...details };
+          this.dataSource.data = [...enriched].sort(sortFn);
+        },
+        complete: () => {
+          if (showLoading) this.isLoading = false;
+          this.clientCache.set(cacheKey, [...enriched], this.totalRows);
+        }
+      });
+  }
+
+  private makeSortComparator(event: Sort): (a: any, b: any) => number {
+    const dir = event.direction === 'asc' ? 1 : -1;
+    return (a: any, b: any) => {
+      const aRaw = a[event.active] ?? 0;
+      const bRaw = b[event.active] ?? 0;
+      if (typeof aRaw === 'number' && typeof bRaw === 'number') return (aRaw - bRaw) * dir;
+      return String(aRaw).localeCompare(String(bRaw)) * dir;
+    };
   }
 
   private resetPaginator() {
