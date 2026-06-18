@@ -51,6 +51,7 @@ import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { DocumentationLinksService } from 'app/shared/services/documentation-links.service';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
+import { SettingsService } from 'app/settings/settings.service';
 
 /**
  * Toolbar component.
@@ -84,7 +85,12 @@ export class ToolbarComponent implements OnInit, AfterViewInit, AfterContentChec
   private dialog = inject(MatDialog);
   private changeDetector = inject(ChangeDetectorRef);
   private documentationLinks = inject(DocumentationLinksService);
+  private settingsService = inject(SettingsService);
   accountFeatures = accountFeatures;
+
+  get showConfigWizard(): boolean {
+    return this.settingsService.showConfigWizard;
+  }
 
   /* Reference of institution */
   @ViewChild('institution') institution: ElementRef<any>;

@@ -20,6 +20,7 @@ import { CdkScrollable } from '@angular/cdk/scrolling';
 import { MatGridList, MatGridTile } from '@angular/material/grid-list';
 import { MatProgressBar } from '@angular/material/progress-bar';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
+import { SettingsService } from 'app/settings/settings.service';
 
 /**
  * Configuration Wizard Component.
@@ -41,6 +42,12 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 export class ConfigurationWizardComponent {
   dialogRef = inject<MatDialogRef<ConfigurationWizardComponent>>(MatDialogRef);
   data = inject(MAT_DIALOG_DATA);
+  private settingsService = inject(SettingsService);
 
   show: number;
+
+  dontShowAgain() {
+    this.settingsService.setShowConfigWizard(false);
+    this.dialogRef.close({ show: 0 });
+  }
 }

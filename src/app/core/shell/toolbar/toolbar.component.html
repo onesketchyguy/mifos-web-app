@@ -87,10 +87,18 @@
         <fa-icon class="mr-05" icon="shield-alt" size="lg"></fa-icon>
         {{ 'labels.menus.Admin' | translate }}
       </a>
-      <a #configWizard class="tab-link" (click)="openDialog()" tabindex="0" *mifosxHasPermission="'READ_CONFIG_WIZARD'">
-        <fa-icon class="mr-05" icon="info" size="lg"></fa-icon>
-        {{ 'labels.menus.Configuration Wizard' | translate }}
-      </a>
+      @if (showConfigWizard) {
+        <a
+          #configWizard
+          class="tab-link"
+          (click)="openDialog()"
+          tabindex="0"
+          *mifosxHasPermission="'READ_CONFIG_WIZARD'"
+        >
+          <fa-icon class="mr-05" icon="info" size="lg"></fa-icon>
+          {{ 'labels.menus.Configuration Wizard' | translate }}
+        </a>
+      }
     </span>
   </div>
 

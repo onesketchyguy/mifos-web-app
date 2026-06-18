@@ -690,41 +690,61 @@ export class LoansService {
     transactionId: string,
     loanId: string
   ): Observable<{ importNote: string; rowId: number } | null> {
-    return this.http.get<any[]>(`/api/ivytek/loan-notes?loanId=${loanId}`).pipe(
-      map((rows) => {
-        const matching = (rows ?? []).filter((r) => String(r.transaction_id) === String(transactionId));
-        const row = matching.length
-          ? matching.reduce((latest, r) => (!latest || r.id > latest.id ? r : latest), null as any)
-          : null;
-        return row?.note ? { importNote: row.note, rowId: row.id } : null;
-      }),
-      catchError(() => of(null))
-    );
+    return this.http
+      .get<any[]>(`/api/ivytek/loan-notes?loanId=${loanId}`, {
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+      })
+      .pipe(
+        map((rows) => {
+          const matching = (rows ?? []).filter((r) => String(r.transaction_id) === String(transactionId));
+          const row = matching.length
+            ? matching.reduce((latest, r) => (!latest || r.id > latest.id ? r : latest), null as any)
+            : null;
+          return row?.note ? { importNote: row.note, rowId: row.id } : null;
+        }),
+        catchError(() => of(null))
+      );
   }
 
   updateTransactionNote(loanId: string, rowId: number, note: string): Observable<any> {
-    return this.http.post('/api/ivytek/loan-note', { loanId: Number(loanId), rowId, note });
-  }
-
-  getAllTransactionNotesForLoan(loanId: string): Observable<Map<string, string>> {
-    return this.http.get<any[]>(`/api/ivytek/loan-notes?loanId=${loanId}`).pipe(
-      map((rows) => {
-        const noteMap = new Map<string, string>();
-        (rows ?? []).forEach((r) => {
-          if (r.transaction_id && r.note) noteMap.set(String(r.transaction_id), r.note);
-        });
-        return noteMap;
-      }),
-      catchError(() => of(new Map<string, string>()))
+    return this.http.post(
+      '/api/ivytek/loan-note',
+      { loanId: Number(loanId), rowId, note },
+      {
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+      }
     );
   }
 
+  getAllTransactionNotesForLoan(loanId: string): Observable<Map<string, string>> {
+    return this.http
+      .get<any[]>(`/api/ivytek/loan-notes?loanId=${loanId}`, {
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+      })
+      .pipe(
+        map((rows) => {
+          const noteMap = new Map<string, string>();
+          (rows ?? []).forEach((r) => {
+            if (r.transaction_id && r.note) noteMap.set(String(r.transaction_id), r.note);
+          });
+          return noteMap;
+        }),
+        catchError(() => of(new Map<string, string>()))
+      );
+  }
+
   saveTransactionNote(loanId: string, transactionId: string, note: string): Observable<any> {
-    return this.http.post('/api/ivytek/loan-note', {
-      loanId: Number(loanId),
-      transactionId: Number(transactionId),
-      note
-    });
+    return this.http.post(
+      '/api/ivytek/loan-note',
+      {
+        loanId: Number(loanId),
+        transactionId: Number(transactionId),
+        note
+      },
+      {
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+      }
+    );
   }
 
   /**

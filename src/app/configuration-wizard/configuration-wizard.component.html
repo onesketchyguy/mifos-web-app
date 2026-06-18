@@ -40,6 +40,9 @@
   </mat-dialog-content>
 
   <mat-dialog-actions class="config-wizard-actions">
+    <button mat-button (click)="dontShowAgain()">
+      {{ 'labels.buttons.DONT_SHOW_AGAIN' | translate }}
+    </button>
     <button mat-raised-button color="warn" [mat-dialog-close]="{ show: 0 }">
       {{ 'labels.buttons.Close Config. Wizard' | translate }}
     </button>

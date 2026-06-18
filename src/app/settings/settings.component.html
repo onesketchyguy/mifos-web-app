@@ -53,6 +53,10 @@
             }
           </mat-select>
         </mat-form-field>
+
+        <mat-slide-toggle [formControl]="showConfigWizard" *mifosxHasPermission="'READ_CONFIG_WIZARD'">
+          {{ 'labels.inputs.SHOW_CONFIG_WIZARD' | translate }}
+        </mat-slide-toggle>
       </div>
     </mat-expansion-panel>
 

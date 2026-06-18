@@ -299,4 +299,13 @@ export class SettingsService {
   get themeDarkEnabled(): boolean {
     return JSON.parse(localStorage.getItem('mifosXThemeDarkEnabled'));
   }
+
+  setShowConfigWizard(enabled: boolean) {
+    localStorage.setItem('mifosXShowConfigWizard', JSON.stringify(enabled));
+  }
+
+  get showConfigWizard(): boolean {
+    const stored = localStorage.getItem('mifosXShowConfigWizard');
+    return stored === null ? true : JSON.parse(stored);
+  }
 }

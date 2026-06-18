@@ -25,6 +25,7 @@ import {
 import { FileUploadComponent } from '../shared/file-upload/file-upload.component';
 import { ThemePickerComponent } from '../shared/theme-picker/theme-picker.component';
 import { LanguageSelectorComponent } from '../shared/language-selector/language-selector.component';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 
 /**
@@ -42,7 +43,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     MatExpansionPanelTitle,
     FileUploadComponent,
     ThemePickerComponent,
-    LanguageSelectorComponent
+    LanguageSelectorComponent,
+    MatSlideToggleModule
   ]
 })
 export class SettingsComponent implements OnInit, OnDestroy {
@@ -111,27 +113,37 @@ export class SettingsComponent implements OnInit, OnDestroy {
   datetimeFormat = new FormControl('');
   /** Decimals to Display Setting */
   decimalsToDisplay = new FormControl('');
+  /** Show Configuration Wizard toggle */
+  showConfigWizard = new FormControl(true);
 
   private initialValues: {
     dateFormat: string;
     datetimeFormat: string;
     decimals: string;
+    showConfigWizard: boolean;
   };
 
   ngOnInit() {
     this.initialValues = {
       dateFormat: this.settingsService.dateFormat,
       datetimeFormat: this.settingsService.datetimeFormat,
-      decimals: this.settingsService.decimals
+      decimals: this.settingsService.decimals,
+      showConfigWizard: this.settingsService.showConfigWizard
     };
     this.dateFormat.patchValue(this.initialValues.dateFormat, { emitEvent: false });
     this.datetimeFormat.patchValue(this.initialValues.datetimeFormat, { emitEvent: false });
     this.decimalsToDisplay.patchValue(this.initialValues.decimals, { emitEvent: false });
+    this.showConfigWizard.patchValue(this.initialValues.showConfigWizard, { emitEvent: false });
     this.trackChanges();
   }
 
   trackChanges(): void {
-    merge(this.dateFormat.valueChanges, this.datetimeFormat.valueChanges, this.decimalsToDisplay.valueChanges)
+    merge(
+      this.dateFormat.valueChanges,
+      this.datetimeFormat.valueChanges,
+      this.decimalsToDisplay.valueChanges,
+      this.showConfigWizard.valueChanges
+    )
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
         this.hasChanges = this.hasFormChanged();
@@ -142,7 +154,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
     return (
       (this.dateFormat.value ?? '') !== this.initialValues.dateFormat ||
       (this.datetimeFormat.value ?? '') !== this.initialValues.datetimeFormat ||
-      (this.decimalsToDisplay.value ?? '') !== this.initialValues.decimals
+      (this.decimalsToDisplay.value ?? '') !== this.initialValues.decimals ||
+      (this.showConfigWizard.value ?? true) !== this.initialValues.showConfigWizard
     );
   }
 
@@ -150,10 +163,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.settingsService.setDateFormat(this.dateFormat.value ?? this.initialValues.dateFormat);
     this.settingsService.setDatetimeFormat(this.datetimeFormat.value ?? this.initialValues.datetimeFormat);
     this.settingsService.setDecimalToDisplay(this.decimalsToDisplay.value ?? this.initialValues.decimals);
+    this.settingsService.setShowConfigWizard(this.showConfigWizard.value ?? this.initialValues.showConfigWizard);
     this.initialValues = {
       dateFormat: this.dateFormat.value ?? '',
       datetimeFormat: this.datetimeFormat.value ?? '',
-      decimals: this.decimalsToDisplay.value ?? ''
+      decimals: this.decimalsToDisplay.value ?? '',
+      showConfigWizard: this.showConfigWizard.value ?? true
     };
     this.hasChanges = false;
     this.alertService.alert({
