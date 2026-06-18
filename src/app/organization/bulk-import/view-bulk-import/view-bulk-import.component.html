@@ -482,6 +482,17 @@
         </mat-hint>
       }
 
+      @if (ivyTekCleanupRunning) {
+        <mat-progress-bar
+          [mode]="ivyTekCleanupTotalRecords ? 'determinate' : 'indeterminate'"
+          [value]="ivyTekCleanupTotalRecords ? (ivyTekCleanupProcessedRecords / ivyTekCleanupTotalRecords) * 100 : 0"
+        ></mat-progress-bar>
+        <mat-hint>
+          Deleting existing IvyTek attachments: {{ ivyTekCleanupProcessedRecords }} /
+          {{ ivyTekCleanupTotalRecords || '?' }}
+        </mat-hint>
+      }
+
       @if (ivyTekAttachmentImporting) {
         <mat-progress-bar
           mode="determinate"
@@ -500,6 +511,17 @@
           {{ 'labels.text.IvyTek import stopped because an earlier stage has records to review.' | translate }}
         </p>
       }
+
+      <div style="margin-bottom: 8px; padding: 8px 0">
+        <mat-checkbox [checked]="ivyTekCleanupBeforeImport" (change)="ivyTekCleanupBeforeImport = $event.checked">
+          Delete existing IvyTek attachments before re-uploading
+        </mat-checkbox>
+        @if (ivyTekCleanupBeforeImport) {
+          <p class="ivytek-import-note">
+            Existing IvyTek-tagged documents will be deleted from each loan before new files are uploaded.
+          </p>
+        }
+      </div>
 
       <div class="flex-13">
         <button

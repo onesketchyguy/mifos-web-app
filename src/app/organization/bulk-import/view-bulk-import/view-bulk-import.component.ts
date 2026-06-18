@@ -267,6 +267,10 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekContentVersionImportResult: any = null;
   /** Error from the last ContentVersion import attempt. */
   ivyTekContentVersionImportError: string | null = null;
+  ivyTekCleanupBeforeImport = false;
+  ivyTekCleanupRunning = false;
+  ivyTekCleanupProcessedRecords = 0;
+  ivyTekCleanupTotalRecords = 0;
   /** Whether the ContentVersion attachment upload loop is running. */
   ivyTekAttachmentImporting = false;
   /** Number of attachments uploaded so far in the current run. */
@@ -327,7 +331,8 @@ export class ViewBulkImportComponent implements OnInit {
       this.ivyTekImporting ||
       this.ivyTekLoanImporting ||
       this.ivyTekTransactionImporting ||
-      this.ivyTekAttachmentImporting
+      this.ivyTekAttachmentImporting ||
+      this.ivyTekCleanupRunning
     );
   }
 
@@ -10973,45 +10978,86 @@ export class ViewBulkImportComponent implements OnInit {
       let failed = 0;
       const uploadErrors: string[] = [];
 
+      if (apply && this.ivyTekCleanupBeforeImport) {
+        this.ivyTekCleanupRunning = true;
+        this.ivyTekCleanupProcessedRecords = 0;
+        this.ivyTekCleanupTotalRecords = 0;
+
+        // Fetch all loan document lists in parallel
+        const uniqueLoanIds = [...new Set(records.map((r: any) => r.loanId))];
+        const docLists = await Promise.all(
+          uniqueLoanIds.map((loanId) =>
+            firstValueFrom(this.loansService.getLoanDocuments(loanId)).catch(() => [] as any[])
+          )
+        );
+
+        // Collect all IvyTek-tagged docs across all loans
+        const docsToDelete: { loanId: number; id: number }[] = [];
+        docLists.forEach((docs: any[], i: number) => {
+          (docs || [])
+            .filter(
+              (d: any) => typeof d.description === 'string' && d.description.startsWith('IvyTek ContentVersion import:')
+            )
+            .forEach((d: any) => docsToDelete.push({ loanId: uniqueLoanIds[i], id: d.id }));
+        });
+
+        this.ivyTekCleanupTotalRecords = docsToDelete.length;
+        await this.runConcurrent(
+          docsToDelete.map((doc) => async () => {
+            await firstValueFrom(this.loansService.deleteLoanDocument(doc.loanId, doc.id)).catch(() => {});
+            this.ivyTekCleanupProcessedRecords++;
+          }),
+          10
+        );
+        this.ivyTekCleanupRunning = false;
+      }
+
       if (apply) {
         this.ivyTekAttachmentImporting = true;
         this.ivyTekAttachmentProcessedRecords = 0;
         this.ivyTekAttachmentTotalRecords = records.length;
 
-        for (const record of records) {
-          // Files in ContentVersion/ subfolder are named by the ContentVersion Id (068...),
-          // optionally with an extension. Fall back to ContentDocumentId if versionId is absent.
-          const fileId = record.versionId || record.contentDocumentId;
-          const file = this.ivyTekContentVersionFiles.find((f) => {
-            const fname = f.name;
-            return fname === fileId || fname.startsWith(fileId + '.');
-          });
-
-          if (!file) {
-            skipped++;
-            this.ivyTekAttachmentProcessedRecords++;
-            uploadErrors.push(`No file found in ContentVersion/ subfolder for Id ${fileId}`);
-            continue;
-          }
-
-          try {
-            const docName = record.title || fileId;
-            const ext = record.fileType ? `.${record.fileType.toLowerCase()}` : '';
-            const safeFileName = `${docName.replace(/[/\\:*?"<>|]/g, '_')}${ext}`;
-            const formData = new FormData();
-            formData.append('name', docName);
-            formData.append('file', file, safeFileName);
-            formData.append('description', `IvyTek ContentVersion import: ${record.contentDocumentId || fileId}`);
-            await firstValueFrom(this.loansService.loadLoanDocument(record.loanId, formData));
-            uploaded++;
-          } catch (err: any) {
-            failed++;
-            uploadErrors.push(
-              `Upload failed for ${fileId}: ${err?.error?.errors?.[0]?.defaultUserMessage || err?.message || 'Unknown error'}`
-            );
-          }
-          this.ivyTekAttachmentProcessedRecords++;
+        // Build a filename → File map for O(1) lookup
+        const fileMap = new Map<string, File>();
+        for (const f of this.ivyTekContentVersionFiles) {
+          fileMap.set(f.name, f);
         }
+
+        await this.runConcurrent(
+          records.map((record: any) => async () => {
+            const fileId = record.versionId || record.contentDocumentId;
+            const file = fileMap.get(fileId) ?? [...fileMap.values()].find((f) => f.name.startsWith(fileId + '.'));
+
+            if (!file) {
+              skipped++;
+              uploadErrors.push(`No file found in ContentVersion/ subfolder for Id ${fileId}`);
+              this.ivyTekAttachmentProcessedRecords++;
+              return;
+            }
+
+            try {
+              const docName = record.title || fileId;
+              const fileExt = record.fileType ? record.fileType.toLowerCase().replace(/^\./, '') : '';
+              const ext = fileExt ? `.${fileExt}` : '';
+              const safeFileName = `${docName.replace(/[/\\:*?"<>|]/g, '_')}${ext}`;
+              const mimeType = this.ivyTekMimeTypeForExt(fileExt) || file.type || 'application/octet-stream';
+              const typedFile = new File([file], safeFileName, { type: mimeType });
+              const formData = new FormData();
+              formData.append('name', docName);
+              formData.append('file', typedFile);
+              formData.append('description', `IvyTek ContentVersion import: ${record.contentDocumentId || fileId}`);
+              await firstValueFrom(this.loansService.loadLoanDocument(record.loanId, formData));
+              uploaded++;
+            } catch (err: any) {
+              failed++;
+              uploadErrors.push(
+                `Upload failed for ${fileId}: ${err?.error?.errors?.[0]?.defaultUserMessage || err?.message || 'Unknown error'}`
+              );
+            }
+            this.ivyTekAttachmentProcessedRecords++;
+          }),
+          8
+        );
         this.ivyTekAttachmentImporting = false;
       }
 
@@ -11064,6 +11110,42 @@ export class ViewBulkImportComponent implements OnInit {
    * Reads a file as text.
    * @param {File} file File to read.
    */
+  private async runConcurrent(tasks: (() => Promise<void>)[], concurrency: number): Promise<void> {
+    let index = 0;
+    const worker = async () => {
+      while (index < tasks.length) {
+        await tasks[index++]();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  }
+
+  private ivyTekMimeTypeForExt(ext: string): string {
+    const map: Record<string, string> = {
+      pdf: 'application/pdf',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      webp: 'image/webp',
+      tif: 'image/tiff',
+      tiff: 'image/tiff',
+      svg: 'image/svg+xml',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+      csv: 'text/csv',
+      zip: 'application/zip',
+      msg: 'application/vnd.ms-outlook'
+    };
+    return map[ext] || '';
+  }
+
   private readFileAsText(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
