@@ -47,7 +47,7 @@ import { BreachDisplayComponent } from 'app/shared/loan/breach-display/breach-di
   styleUrls: ['./loans-account-preview-step.component.scss'],
   imports: [
     ...STANDALONE_SHARED_IMPORTS,
-    ExternalIdentifierComponent,
+    //ExternalIdentifierComponent,
     MatDivider,
     MatTable,
     MatColumnDef,
