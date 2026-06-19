@@ -308,6 +308,16 @@
             ivyTekFeedPostFile?.name || ('labels.text.No file selected' | translate)
           }}</span>
         </div>
+        <div class="ivytek-file-status-row" [class.found]="!!ivyTekUsersFile" [class.optional]="!ivyTekUsersFile">
+          <i class="fa" [class.fa-check-circle]="ivyTekUsersFile" [class.fa-circle-o]="!ivyTekUsersFile"></i>
+          <span>
+            {{ 'labels.heading.Stage 4 Notes' | translate }} — Users CSV
+            <em>({{ 'labels.text.optional' | translate }})</em></span
+          >
+          <span class="ivytek-file-status-name">{{
+            ivyTekUsersFile?.name || ('labels.text.No file selected' | translate)
+          }}</span>
+        </div>
         <div
           class="ivytek-file-status-row"
           [class.found]="!!ivyTekContentVersionFile"

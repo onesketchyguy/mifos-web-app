@@ -75,12 +75,38 @@ function splitCsvLine(line) {
 }
 
 function parseCsv(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  if (lines.length < 2) return [];
-  const headers = splitCsvLine(lines[0]);
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Split into raw rows respecting quoted fields that may contain literal newlines.
+  // The naive split('\n') approach truncates multi-paragraph Body fields at the
+  // first newline inside a quoted value.
+  const rawRows = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if (ch === '"') {
+      if (inQuotes && normalized[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+        current += ch;
+      }
+    } else if (ch === '\n' && !inQuotes) {
+      rawRows.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current) rawRows.push(current);
+
+  if (rawRows.length < 2) return [];
+  const headers = splitCsvLine(rawRows[0]);
   const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
+  for (let i = 1; i < rawRows.length; i++) {
+    const line = rawRows[i].trim();
     if (!line) continue;
     const vals = splitCsvLine(line);
     const row = {};
@@ -1056,6 +1082,56 @@ function parseSourceDateString(value) {
 
 const MAX_NOTE_LEN = 1000;
 
+function splitByDatePrefix(fullText) {
+  const startsWithDate = (s) => /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}[\s:]/.test(s.trimStart());
+
+  // 1. Try newline-based split first (HTML was stripped from <p> tags into \n).
+  const paragraphs = fullText.split('\n').filter((p) => p.trim());
+  if (paragraphs.filter(startsWithDate).length > 1) {
+    const notes = [];
+    let current = '';
+    for (const para of paragraphs) {
+      if (startsWithDate(para) && current.trim()) {
+        notes.push(current.trim());
+        current = para;
+      } else {
+        current = current ? current + '\n' + para : para;
+      }
+    }
+    if (current.trim()) notes.push(current.trim());
+    if (notes.length > 1) return notes;
+  }
+
+  // 2. Inline split: the text is one flat string with no newlines.
+  //    A new note starts when a date appears after ". " or ". INITIALS "
+  //    (end-of-sentence + optional 1-3 uppercase letter initials).
+  //    This avoids splitting on dates inside content like:
+  //      "MATURITY DATE FROM 9-13-41 TO 6-13-54"  (no preceding period)
+  //      "NEXT PAYMENT DUE DATE: 4-10-22,"         (preceded by ":", not ".")
+  //      "dated 11-09-23."                          (preceded by lowercase word)
+  //      "DUE DATE TO 8-18-24 TO CORRECT"           (preceded by "TO")
+  const dateRegex = /\.\s+(?:[A-Z]{1,3}\s+)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}[\s:])/g;
+  const splitPoints = [];
+  let match;
+  while ((match = dateRegex.exec(fullText)) !== null) {
+    // The date portion starts at the end of the full match minus the captured date group
+    splitPoints.push(match.index + match[0].length - match[1].length);
+  }
+
+  if (splitPoints.length === 0) return [fullText];
+
+  const notes = [];
+  let last = 0;
+  for (const sp of splitPoints) {
+    const part = fullText.substring(last, sp).trim();
+    if (part) notes.push(part);
+    last = sp;
+  }
+  const tail = fullText.substring(last).trim();
+  if (tail) notes.push(tail);
+  return notes.length > 1 ? notes : [fullText];
+}
+
 function splitNote(fullText) {
   if (fullText.length <= MAX_NOTE_LEN) return [fullText];
   // Reserve 10 chars for the " (NN/NN)" suffix; handles up to 99 parts.
@@ -1066,6 +1142,20 @@ function splitNote(fullText) {
   }
   const n = rawChunks.length;
   return rawChunks.map((c, idx) => `${c} (${idx + 1}/${n})`);
+}
+
+function extractNoteDatePrefix(note) {
+  // Match a date at the very start of the note: M/D/YY, MM-DD-YY, etc.
+  const match = note.trimStart().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})[\s:]/);
+  if (!match) return null;
+  let [
+    ,
+    month,
+    day,
+    year
+  ] = match;
+  if (year.length === 2) year = parseInt(year, 10) < 30 ? `20${year}` : `19${year}`;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 }
 
 function parseFeedPostCsv(text) {
@@ -1088,15 +1178,119 @@ function parseFeedPostCsv(text) {
     if (!rawBody) continue;
     const body = stripHtml(rawBody);
     if (!body) continue;
-    const createdDate = parseSourceDateString(row['CreatedDate'] || '');
-    const rawCreatedDate = (row['CreatedDate'] || '').trim() || null;
-    const parts = splitNote(body);
-    for (let p = 0; p < parts.length; p++) {
-      const partSourceId = parts.length > 1 ? `${sourceId}-p${p + 1}` : sourceId;
-      records.push({ sourceId: partSourceId, parentId, loanId: null, note: parts[p], createdDate, rawCreatedDate });
+    const feedPostCreatedDate = parseSourceDateString(row['CreatedDate'] || '');
+    const feedPostRawCreatedDate = (row['CreatedDate'] || '').trim() || null;
+    const createdById = (row['CreatedById'] || row['CreatedByID'] || '').trim() || null;
+
+    // First, split by date prefixes if multiple dated notes are present
+    const dateBasedSplits = splitByDatePrefix(body);
+    for (let d = 0; d < dateBasedSplits.length; d++) {
+      const noteBody = dateBasedSplits[d];
+      // Use the date embedded in the note text when present, fall back to FeedPost date
+      const noteDatePrefix = extractNoteDatePrefix(noteBody);
+      const createdDate = noteDatePrefix ?? feedPostCreatedDate;
+      const rawCreatedDate = noteDatePrefix ?? feedPostRawCreatedDate;
+      // Then split by length if necessary
+      const lengthParts = splitNote(noteBody);
+      for (let p = 0; p < lengthParts.length; p++) {
+        let partSourceId = sourceId;
+        if (dateBasedSplits.length > 1) partSourceId += `-d${d + 1}`;
+        if (lengthParts.length > 1) partSourceId += `-p${p + 1}`;
+        records.push({
+          sourceId: partSourceId,
+          parentId,
+          loanId: null,
+          note: lengthParts[p],
+          createdDate,
+          rawCreatedDate,
+          createdById
+        });
+      }
     }
   }
   return { records, errors };
+}
+
+/**
+ * Parses a Users CSV (Salesforce export) and returns a map of SF user ID → { firstName, lastName, alias }.
+ * @param {string} text
+ * @returns {Map<string, {firstName: string, lastName: string, alias: string}>}
+ */
+function parseSalesforceUsersCsv(text) {
+  const rows = parseCsv(text);
+  const map = new Map();
+  for (const row of rows) {
+    const id = (row['Id'] || '').trim();
+    const firstName = (row['FirstName'] || '').trim();
+    const lastName = (row['LastName'] || '').trim();
+    const alias = (row['Alias'] || '').trim();
+    if (id && (firstName || lastName)) map.set(id, { firstName, lastName, alias });
+  }
+  return map;
+}
+
+/**
+ * Looks up Mifos user IDs by first+last name from m_appuser.
+ * Returns a map keyed by "firstname|lastname" (lower-case) → Mifos user ID.
+ * @param {import('pg').Client} client
+ * @param {Array<{firstName: string, lastName: string}>} users
+ * @returns {Promise<Map<string, number>>}
+ */
+async function lookupMifosUsersByName(client, users) {
+  const lookup = new Map();
+  if (!users.length) return lookup;
+  for (const { firstName, lastName } of users) {
+    const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
+    if (lookup.has(key)) continue;
+    const res = await client.query(
+      `select id from m_appuser where lower(firstname) = lower($1) and lower(lastname) = lower($2) limit 1`,
+      [
+        firstName,
+        lastName
+      ]
+    );
+    if (res.rows.length) lookup.set(key, Number(res.rows[0].id));
+  }
+  return lookup;
+}
+
+/**
+ * Builds a map of 2-letter initials → Mifos user ID for fallback matching in note text.
+ * Uses the Alias column's first two characters (upper-cased) when available, otherwise
+ * falls back to first letter of firstName + first letter of lastName.
+ * @param {Map<string, {firstName: string, lastName: string, alias: string}>} sfUserMap
+ * @param {Map<string, number>} mifosNameMap keyed by "firstname|lastname"
+ * @returns {Map<string, number>} initials (upper-case) → Mifos user ID
+ */
+function buildInitialsMap(sfUserMap, mifosNameMap) {
+  const map = new Map();
+  for (const { firstName, lastName, alias } of sfUserMap.values()) {
+    const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
+    const mifosId = mifosNameMap.get(key);
+    if (!mifosId) continue;
+    const initials = alias
+      ? alias.slice(0, 2).toUpperCase()
+      : `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
+    if (initials.length === 2 && !map.has(initials)) map.set(initials, mifosId);
+  }
+  return map;
+}
+
+/**
+ * Tries to find a user ID by scanning the note text for 2-letter initials.
+ * Looks for a pattern like " DS" or "DS " near the end of the text, surrounded by non-alpha chars.
+ * @param {string} note
+ * @param {Map<string, number>} initialsMap
+ * @returns {number|null}
+ */
+function findUserByInitialsInNote(note, initialsMap) {
+  // Match standalone 2-letter uppercase sequences not surrounded by letters
+  const matches = note.matchAll(/(?<![A-Za-z])([A-Z]{2})(?![A-Za-z])/g);
+  for (const match of matches) {
+    const id = initialsMap.get(match[1]);
+    if (id !== undefined) return id;
+  }
+  return null;
 }
 
 async function ensureFeedPostTrackingTable(client) {
@@ -1167,6 +1361,7 @@ async function fetchFeedPostDbNoteCount(client, sourceIds, batchSize) {
 async function insertFeedPostNotes(client, records, createdBy) {
   let inserted = 0;
   for (const record of records) {
+    const recordCreatedBy = record.resolvedCreatedBy ?? createdBy;
     const noteRes = await client.query(
       `
       insert into m_note (
@@ -1186,7 +1381,7 @@ async function insertFeedPostNotes(client, records, createdBy) {
       [
         record.loanId,
         record.note,
-        createdBy,
+        recordCreatedBy,
         record.createdDate ?? null,
         record.rawCreatedDate ?? null
       ]
@@ -1201,7 +1396,14 @@ async function insertFeedPostNotes(client, records, createdBy) {
   return inserted;
 }
 
-async function runFeedPostImport({ db, feedPostCsvText, loanCsvText, createdBy = 4, apply = false }) {
+async function runFeedPostImport({
+  db,
+  feedPostCsvText,
+  loanCsvText,
+  createdBy = 4,
+  salesforceUsersCsvText = null,
+  apply = false
+}) {
   const { records: parsedRecords, errors } = parseFeedPostCsv(feedPostCsvText);
   const warnings = [...errors];
 
@@ -1234,6 +1436,25 @@ async function runFeedPostImport({ db, feedPostCsvText, loanCsvText, createdBy =
   try {
     await client.query('BEGIN');
 
+    // Resolve Salesforce users → Mifos user IDs for per-note attribution.
+    const sfUserMap = salesforceUsersCsvText ? parseSalesforceUsersCsv(salesforceUsersCsvText) : new Map();
+    let mifosNameMap = new Map();
+    let initialsMap = new Map();
+    if (sfUserMap.size) {
+      const uniqueUsers = [
+        ...new Set([...sfUserMap.values()].map((u) => `${u.firstName.toLowerCase()}|${u.lastName.toLowerCase()}`))
+      ].map((key) => {
+        const [
+          firstName,
+          lastName
+        ] = key.split('|');
+        return { firstName, lastName };
+      });
+      mifosNameMap = await lookupMifosUsersByName(client, uniqueUsers);
+      initialsMap = buildInitialsMap(sfUserMap, mifosNameMap);
+      warnings.push(`User map: ${sfUserMap.size} SF user(s) loaded, ${mifosNameMap.size} resolved to Mifos user(s).`);
+    }
+
     const uniqueParentIds = [...new Set(parsedRecords.map((r) => r.parentId))];
 
     // Resolve parentIds to legacy account numbers via the loan CSV map, then
@@ -1265,7 +1486,21 @@ async function runFeedPostImport({ db, feedPostCsvText, loanCsvText, createdBy =
     for (const rec of parsedRecords) {
       const loanId = loanLookup.get(rec.parentId);
       if (loanId === undefined) unmatched.push(rec.parentId);
-      else records.push({ ...rec, loanId });
+      else {
+        let resolvedCreatedBy = null;
+        if (sfUserMap.size) {
+          // 1. Try to resolve by CreatedById from the FeedPost CSV
+          if (rec.createdById && sfUserMap.has(rec.createdById)) {
+            const { firstName, lastName } = sfUserMap.get(rec.createdById);
+            resolvedCreatedBy = mifosNameMap.get(`${firstName.toLowerCase()}|${lastName.toLowerCase()}`) ?? null;
+          }
+          // 2. Fallback: scan the note text for 2-letter initials from the Alias column
+          if (!resolvedCreatedBy && initialsMap.size) {
+            resolvedCreatedBy = findUserByInitialsInNote(rec.note, initialsMap);
+          }
+        }
+        records.push({ ...rec, loanId, resolvedCreatedBy });
+      }
     }
     if (unmatched.length)
       warnings.push(
@@ -1361,7 +1596,7 @@ async function handleFeedPostImport(req, res) {
     return jsonResponse(res, 400, { success: false, message: 'Invalid JSON body.' });
   }
 
-  const { db, apply = false, createdBy = 4, feedPostCsvText, loanCsvText } = body;
+  const { db, apply = false, createdBy = 4, feedPostCsvText, loanCsvText, salesforceUsersCsvText = null } = body;
   if (!db?.host || !db?.dbname || !db?.user)
     return jsonResponse(res, 400, { success: false, message: 'Missing required db fields: host, dbname, user.' });
   if (!feedPostCsvText)
@@ -1371,6 +1606,8 @@ async function handleFeedPostImport(req, res) {
     });
 
   console.log(`[IvyTek FeedPost] received feedPostCsvText: ${feedPostCsvText.length} bytes`);
+  if (salesforceUsersCsvText)
+    console.log(`[IvyTek FeedPost] received salesforceUsersCsvText: ${salesforceUsersCsvText.length} bytes`);
   const fpRows = parseCsv(feedPostCsvText);
   if (!fpRows.length)
     return jsonResponse(res, 400, {
@@ -1379,7 +1616,14 @@ async function handleFeedPostImport(req, res) {
     });
 
   try {
-    const result = await runFeedPostImport({ db, feedPostCsvText, loanCsvText, createdBy, apply });
+    const result = await runFeedPostImport({
+      db,
+      feedPostCsvText,
+      loanCsvText,
+      createdBy,
+      salesforceUsersCsvText,
+      apply
+    });
     jsonResponse(res, 200, result);
   } catch (e) {
     console.error('[IvyTek FeedPost] Import error:', e);

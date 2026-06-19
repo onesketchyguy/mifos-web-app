@@ -249,6 +249,8 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekSqlImportError: string | null = null;
   /** CSV file selected for direct server-side import (bypasses Stage 3). */
   ivyTekSqlCsvFile: File | null = null;
+  /** IvyTek Users CSV file (Salesforce export) for per-note user attribution. */
+  ivyTekUsersFile: File | null = null;
   /** IvyTek FeedPost notes CSV file. */
   ivyTekFeedPostFile: File | null = null;
   /** Whether the FeedPost notes import request is in flight. */
@@ -714,6 +716,18 @@ export class ViewBulkImportComponent implements OnInit {
       return n.includes('transactions') && !n.includes('details');
     });
     const feedPostFile = csvFiles.find((f) => norm(f.name).includes('feedpost'));
+    const usersFile = csvFiles.find((f) => {
+      const n = norm(f.name);
+      return (
+        n === 'user' ||
+        (n.startsWith('user') &&
+          !n.includes('loan') &&
+          !n.includes('contact') &&
+          !n.includes('app') &&
+          !n.includes('assistant') &&
+          !n.includes('sum'))
+      );
+    });
     const contentVersionCsvFile = csvFiles.find((f) => norm(f.name).includes('contentversion'));
     const contentVersionFiles = files.filter((f) => {
       const parts = f.webkitRelativePath.split('/');
@@ -729,6 +743,7 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekTransactionFile = transactionFile ?? null;
     this.ivyTekSqlCsvFile = transactionFile ?? null;
     this.ivyTekFeedPostFile = feedPostFile ?? null;
+    this.ivyTekUsersFile = usersFile ?? null;
     this.ivyTekContentVersionFile = contentVersionCsvFile ?? null;
     this.ivyTekContentVersionFiles = contentVersionFiles;
 
@@ -741,6 +756,7 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekFeedPostImportResult = null;
     this.ivyTekFeedPostImportError = null;
     this.ivyTekContentVersionImportResult = null;
+
     this.ivyTekContentVersionImportError = null;
   }
 
@@ -10870,10 +10886,12 @@ export class ViewBulkImportComponent implements OnInit {
     try {
       const [
         feedPostCsvText,
-        loanCsvText
+        loanCsvText,
+        salesforceUsersCsvText
       ] = await Promise.all([
         this.readFileAsText(this.ivyTekFeedPostFile),
-        this.ivyTekLoanFile ? this.readFileAsText(this.ivyTekLoanFile) : Promise.resolve(null)
+        this.ivyTekLoanFile ? this.readFileAsText(this.ivyTekLoanFile) : Promise.resolve(null),
+        this.ivyTekUsersFile ? this.readFileAsText(this.ivyTekUsersFile) : Promise.resolve(null)
       ]);
 
       if (!feedPostCsvText || !feedPostCsvText.trim()) {
@@ -10889,6 +10907,7 @@ export class ViewBulkImportComponent implements OnInit {
           db: this.ivyTekSqlDbForm.value,
           feedPostCsvText,
           loanCsvText,
+          salesforceUsersCsvText,
           createdBy: 4,
           apply
         })
