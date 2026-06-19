@@ -26,7 +26,7 @@
       @for (loan of filteredLoans; track loan.loanId) {
         <mat-list-item class="loan-list-item" (click)="pickLoan(loan)">
           <span matListItemTitle>{{ loan.borrowerName }}</span>
-          <span matListItemLine>{{ 'labels.inputs.Loan ID' | translate }}: {{ loan.loanId }}</span>
+          <span matListItemLine>{{ 'labels.inputs.Account No' | translate }}: {{ loan.accountNo }}</span>
         </mat-list-item>
       }
     </mat-list>
@@ -36,7 +36,7 @@
   @if (selectedLoan) {
     <div class="amount-step">
       <p class="selected-loan-name">{{ selectedLoan.borrowerName }}</p>
-      <p class="selected-loan-id">{{ 'labels.inputs.Loan ID' | translate }}: {{ selectedLoan.loanId }}</p>
+      <p class="selected-loan-id">{{ 'labels.inputs.Account No' | translate }}: {{ selectedLoan.accountNo }}</p>
 
       <mat-form-field class="full-width amount-field">
         <mat-label>{{ sourceLabel }}</mat-label>

@@ -102,7 +102,7 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
         this.settingsService.businessDate,
         Validators.required
       ],
-      externalId: [crypto.randomUUID()],
+      externalId: [this.generateUUID()],
       paymentTypeId: '',
       note: '',
       skipInterestRefund: [false]
@@ -303,6 +303,16 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
     }
     this.repaymentLoanForm.controls.transactionAmount.setValidators(validators);
     this.repaymentLoanForm.controls.transactionAmount.updateValueAndValidity({ emitEvent: false });
+  }
+
+  private generateUUID(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
   }
 
   /** Submits the repayment form */

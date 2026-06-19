@@ -8,7 +8,7 @@
 
 /** Angular Imports */
 import { Component, ViewChild, inject } from '@angular/core';
-import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
+import { FormControl, UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
 /** Angular Material Imports */
@@ -98,6 +98,7 @@ export class TribalLoanManagementComponent {
   private payrollLoans: TribalLoanData[] = [];
 
   readonly dataSource = new MatTableDataSource<TribalLoanData>([]);
+  readonly searchControl = new FormControl('');
   readonly displayColumns = [
     'loanId',
     'borrowerName',
@@ -124,6 +125,17 @@ export class TribalLoanManagementComponent {
           return (loan as any)[column] ?? '';
       }
     };
+
+    this.dataSource.filterPredicate = (loan: TribalLoanData, filter: string): boolean => {
+      if (!filter) {
+        return true;
+      }
+      return loan.borrowerName.toLowerCase().includes(filter) || loan.accountNo.toLowerCase().includes(filter);
+    };
+
+    this.searchControl.valueChanges.subscribe((term: string | null) => {
+      this.dataSource.filter = (term || '').trim().toLowerCase();
+    });
 
     // Instant source/status switching — no new API call needed since data is cached.
     this.sourceForm.get('paymentSource')?.valueChanges.subscribe(() => {
@@ -191,6 +203,8 @@ export class TribalLoanManagementComponent {
     this.pensionLoans = [];
     this.payrollLoans = [];
     this.dataSource.data = [];
+    this.searchControl.setValue('', { emitEvent: false });
+    this.dataSource.filter = '';
 
     this.tribalLoanPaymentsService.streamTribalLoanData().subscribe({
       next: (loan: TribalLoanData) => {
@@ -340,7 +354,7 @@ export class TribalLoanManagementComponent {
     const sourceLabel = source.charAt(0).toUpperCase() + source.slice(1);
 
     const columns = [
-      'Loan ID',
+      'Account No',
       'Borrower Name',
       'Status',
       'Balance Now',
@@ -367,7 +381,7 @@ export class TribalLoanManagementComponent {
       const refund = Math.max(0, payment - balance);
       return {
         row: [
-          loan.loanId,
+          loan.accountNo,
           loan.borrowerName,
           loan.status,
           balance,

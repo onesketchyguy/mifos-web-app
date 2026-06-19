@@ -59,7 +59,7 @@ export class SelectLoanDialogComponent {
     }
     return this.data.loans.filter(
       (loan: TribalLoanData) =>
-        loan.borrowerName.toLowerCase().includes(term) || loan.loanId.toLowerCase().includes(term)
+        loan.borrowerName.toLowerCase().includes(term) || loan.accountNo.toLowerCase().includes(term)
     );
   }
 
