@@ -112,6 +112,36 @@
     font-weight: 500;
   }
 
+  .table-collapse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 12px 0 8px;
+    font-size: 15px;
+    font-weight: 500;
+    user-select: none;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
+
+  .amount-input {
+    width: 96px;
+    padding: 4px 6px;
+    border: 1px solid rgb(0 0 0 / 24%);
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: right;
+    background: transparent;
+
+    &:focus {
+      outline: none;
+      border-color: #3f51b5;
+    }
+  }
+
   .validation-row {
     margin-top: 16px;
   }

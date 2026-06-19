@@ -1,0 +1,188 @@
+<!--
+  Copyright since 2025 Mifos Initiative
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+
+<div class="container tribal-loan-management">
+  <form [formGroup]="sourceForm">
+    <mat-card>
+      <mat-card-header>
+        <mat-card-title>{{ 'labels.heading.Tribal Loan Management' | translate }}</mat-card-title>
+      </mat-card-header>
+
+      <mat-card-content>
+        <!-- Source and status selectors — always visible -->
+        <div class="controls-row">
+          <mat-form-field>
+            <mat-label>{{ 'labels.inputs.Payment Source' | translate }}</mat-label>
+            <mat-select formControlName="paymentSource" required>
+              <mat-option value="percap">{{ 'labels.inputs.Percap' | translate }}</mat-option>
+              <mat-option value="pension">{{ 'labels.inputs.Pension' | translate }}</mat-option>
+              <mat-option value="payroll">{{ 'labels.inputs.Payroll' | translate }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>{{ 'labels.inputs.Loan Status' | translate }}</mat-label>
+            <mat-select formControlName="statusFilter">
+              <mat-option value="active">{{ 'labels.status.Active' | translate }}</mat-option>
+              <mat-option value="inactive">{{ 'labels.status.Closed' | translate }}</mat-option>
+              <mat-option value="both">{{ 'labels.inputs.Both' | translate }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        @if (loadError) {
+          <div class="alert m-t-16">
+            <div class="message">
+              <i class="fa fa-exclamation-circle alert-check"></i>
+              {{ loadError }}
+            </div>
+          </div>
+        }
+
+        <!-- Progress bar — shown while loading -->
+        @if (isLoading) {
+          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+          <div class="loading-message">
+            {{ 'labels.text.Loading tribal loan data Please wait' | translate }}
+          </div>
+        }
+
+        <!-- Results section — appears immediately when Load is clicked -->
+        @if (dataLoaded) {
+          <!-- Empty state (only after load completes) -->
+          @if (!isLoading && currentLoans.length === 0) {
+            <p class="no-data">{{ 'labels.text.No loans found for the selected source' | translate }}</p>
+          }
+
+          <!-- Table — appears as soon as first matching loan streams in -->
+          @if (currentLoans.length > 0) {
+            <div class="table-container">
+              <table mat-table matSort [dataSource]="dataSource">
+                <ng-container matColumnDef="loanId">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Loan ID' | translate }}</th>
+                  <td mat-cell *matCellDef="let loan">{{ loan.loanId }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="borrowerName">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                    {{ 'labels.inputs.Borrower Name' | translate }}
+                  </th>
+                  <td mat-cell *matCellDef="let loan">{{ loan.borrowerName }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="status">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Status' | translate }}</th>
+                  <td mat-cell *matCellDef="let loan">{{ loan.status }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="amount">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header class="amount-cell">
+                    {{
+                      selectedSource === 'percap'
+                        ? ('labels.inputs.Percap' | translate)
+                        : selectedSource === 'pension'
+                          ? ('labels.inputs.Pension' | translate)
+                          : ('labels.inputs.Payroll' | translate)
+                    }}
+                  </th>
+                  <td mat-cell *matCellDef="let loan" class="amount-cell">
+                    <input
+                      class="amount-input"
+                      type="number"
+                      [value]="
+                        selectedSource === 'percap'
+                          ? loan.percap
+                          : selectedSource === 'pension'
+                            ? loan.pension
+                            : loan.payroll
+                      "
+                      (change)="onAmountChange(loan, $event)"
+                    />
+                  </td>
+                </ng-container>
+
+                <ng-container matColumnDef="balanceNow">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header class="amount-cell">
+                    {{ 'labels.inputs.Balance Now' | translate }}
+                  </th>
+                  <td mat-cell *matCellDef="let loan" class="amount-cell">{{ loan.balanceNow | formatNumber }}</td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="displayColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayColumns"></tr>
+              </table>
+            </div>
+          }
+        }
+      </mat-card-content>
+
+      <mat-card-actions class="actions-row">
+        <button type="button" mat-raised-button (click)="cancel()">
+          <mat-icon aria-hidden="true">close</mat-icon>
+          {{ 'labels.buttons.Cancel' | translate }}
+        </button>
+        <button type="button" mat-raised-button color="primary" [disabled]="!canLoad" (click)="loadData()">
+          <mat-icon aria-hidden="true">refresh</mat-icon>
+          {{ 'labels.buttons.Load' | translate }}
+        </button>
+        @if (dataLoaded) {
+          <button
+            type="button"
+            mat-stroked-button
+            [disabled]="isLoading || currentLoans.length === 0"
+            (click)="exportReport()"
+          >
+            <mat-icon>download</mat-icon>
+            {{ 'labels.buttons.Export Report' | translate }}
+          </button>
+        }
+      </mat-card-actions>
+    </mat-card>
+  </form>
+</div>
+
+<!-- Floating panel — Add Loan above, summary below; both anchored bottom-right -->
+@if (dataLoaded) {
+  <div class="floating-panel">
+    <button
+      type="button"
+      mat-raised-button
+      color="primary"
+      class="floating-add-btn"
+      [disabled]="isLoading"
+      (click)="openAddLoanDialog()"
+    >
+      <mat-icon>add</mat-icon>
+      {{ 'labels.buttons.Add Loan' | translate }}
+    </button>
+
+    <div class="floating-summary">
+      <span class="floating-source">
+        {{
+          selectedSource === 'percap'
+            ? ('labels.inputs.Percap' | translate)
+            : selectedSource === 'pension'
+              ? ('labels.inputs.Pension' | translate)
+              : ('labels.inputs.Payroll' | translate)
+        }}
+      </span>
+      <div class="floating-stat">
+        <span class="floating-stat-label">{{ 'labels.inputs.Loans Found' | translate }}</span>
+        <span class="floating-stat-value">{{ currentLoans.length }}</span>
+      </div>
+      <div class="floating-stat">
+        <span class="floating-stat-label">{{ 'labels.inputs.Total' | translate }}</span>
+        <span class="floating-stat-value">{{ currentTotal | formatNumber }}</span>
+      </div>
+      @if (isLoading) {
+        <span class="floating-loading">
+          <mat-icon class="spinning">sync</mat-icon>
+        </span>
+      }
+    </div>
+  </div>
+}

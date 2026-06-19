@@ -137,93 +137,94 @@
               <span class="summary-value">{{ preview.transactionCount }}</span>
             </div>
             <div class="summary-item">
-              <span class="summary-label">{{ 'labels.inputs.Skipped' | translate }}</span>
-              <span class="summary-value">{{ preview.skippedLoans.length }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">{{ 'labels.inputs.Percap Total' | translate }}</span>
-              <span class="summary-value">{{ preview.sourceTotals.percap | formatNumber }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">{{ 'labels.inputs.Pension Total' | translate }}</span>
-              <span class="summary-value">{{ preview.sourceTotals.pension | formatNumber }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">{{ 'labels.inputs.Payroll Total' | translate }}</span>
-              <span class="summary-value">{{ preview.sourceTotals.payroll | formatNumber }}</span>
+              <span class="summary-label">{{ selectedSourceTotalLabel | translate }}</span>
+              <span class="summary-value">{{
+                preview.sourceTotals[tribalPaymentForm.value.paymentSource] | formatNumber
+              }}</span>
             </div>
             <div class="summary-item total-item">
               <span class="summary-label">{{ 'labels.inputs.Transaction Total' | translate }}</span>
-              <span class="summary-value">{{ preview.transactionTotal | formatNumber }}</span>
+              <span class="summary-value">{{ editableTransactionTotal | formatNumber }}</span>
             </div>
           </div>
 
           <mat-divider></mat-divider>
 
-          @if (preview.payments.length) {
-            <div class="table-container">
-              <table mat-table [dataSource]="preview.payments">
-                <ng-container matColumnDef="loanId">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Id' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment">{{ getPaymentIdentifier(payment) }}</td>
-                </ng-container>
-
-                <ng-container matColumnDef="borrowerName">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Borrower Name' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment">{{ payment.borrowerName }}</td>
-                </ng-container>
-
-                <ng-container matColumnDef="status">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Status' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment">{{ payment.status }}</td>
-                </ng-container>
-
-                <ng-container matColumnDef="percap">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Percap' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment" class="amount-cell">
-                    {{ getTribalFieldAmount(payment, 'percap') | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="pension">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Pension' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment" class="amount-cell">
-                    {{ getTribalFieldAmount(payment, 'pension') | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="payroll">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Payroll' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment" class="amount-cell">
-                    {{ getTribalFieldAmount(payment, 'payroll') | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="transactionAmount">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Amount' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment" class="amount-cell">
-                    {{ payment.transactionAmount | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="balanceNow">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Balance Now' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment" class="amount-cell">
-                    {{ payment.balanceNow | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="transactionDate">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Transaction Date' | translate }}</th>
-                  <td mat-cell *matCellDef="let payment">
-                    {{ tribalPaymentForm.value.transactionDate | dateFormat }}
-                  </td>
-                </ng-container>
-
-                <tr mat-header-row *matHeaderRowDef="previewDisplayedColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: previewDisplayedColumns"></tr>
-              </table>
+          @if (editablePayments.length) {
+            <div class="table-collapse-header" (click)="togglePaymentsTable()">
+              <span>{{ 'labels.heading.Payments' | translate }} ({{ editablePayments.length }})</span>
+              <mat-icon aria-hidden="true">{{ isPaymentsTableCollapsed ? 'expand_more' : 'expand_less' }}</mat-icon>
             </div>
+            @if (!isPaymentsTableCollapsed) {
+              <div class="table-container">
+                <table mat-table [dataSource]="editablePayments">
+                  <ng-container matColumnDef="loanId">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Id' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment">{{ getPaymentIdentifier(payment) }}</td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="borrowerName">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Borrower Name' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment">{{ payment.borrowerName }}</td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="status">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Status' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment">{{ payment.status }}</td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="percap">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Percap' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment" class="amount-cell">
+                      {{ getTribalFieldAmount(payment, 'percap') | formatNumber }}
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="pension">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Pension' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment" class="amount-cell">
+                      {{ getTribalFieldAmount(payment, 'pension') | formatNumber }}
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="payroll">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Payroll' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment" class="amount-cell">
+                      {{ getTribalFieldAmount(payment, 'payroll') | formatNumber }}
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="transactionAmount">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Amount' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment" class="amount-cell">
+                      <input
+                        class="amount-input"
+                        type="number"
+                        [value]="payment.transactionAmount"
+                        (change)="onPaymentAmountChange(payment, $event)"
+                      />
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="balanceNow">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Balance Now' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment" class="amount-cell">
+                      {{ payment.balanceNow | formatNumber }}
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="transactionDate">
+                    <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Transaction Date' | translate }}</th>
+                    <td mat-cell *matCellDef="let payment">
+                      {{ tribalPaymentForm.value.transactionDate | dateFormat }}
+                    </td>
+                  </ng-container>
+
+                  <tr mat-header-row *matHeaderRowDef="activePreviewColumns"></tr>
+                  <tr mat-row *matRowDef="let row; columns: activePreviewColumns"></tr>
+                </table>
+              </div>
+            }
           } @else {
             <div class="alert">
               <div class="message">
@@ -233,76 +234,7 @@
             </div>
           }
 
-          @if (preview.skippedLoans.length) {
-            <h3 class="subsection-title">
-              {{ 'labels.inputs.Skipped' | translate }} {{ 'labels.heading.Loans' | translate }}
-            </h3>
-
-            <div class="table-container">
-              <table mat-table [dataSource]="preview.skippedLoans">
-                <ng-container matColumnDef="loanId">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Id' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData">{{ getSkippedLoanIdentifier(loanData) }}</td>
-                </ng-container>
-
-                <ng-container matColumnDef="borrowerName">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Borrower Name' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData">{{ loanData.borrowerName }}</td>
-                </ng-container>
-
-                <ng-container matColumnDef="status">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Status' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData">{{ loanData.status }}</td>
-                </ng-container>
-
-                <ng-container matColumnDef="percap">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Percap' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData" class="amount-cell">
-                    {{ getSkippedFieldAmount(loanData, 'percap') | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="pension">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Pension' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData" class="amount-cell">
-                    {{ getSkippedFieldAmount(loanData, 'pension') | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="payroll">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Payroll' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData" class="amount-cell">
-                    {{ getSkippedFieldAmount(loanData, 'payroll') | formatNumber }}
-                  </td>
-                </ng-container>
-
-                <ng-container matColumnDef="reason">
-                  <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Reason' | translate }}</th>
-                  <td mat-cell *matCellDef="let loanData" class="reason-cell">
-                    @switch (loanData.skipReason) {
-                      @case ('inactiveLoan') {
-                        {{ 'labels.text.Inactive loan' | translate }}
-                      }
-                      @case ('missingTribalData') {
-                        {{ 'labels.text.Missing Tribal Loan Data' | translate }}
-                      }
-                      @case ('missingPaymentAmount') {
-                        {{ 'labels.text.Missing selected payment amount' | translate }}
-                      }
-                      @default {
-                        {{ 'labels.inputs.Skipped' | translate }}
-                      }
-                    }
-                  </td>
-                </ng-container>
-
-                <tr mat-header-row *matHeaderRowDef="skippedDisplayedColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: skippedDisplayedColumns"></tr>
-              </table>
-            </div>
-          }
-
-          @if (preview.payments.length) {
+          @if (editablePayments.length) {
             <div class="validation-row">
               <mat-checkbox formControlName="validated">
                 {{ 'labels.inputs.Validated Tribal payment data' | translate }}

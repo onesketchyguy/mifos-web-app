@@ -120,6 +120,10 @@ export class ReportsComponent implements OnInit {
   }
 
   private isReportVisible(report: any): boolean {
+    if (!report.useReport) {
+      return false;
+    }
+
     const category = (report.reportCategory || '').toLowerCase();
     const reportName = (report.reportName || '').toLowerCase();
     const searchableText = `${category} ${reportName}`;

@@ -110,6 +110,10 @@ export class TribalLoanPaymentsComponent implements OnInit {
   paymentTypes: any[] = [];
   /** Generated payment preview. */
   preview: TribalLoanPaymentPreview | null = null;
+  /** Mutable copy of preview payments, used as the table data source and for submission. */
+  editablePayments: TribalLoanPayment[] = [];
+  /** Whether the payments table is collapsed. */
+  isPaymentsTableCollapsed = true;
   /** Submitted payment results. */
   submissionResults: TribalLoanPaymentSubmissionResult[] = [];
   /** Loading flag for the preview. */
@@ -124,17 +128,16 @@ export class TribalLoanPaymentsComponent implements OnInit {
   previewExportComplete = false;
   /** Whether the submission report export was triggered. */
   submissionReportExportComplete = false;
+  /** Whether a payoff/refund report is being exported. */
+  isExportingPayoffReport = false;
   /** Preview loading error. */
   previewError = '';
 
-  /** Columns displayed for the payment preview. */
-  previewDisplayedColumns: string[] = [
+  /** Base columns for the payment preview table (source column injected dynamically). */
+  private readonly basePreviewColumns = [
     'loanId',
     'borrowerName',
     'status',
-    'percap',
-    'pension',
-    'payroll',
     'transactionAmount',
     'balanceNow',
     'transactionDate'
@@ -201,6 +204,8 @@ export class TribalLoanPaymentsComponent implements OnInit {
     }
 
     this.preview = null;
+    this.editablePayments = [];
+    this.isPaymentsTableCollapsed = true;
     this.submissionResults = [];
     this.previewError = '';
     this.previewExportComplete = false;
@@ -211,7 +216,9 @@ export class TribalLoanPaymentsComponent implements OnInit {
     this.tribalLoanPaymentsService.getTribalLoanPaymentPreview(this.tribalPaymentForm.value.paymentSource).subscribe({
       next: (preview: TribalLoanPaymentPreview) => {
         this.preview = preview;
+        this.editablePayments = preview.payments.map((p: TribalLoanPayment) => ({ ...p }));
         this.isLoadingPreview = false;
+        this.exportPayoffRefundReport();
       },
       error: (error: any) => {
         this.previewError = this.getErrorMessage(error);
@@ -232,7 +239,7 @@ export class TribalLoanPaymentsComponent implements OnInit {
     this.submissionReportExportComplete = false;
     this.isSubmittingPayments = true;
     this.tribalLoanPaymentsService
-      .submitPayments(this.preview.payments, {
+      .submitPayments(this.editablePayments, {
         transactionDate: this.tribalPaymentForm.value.transactionDate,
         paymentTypeId: this.tribalPaymentForm.value.paymentTypeId,
         note: this.tribalPaymentForm.value.note
@@ -260,7 +267,60 @@ export class TribalLoanPaymentsComponent implements OnInit {
    * Returns whether payments can be submitted.
    */
   get canSubmitPayments(): boolean {
-    return !!this.preview?.payments.length && this.tribalPaymentForm.valid && !this.isSubmittingPayments;
+    return !!this.editablePayments.length && this.tribalPaymentForm.valid && !this.isSubmittingPayments;
+  }
+
+  /**
+   * Returns columns for the preview table, injecting only the selected payment source column.
+   */
+  get activePreviewColumns(): string[] {
+    const source = this.tribalPaymentForm.value.paymentSource as TribalPaymentSource;
+    return [
+      'loanId',
+      'borrowerName',
+      'status',
+      source,
+      ...this.basePreviewColumns.slice(3)
+    ];
+  }
+
+  /**
+   * Returns the translation key for the selected source total label.
+   */
+  get selectedSourceTotalLabel(): string {
+    switch (this.tribalPaymentForm.value.paymentSource as TribalPaymentSource) {
+      case 'pension':
+        return 'labels.inputs.Pension Total';
+      case 'payroll':
+        return 'labels.inputs.Payroll Total';
+      default:
+        return 'labels.inputs.Percap Total';
+    }
+  }
+
+  /**
+   * Returns the sum of editable payment amounts (reflects any user edits).
+   */
+  get editableTransactionTotal(): number {
+    return this.editablePayments.reduce((sum: number, p: TribalLoanPayment) => sum + (p.transactionAmount || 0), 0);
+  }
+
+  /**
+   * Toggles the payments table collapsed state.
+   */
+  togglePaymentsTable(): void {
+    this.isPaymentsTableCollapsed = !this.isPaymentsTableCollapsed;
+  }
+
+  /**
+   * Updates a payment's transaction amount when the user edits it inline.
+   */
+  onPaymentAmountChange(payment: TribalLoanPayment, event: Event): void {
+    const value = +(event.target as HTMLInputElement).value;
+    if (Number.isFinite(value) && value >= 0) {
+      payment.transactionAmount = value;
+      payment[payment.paymentSource] = value;
+    }
   }
 
   /**
@@ -389,6 +449,123 @@ export class TribalLoanPaymentsComponent implements OnInit {
       `tribal-loan-payment-submission-report-${this.getExportTimestamp()}.xlsx`,
       this.getSubmissionReportExcelTables()
     );
+  }
+
+  /**
+   * Auto-exports a payoff and refund report after the preview loads.
+   * Only runs if there are payoffs or refunds to report.
+   */
+  private exportPayoffRefundReport(): void {
+    const payoffs = this.getPayoffPayments();
+    const refunds = this.getRefundPayments();
+    if (!payoffs.length && !refunds.length) {
+      return;
+    }
+
+    if (this.isExportingPayoffReport) {
+      return;
+    }
+
+    this.isExportingPayoffReport = true;
+
+    setTimeout(() => {
+      this.exportPayoffRefundWorkbook(payoffs, refunds)
+        .catch((error: any) => {
+          this.previewError = this.getErrorMessage(error);
+        })
+        .finally(() => {
+          this.isExportingPayoffReport = false;
+        });
+    });
+  }
+
+  private async exportPayoffRefundWorkbook(
+    payoffs: TribalLoanPayment[],
+    refunds: Array<TribalLoanPayment & { refundAmount: number }>
+  ): Promise<void> {
+    await this.downloadExcelWorkbook(
+      `tribal-loan-payoff-refund-report-${this.getExportTimestamp()}.xlsx`,
+      this.getPayoffRefundExcelTables(payoffs, refunds)
+    );
+  }
+
+  private getPayoffPayments(): TribalLoanPayment[] {
+    return this.editablePayments.filter(
+      (p: TribalLoanPayment) => p.balanceNow !== null && p.transactionAmount >= p.balanceNow
+    );
+  }
+
+  private getRefundPayments(): Array<TribalLoanPayment & { refundAmount: number }> {
+    return this.editablePayments
+      .filter((p: TribalLoanPayment) => p.balanceNow !== null && p.transactionAmount > p.balanceNow)
+      .map((p: TribalLoanPayment) => ({
+        ...p,
+        refundAmount: p.transactionAmount - (p.balanceNow as number)
+      }));
+  }
+
+  private getPayoffRefundExcelTables(
+    payoffs: TribalLoanPayment[],
+    refunds: Array<TribalLoanPayment & { refundAmount: number }>
+  ): ExcelReportTable[] {
+    return [
+      {
+        worksheetName: 'Payoffs',
+        tableName: 'Payoffs',
+        columns: [
+          'Loan Id',
+          'Borrower Name',
+          'Loan Status',
+          'Balance Now',
+          'Payment Amount',
+          'Remaining Balance'
+        ],
+        rows: payoffs.map((p: TribalLoanPayment) => [
+          this.getPaymentIdentifier(p),
+          p.borrowerName,
+          p.status,
+          p.balanceNow,
+          p.transactionAmount,
+          Math.max(0, (p.balanceNow as number) - p.transactionAmount)
+        ]),
+        columnTypes: [
+          'text',
+          'text',
+          'text',
+          'number',
+          'number',
+          'number'
+        ]
+      },
+      {
+        worksheetName: 'Refunds Needed',
+        tableName: 'RefundsNeeded',
+        columns: [
+          'Loan Id',
+          'Borrower Name',
+          'Loan Status',
+          'Balance Now',
+          'Payment Amount',
+          'Refund Amount'
+        ],
+        rows: refunds.map((p: TribalLoanPayment & { refundAmount: number }) => [
+          this.getPaymentIdentifier(p),
+          p.borrowerName,
+          p.status,
+          p.balanceNow,
+          p.transactionAmount,
+          p.refundAmount
+        ]),
+        columnTypes: [
+          'text',
+          'text',
+          'text',
+          'number',
+          'number',
+          'number'
+        ]
+      }
+    ];
   }
 
   private getPreviewExcelTables(preview: TribalLoanPaymentPreview): ExcelReportTable[] {

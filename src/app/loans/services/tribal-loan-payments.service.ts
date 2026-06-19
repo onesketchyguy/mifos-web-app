@@ -88,7 +88,7 @@ export interface TribalLoanPaymentSubmissionResult {
 })
 export class TribalLoanPaymentsService {
   private readonly loansPageSize = 200;
-  private readonly loanDatatableConcurrency = 8;
+  private readonly loanDatatableConcurrency = 20;
   private readonly paymentSubmissionConcurrency = 4;
   private readonly tribalLoanDatatableName = 'Tribal Loan Data';
 
@@ -109,7 +109,7 @@ export class TribalLoanPaymentsService {
 
   /**
    * Fetches all loans and their Tribal Loan Data datatable fields.
-   * @returns {Observable<TribalLoanData[]>} Tribal loan data list.
+   * @returns {Observable<TribalLoanData[]>} Tribal loan data list (buffered after all complete).
    */
   getAllTribalLoanData(): Observable<TribalLoanData[]> {
     return this.getAllLoans().pipe(
@@ -120,6 +120,84 @@ export class TribalLoanPaymentsService {
         )
       )
     );
+  }
+
+  /**
+   * Same as getAllTribalLoanData but emits each loan as soon as its datatable row is resolved,
+   * rather than buffering until all loans are complete. Use for streaming / progressive UI.
+   * @returns {Observable<TribalLoanData>} Stream of individual tribal loan data items.
+   */
+  streamTribalLoanData(): Observable<TribalLoanData> {
+    return this.getAllLoans().pipe(
+      switchMap((loans: any[]) =>
+        from(loans).pipe(mergeMap((loan: any) => this.getTribalLoanData(loan), this.loanDatatableConcurrency))
+      )
+    );
+  }
+
+  /**
+   * Saves updated percap/pension/payroll values back to the Tribal Loan Data datatable.
+   * Uses PUT when the datatable row already exists, POST when it does not.
+   * @param {TribalLoanData} tribalLoanData Loan data object (provides loanId and hasTribalData flag).
+   * @param {Partial<Record<TribalPaymentSource, number | null>>} updatedFields Fields to update.
+   * @returns {Observable<any>}
+   */
+  updateTribalLoanField(
+    tribalLoanData: TribalLoanData,
+    updatedFields: Partial<Record<TribalPaymentSource, number | null>>
+  ): Observable<any> {
+    const payload: Record<string, any> = {
+      ...tribalLoanData.dataFields,
+      locale: this.settingsService.language.code,
+      dateFormat: this.settingsService.dateFormat
+    };
+
+    for (const [
+      source,
+      value
+    ] of Object.entries(updatedFields) as [TribalPaymentSource, number | null][]) {
+      const fieldName = this.findDataFieldName(tribalLoanData.dataFields, source);
+      if (fieldName) {
+        payload[fieldName] = value ?? 0;
+      }
+    }
+
+    if (tribalLoanData.hasTribalData) {
+      return this.loansService.editLoanDatatableEntry(tribalLoanData.loanId, this.tribalLoanDatatableName, payload);
+    }
+    return this.loansService.addLoanDatatableEntry(tribalLoanData.loanId, this.tribalLoanDatatableName, payload).pipe(
+      tap(() => {
+        tribalLoanData.hasTribalData = true;
+      })
+    );
+  }
+
+  /**
+   * Finds the actual datatable field name for a given payment source.
+   */
+  private findDataFieldName(dataFields: Record<string, any>, source: TribalPaymentSource): string | undefined {
+    const candidateMap: Record<TribalPaymentSource, string[]> = {
+      percap: [
+        'Percap',
+        'Per Capita',
+        'Per_Capita',
+        'Per_Capita_WS__c'
+      ],
+      pension: [
+        'Pension',
+        'Pension_WS__c',
+        'Pension__c'
+      ],
+      payroll: [
+        'Payroll',
+        'Payroll Deduction',
+        'Payroll_Deduction_WS__c',
+        'Payroll_WS__c',
+        'Payroll__c'
+      ]
+    };
+    const candidates = candidateMap[source].map((c: string) => this.normalizeKey(c));
+    return Object.keys(dataFields).find((key: string) => candidates.includes(this.normalizeKey(key)));
   }
 
   /**

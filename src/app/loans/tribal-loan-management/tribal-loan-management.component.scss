@@ -1,0 +1,162 @@
+/**
+ * Copyright since 2025 Mifos Initiative
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+.tribal-loan-management {
+  .header-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+    margin-top: 16px;
+  }
+
+  .header-actions button {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .table-container {
+    overflow: auto;
+    margin-top: 8px;
+  }
+
+  table {
+    width: 100%;
+  }
+
+  .amount-cell {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .amount-input {
+    width: 96px;
+    padding: 4px 6px;
+    border: 1px solid rgb(0 0 0 / 24%);
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: right;
+    background: transparent;
+
+    &:focus {
+      outline: none;
+      border-color: #3f51b5;
+    }
+  }
+
+  .no-data {
+    padding: 16px 0;
+    color: rgb(0 0 0 / 54%);
+  }
+
+  .controls-row {
+    display: flex;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .actions-row {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .actions-row button {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .loading-message {
+    margin-top: 8px;
+    color: rgb(0 0 0 / 60%);
+  }
+
+  .m-t-16 {
+    margin-top: 16px;
+  }
+}
+
+/* Floating panel — anchored to bottom-right, stacks Add Loan above the summary */
+.floating-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.floating-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.floating-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 32px;
+  padding: 14px 20px;
+  background: #fff;
+  border-radius: 8px;
+  border-left: 4px solid #3f51b5;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+}
+
+.floating-source {
+  font-weight: 600;
+  font-size: 14px;
+  color: #3f51b5;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 64px;
+}
+
+.floating-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.floating-stat-label {
+  font-size: 11px;
+  color: rgb(0 0 0 / 54%);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.floating-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgb(0 0 0 / 87%);
+}
+
+.floating-loading {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  color: rgb(0 0 0 / 38%);
+
+  .spinning {
+    animation: spin 1.2s linear infinite;
+    font-size: 20px;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

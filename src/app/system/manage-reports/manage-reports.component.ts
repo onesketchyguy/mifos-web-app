@@ -29,6 +29,7 @@ import { MatDialog } from '@angular/material/dialog';
 /* Custom Services */
 import { PopoverService } from '../../configuration-wizard/popover/popover.service';
 import { ConfigurationWizardService } from '../../configuration-wizard/configuration-wizard.service';
+import { SystemService } from '../system.service';
 
 /** Custom Dialog Component */
 import { CompletionDialogComponent } from '../../configuration-wizard/completion-dialog/completion-dialog.component';
@@ -70,6 +71,9 @@ export class ManageReportsComponent implements OnInit, AfterViewInit {
   private configurationWizardService = inject(ConfigurationWizardService);
   private popoverService = inject(PopoverService);
   private dialog = inject(MatDialog);
+  private systemService = inject(SystemService);
+
+  togglingReports = new Set<number>();
 
   /** Reports Data. */
   reportsData: any;
@@ -145,6 +149,38 @@ export class ManageReportsComponent implements OnInit, AfterViewInit {
     }
 
     return true;
+  }
+
+  toggleUserReport(event: Event, report: any) {
+    event.stopPropagation();
+    if (this.togglingReports.has(report.id)) {
+      return;
+    }
+    this.togglingReports.add(report.id);
+    this.systemService.getReport(report.id).subscribe(
+      (fullReport: any) => {
+        const payload = fullReport.coreReport
+          ? { useReport: !fullReport.useReport }
+          : {
+              reportName: fullReport.reportName,
+              reportCategory: fullReport.reportCategory,
+              description: fullReport.description,
+              reportType: fullReport.reportType,
+              ...(fullReport.reportType === 'Chart' ? { reportSubType: fullReport.reportSubType } : {}),
+              useReport: !fullReport.useReport,
+              reportSql: fullReport.reportSql,
+              reportParameters: fullReport.reportParameters
+            };
+        this.systemService.updateReport(report.id, payload).subscribe(
+          () => {
+            report.useReport = !report.useReport;
+            this.togglingReports.delete(report.id);
+          },
+          () => this.togglingReports.delete(report.id)
+        );
+      },
+      () => this.togglingReports.delete(report.id)
+    );
   }
 
   /**

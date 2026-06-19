@@ -85,8 +85,12 @@
               icon="check-circle"
               size="lg"
               class="true"
-              [matTooltip]="'tooltips.Yes' | translate"
+              [style.cursor]="report.reportType !== 'SMS' ? 'pointer' : 'default'"
+              [matTooltip]="
+                (report.reportType !== 'SMS' ? 'tooltips.Click to disable User Report' : 'tooltips.Yes') | translate
+              "
               matTooltipPosition="right"
+              (click)="report.reportType !== 'SMS' && toggleUserReport($event, report)"
             ></fa-icon>
           }
           @if (!report.useReport) {
@@ -94,8 +98,12 @@
               icon="times-circle"
               size="lg"
               class="false"
-              [matTooltip]="'tooltips.No' | translate"
+              [style.cursor]="report.reportType !== 'SMS' ? 'pointer' : 'default'"
+              [matTooltip]="
+                (report.reportType !== 'SMS' ? 'tooltips.Click to enable User Report' : 'tooltips.No') | translate
+              "
               matTooltipPosition="right"
+              (click)="report.reportType !== 'SMS' && toggleUserReport($event, report)"
             ></fa-icon>
           }
         </td>

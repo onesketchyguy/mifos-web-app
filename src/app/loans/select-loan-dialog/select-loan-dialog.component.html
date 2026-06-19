@@ -1,0 +1,65 @@
+<!--
+  Copyright since 2025 Mifos Initiative
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+
+<h2 mat-dialog-title>{{ 'labels.heading.Add Loan' | translate }}</h2>
+
+<mat-dialog-content>
+  <!-- Step 1: Search and pick a loan -->
+  @if (!selectedLoan) {
+    <p>{{ 'labels.text.Search for a loan by borrower name or loan ID.' | translate }}</p>
+
+    <mat-form-field class="full-width">
+      <mat-label>{{ 'labels.inputs.Search Loans' | translate }}</mat-label>
+      <input matInput [formControl]="searchControl" autocomplete="off" />
+      <mat-icon matSuffix>search</mat-icon>
+    </mat-form-field>
+
+    <mat-list class="loan-list">
+      @if (filteredLoans.length === 0) {
+        <p class="no-results">{{ 'labels.text.No loans found' | translate }}</p>
+      }
+      @for (loan of filteredLoans; track loan.loanId) {
+        <mat-list-item class="loan-list-item" (click)="pickLoan(loan)">
+          <span matListItemTitle>{{ loan.borrowerName }}</span>
+          <span matListItemLine>{{ 'labels.inputs.Loan ID' | translate }}: {{ loan.loanId }}</span>
+        </mat-list-item>
+      }
+    </mat-list>
+  }
+
+  <!-- Step 2: Enter the deduction amount -->
+  @if (selectedLoan) {
+    <div class="amount-step">
+      <p class="selected-loan-name">{{ selectedLoan.borrowerName }}</p>
+      <p class="selected-loan-id">{{ 'labels.inputs.Loan ID' | translate }}: {{ selectedLoan.loanId }}</p>
+
+      <mat-form-field class="full-width amount-field">
+        <mat-label>{{ sourceLabel }}</mat-label>
+        <input
+          matInput
+          type="number"
+          min="0"
+          step="0.01"
+          [value]="amount ?? ''"
+          (input)="onAmountInput($event)"
+          autocomplete="off"
+        />
+      </mat-form-field>
+    </div>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">{{ 'labels.buttons.Cancel' | translate }}</button>
+  @if (selectedLoan) {
+    <button mat-button (click)="back()">{{ 'labels.buttons.Back' | translate }}</button>
+    <button mat-raised-button color="primary" [disabled]="!canConfirm" (click)="confirm()">
+      {{ 'labels.buttons.Add' | translate }}
+    </button>
+  }
+</mat-dialog-actions>

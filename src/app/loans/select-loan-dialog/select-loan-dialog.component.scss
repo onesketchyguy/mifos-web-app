@@ -1,0 +1,49 @@
+/**
+ * Copyright since 2025 Mifos Initiative
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+.loan-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.loan-list-item {
+  cursor: pointer;
+
+  &:hover {
+    background: rgb(0 0 0 / 4%);
+  }
+}
+
+.no-results {
+  color: rgb(0 0 0 / 54%);
+  padding: 8px 0;
+}
+
+.amount-step {
+  padding-top: 8px;
+}
+
+.selected-loan-name {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 4px;
+}
+
+.selected-loan-id {
+  color: rgb(0 0 0 / 54%);
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+
+.amount-field {
+  margin-top: 8px;
+}
+
+.full-width {
+  width: 100%;
+}
