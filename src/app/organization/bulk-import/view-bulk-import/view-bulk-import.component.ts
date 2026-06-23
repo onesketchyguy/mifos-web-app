@@ -319,6 +319,22 @@ export class ViewBulkImportComponent implements OnInit {
     'failureCount',
     'download'
   ];
+  /** Loan reconciliation results. */
+  reconciliationResults: any[] = [];
+  /** Columns to display in reconciliation results table. */
+  reconciliationDisplayedColumns: string[] = [
+    'loanId',
+    'externalId',
+    'clientName',
+    'issue',
+    'loanBalance',
+    'principalOutstanding',
+    'interestOutstanding'
+  ];
+  /** Flag indicating reconciliation is running. */
+  isRunningReconciliation = false;
+  /** Summary message for reconciliation results. */
+  reconciliationSummary = '';
 
   get isIvyTekImportPage(): boolean {
     return this.ivyTekImportNames.includes(this.bulkImport?.name);
@@ -3583,7 +3599,11 @@ export class ViewBulkImportComponent implements OnInit {
       (row: any) => row.Outcome === 'Imported Only' && this.hasIvyTekReconciliationNonZeroTotal(row, 'Imported Total')
     );
     const outcome =
-      detailRows.length && comparedRows.length && !differenceRows.length && !importedOnlyRows.length
+      detailRows.length &&
+      comparedRows.length &&
+      !differenceRows.length &&
+      !sourceOnlyRows.length &&
+      !importedOnlyRows.length
         ? 'Success'
         : 'Failure';
     const notes = detailRows.length
@@ -11221,5 +11241,68 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getFirstCsvValue(row: any, keys: string[]): string {
     return keys.map((key: string) => this.getCsvValue(row, key)).find((value: string) => !!value) || '';
+  }
+
+  /**
+   * Runs reconciliation on current loans in the system to check their state before import.
+   */
+  async runPreImportReconciliation() {
+    this.isRunningReconciliation = true;
+    this.reconciliationResults = [];
+
+    try {
+      const issues: any[] = [];
+      const loansResponse = await firstValueFrom(this.loansService.getLoans(0, 10000));
+      const loans = loansResponse.pageItems || [];
+
+      for (const loan of loans) {
+        const loanId = loan.id;
+        const externalId = loan.externalId || '-';
+        const clientName = loan.clientName || '-';
+        const loanBalance = ((loan.summary?.totalOutstanding ?? 0) || 0).toFixed(2);
+        const principalOutstanding = ((loan.summary?.principalOutstanding ?? 0) || 0).toFixed(2);
+        const interestOutstanding = ((loan.summary?.interestOutstanding ?? 0) || 0).toFixed(2);
+
+        // Flag loans with potential issues
+        const potentialIssues = [];
+
+        // Check for zero or very low total balance (might indicate closed loans or issues)
+        if (
+          loan.summary?.totalOutstanding !== null &&
+          loan.summary?.totalOutstanding !== undefined &&
+          loan.summary.totalOutstanding > 0.005
+        ) {
+          // Loan has an outstanding balance - check components
+          if (
+            loan.summary?.principalOutstanding !== null &&
+            loan.summary?.principalOutstanding !== undefined &&
+            loan.summary.principalOutstanding < 0.005 &&
+            loan.summary?.interestOutstanding > 0.005
+          ) {
+            potentialIssues.push('Interest without principal');
+          }
+        }
+
+        // Add loan details to results for review
+        if (potentialIssues.length > 0 || loan.summary?.totalOutstanding > 0.005) {
+          issues.push({
+            loanId,
+            externalId,
+            clientName,
+            issue: potentialIssues.length > 0 ? potentialIssues.join(', ') : 'Active loan',
+            loanBalance,
+            principalOutstanding,
+            interestOutstanding
+          });
+        }
+      }
+
+      this.reconciliationResults = issues;
+      this.reconciliationSummary = `Scanned ${loans.length} loans. Found ${issues.length} loans with active balances or issues.`;
+    } catch (error: any) {
+      this.reconciliationSummary = `Reconciliation failed: ${this.getErrorMessage(error)}`;
+    } finally {
+      this.isRunningReconciliation = false;
+    }
   }
 }

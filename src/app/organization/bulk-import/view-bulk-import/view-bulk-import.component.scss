@@ -543,6 +543,16 @@ mat-paginator {
   }
 }
 
+.ivytek-checkbox-row {
+  margin-bottom: 8px;
+  padding: 8px 0;
+}
+
+.ivytek-button-group {
+  display: flex;
+  gap: 12px;
+}
+
 :host-context(.dark-theme) {
   .container {
     .gap-2percent {

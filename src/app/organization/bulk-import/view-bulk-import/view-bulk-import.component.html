@@ -522,7 +522,7 @@
         </p>
       }
 
-      <div style="margin-bottom: 8px; padding: 8px 0">
+      <div class="ivytek-checkbox-row">
         <mat-checkbox [checked]="ivyTekCleanupBeforeImport" (change)="ivyTekCleanupBeforeImport = $event.checked">
           Delete existing IvyTek attachments before re-uploading
         </mat-checkbox>
@@ -533,7 +533,17 @@
         }
       </div>
 
-      <div class="flex-13">
+      <div class="flex-13 ivytek-button-group">
+        <button
+          mat-raised-button
+          color="accent"
+          (click)="runPreImportReconciliation()"
+          [disabled]="isRunningReconciliation"
+          *mifosxHasPermission="'READ_LOAN'"
+        >
+          <mat-spinner diameter="20" *ngIf="isRunningReconciliation" class="m-r-10"></mat-spinner>
+          {{ 'labels.buttons.Check Current Loans' | translate }}
+        </button>
         <button
           mat-raised-button
           color="primary"
@@ -544,6 +554,69 @@
           <i class="fa fa-upload"></i>&nbsp;&nbsp;{{ 'labels.buttons.Run IvyTek Import' | translate }}
         </button>
       </div>
+
+      @if (reconciliationResults.length > 0) {
+        <mat-card class="m-t-20">
+          <h3>
+            <strong>{{ 'labels.heading.Current Loan Reconciliation' | translate }}</strong>
+          </h3>
+          <p>{{ reconciliationSummary }}</p>
+
+          <div class="imports-table mat-elevation-z1">
+            <table mat-table [dataSource]="reconciliationResults" matSort>
+              <ng-container matColumnDef="loanId">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                  {{ 'labels.inputs.Loan ID' | translate }}
+                </th>
+                <td mat-cell *matCellDef="let item">{{ item.loanId }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="externalId">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                  {{ 'labels.inputs.External ID' | translate }}
+                </th>
+                <td mat-cell *matCellDef="let item">{{ item.externalId }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="clientName">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                  {{ 'labels.inputs.Client' | translate }}
+                </th>
+                <td mat-cell *matCellDef="let item">{{ item.clientName }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="issue">
+                <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Issue' | translate }}</th>
+                <td mat-cell *matCellDef="let item">{{ item.issue }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="loanBalance">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                  {{ 'labels.inputs.Loan Balance' | translate }}
+                </th>
+                <td mat-cell *matCellDef="let item">{{ item.loanBalance }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="principalOutstanding">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                  {{ 'labels.inputs.Principal Outstanding' | translate }}
+                </th>
+                <td mat-cell *matCellDef="let item">{{ item.principalOutstanding }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="interestOutstanding">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header>
+                  {{ 'labels.inputs.Interest Outstanding' | translate }}
+                </th>
+                <td mat-cell *matCellDef="let item">{{ item.interestOutstanding }}</td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="reconciliationDisplayedColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: reconciliationDisplayedColumns"></tr>
+            </table>
+          </div>
+        </mat-card>
+      }
 
       @if (hasIvyTekExportableResults) {
         <div class="ivytek-reconciliation-result">
