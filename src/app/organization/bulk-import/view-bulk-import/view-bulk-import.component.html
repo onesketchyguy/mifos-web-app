@@ -557,9 +557,19 @@
 
       @if (reconciliationResults.length > 0) {
         <mat-card class="m-t-20">
-          <h3>
-            <strong>{{ 'labels.heading.Current Loan Reconciliation' | translate }}</strong>
-          </h3>
+          <div class="ivytek-results-header-row">
+            <h3>
+              <strong>{{ 'labels.heading.Current Loan Reconciliation' | translate }}</strong>
+            </h3>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="exportReconciliationResults()"
+              *mifosxHasPermission="'READ_LOAN'"
+            >
+              <i class="fa fa-download"></i>&nbsp;&nbsp;{{ 'labels.buttons.Export CSV' | translate }}
+            </button>
+          </div>
           <p>{{ reconciliationSummary }}</p>
 
           <div class="imports-table mat-elevation-z1">

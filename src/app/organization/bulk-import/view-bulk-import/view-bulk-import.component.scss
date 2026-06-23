@@ -553,6 +553,17 @@ mat-paginator {
   gap: 12px;
 }
 
+.ivytek-results-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+
+  h3 {
+    margin: 0;
+  }
+}
+
 :host-context(.dark-theme) {
   .container {
     .gap-2percent {

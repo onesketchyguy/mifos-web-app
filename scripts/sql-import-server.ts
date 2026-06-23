@@ -60,6 +60,11 @@ interface SqlTransaction {
   sourceComment: string;
   receiptNumber: string;
   checkNumber: string;
+  // Interest accrual fields for legacy loans (IvyTek)
+  perDiemInterestRate?: string;
+  accruedInterestAll?: string;
+  currentDueDate?: string;
+  originalDisbursementDate?: string;
 }
 
 interface ImportRequest {
@@ -91,6 +96,11 @@ interface ProcessedRecord {
   voided: boolean;
   transactionTypeEnum: number;
   note: string;
+  // Interest accrual fields for legacy loans (IvyTek)
+  perDiemInterestRate: string | null;
+  accruedInterestAll: string | null;
+  currentDueDate: Date | null;
+  originalDisbursementDate: Date | null;
 }
 
 interface ReconciliationRow {
@@ -101,6 +111,21 @@ interface ReconciliationRow {
   status: 'Matched' | 'Needs Review' | 'Info';
 }
 
+interface InterestAccrualValidation {
+  loanId: number;
+  legacyLoanId: string;
+  originalDisbursementDate: string | null;
+  firstTransactionDate: string;
+  earliestTransactionDate: string;
+  daysAccrued: number | null;
+  perDiemRate: string | null;
+  accruedInterest: string | null;
+  currentDueDate: string | null;
+  correctedOriginationDate: string | null;
+  status: 'updated' | 'ok';
+  message?: string;
+}
+
 interface ImportResponse {
   success: boolean;
   message: string;
@@ -108,6 +133,7 @@ interface ImportResponse {
   skipped: number;
   warnings: string[];
   reconciliation: ReconciliationRow[];
+  interestAccrualValidation?: InterestAccrualValidation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +223,69 @@ function buildNote(rec: ProcessedRecord): string {
   return rec.description || '';
 }
 
+/**
+ * Calculates the corrected origination date for legacy loans with transaction history gaps.
+ * Uses IvyTek interest accrual math to find when interest should start:
+ *   days_accrued = AccruedInterestAll / Per_Diem_Interest_Rate
+ *   interest_start_date = CurrentDueDate - days_accrued
+ * Then compares to earliest transaction date - uses the earlier date (but not before earliest txn).
+ */
+function calculateCorrectedOriginationDate(
+  perDiemRate: string | null,
+  accruedInterest: string | null,
+  currentDueDate: Date | null,
+  originalDisbursementDate: Date | null,
+  earliestTransactionDate: Date | null
+): { correctedDate: Date | null; originalDate: Date | null; daysAccrued: number | null; reason: string } {
+  // Need: per diem, accrued interest, current due date, and earliest transaction
+  if (!perDiemRate || !accruedInterest || !currentDueDate || !earliestTransactionDate) {
+    return {
+      correctedDate: null,
+      originalDate: originalDisbursementDate,
+      daysAccrued: null,
+      reason: 'Missing required fields'
+    };
+  }
+
+  const perDiem = parseFloat(perDiemRate);
+  const accrued = parseFloat(accruedInterest);
+
+  if (isNaN(perDiem) || isNaN(accrued) || perDiem === 0) {
+    return {
+      correctedDate: null,
+      originalDate: originalDisbursementDate,
+      daysAccrued: null,
+      reason: 'Invalid per diem or accrued interest'
+    };
+  }
+
+  // Calculate days accrued from the IvyTek fields
+  const daysAccrued = Math.round(accrued / perDiem);
+
+  // Interest start date = current due date minus days accrued
+  const interestStartDate = new Date(currentDueDate);
+  interestStartDate.setDate(interestStartDate.getDate() - daysAccrued);
+
+  // Use the earlier of:
+  // 1. Calculated interest start date
+  // 2. One day before earliest transaction (to ensure first txn falls after origination)
+  const oneDayBeforeFirstTxn = new Date(earliestTransactionDate);
+  oneDayBeforeFirstTxn.setDate(oneDayBeforeFirstTxn.getDate() - 1);
+
+  let correctedDate: Date;
+  let reason: string;
+
+  if (interestStartDate.getTime() < oneDayBeforeFirstTxn.getTime()) {
+    correctedDate = interestStartDate;
+    reason = `Calculated from accrued interest: ${daysAccrued} days from ${currentDueDate.toISOString().split('T')[0]}`;
+  } else {
+    correctedDate = oneDayBeforeFirstTxn;
+    reason = `Set to day before earliest transaction (${earliestTransactionDate.toISOString().split('T')[0]}) to ensure first txn after origination`;
+  }
+
+  return { correctedDate, originalDate: originalDisbursementDate, daysAccrued, reason };
+}
+
 function processTransaction(txn: SqlTransaction): { record: ProcessedRecord | null; error: string | null } {
   if (!txn.sourceTransactionId) {
     return { record: null, error: 'missing source transaction id' };
@@ -225,6 +314,12 @@ function processTransaction(txn: SqlTransaction): { record: ProcessedRecord | nu
   const interest = parseDecimalString(txn.interest);
   const voided = Boolean(txn.voided);
 
+  // Parse interest accrual fields for legacy loans
+  const perDiemRate = parseDecimalString(txn.perDiemInterestRate);
+  const accruedInterest = parseDecimalString(txn.accruedInterestAll);
+  const currentDueDate = parseSourceDate(txn.currentDueDate);
+  const originalDisbursementDate = parseSourceDate(txn.originalDisbursementDate);
+
   const record: ProcessedRecord = {
     loanId: Number(txn.loanId),
     externalId: stableExternalId(txn.sourceTransactionId),
@@ -245,7 +340,11 @@ function processTransaction(txn: SqlTransaction): { record: ProcessedRecord | nu
     checkNumber: txn.checkNumber || '',
     voided,
     transactionTypeEnum: mapTransactionType(txn.historyType, txn.paymentType, txn.specialCode, amount, voided),
-    note: ''
+    note: '',
+    perDiemInterestRate: perDiemRate,
+    accruedInterestAll: accruedInterest,
+    currentDueDate,
+    originalDisbursementDate
   };
   record.note = buildNote(record);
 
@@ -516,6 +615,113 @@ async function insertIvyTekNotes(
   return upserted;
 }
 
+/**
+ * Analyzes loans for origination date correction based on transaction history gaps.
+ * Calculates corrected origination date using IvyTek interest accrual math,
+ * then checks earliest transaction date to ensure it's after the new origination.
+ * Returns loan update statements and validation report.
+ */
+function analyzeLoanOriginationDates(records: ProcessedRecord[]): {
+  loanUpdates: Array<{ loanId: number; newDisbursementDate: Date; note: string }>;
+  validations: InterestAccrualValidation[];
+} {
+  const loanMap = new Map<number, ProcessedRecord[]>();
+
+  // Group records by loan ID
+  for (const rec of records) {
+    if (!loanMap.has(rec.loanId)) {
+      loanMap.set(rec.loanId, []);
+    }
+    loanMap.get(rec.loanId)!.push(rec);
+  }
+
+  const loanUpdates: Array<{ loanId: number; newDisbursementDate: Date; note: string }> = [];
+  const validations: InterestAccrualValidation[] = [];
+
+  for (const [
+    loanId,
+    loanRecords
+  ] of loanMap) {
+    // Find earliest transaction
+    const sorted = [...loanRecords].sort((a, b) => a.transactionDate.getTime() - b.transactionDate.getTime());
+    const firstTxn = sorted[0];
+
+    // Find a record with interest accrual data from any transaction for this loan
+    const withAccrualData = loanRecords.find(
+      (r) => r.perDiemInterestRate && r.originalDisbursementDate && r.accruedInterestAll && r.currentDueDate
+    );
+
+    if (!withAccrualData) {
+      continue; // No complete accrual data for this loan, skip
+    }
+
+    const originalDate = withAccrualData.originalDisbursementDate;
+    const perDiem = withAccrualData.perDiemInterestRate;
+    const accruedInterest = withAccrualData.accruedInterestAll;
+    const currentDueDate = withAccrualData.currentDueDate;
+
+    // Calculate corrected origination date
+    const {
+      correctedDate,
+      originalDate: orig,
+      daysAccrued,
+      reason
+    } = calculateCorrectedOriginationDate(
+      perDiem,
+      accruedInterest,
+      currentDueDate,
+      originalDate,
+      firstTxn.transactionDate
+    );
+
+    if (correctedDate && originalDate && correctedDate.getTime() < originalDate.getTime()) {
+      // There's a gap - loan needs origination date update
+      const note = `Original origination date: ${originalDate.toISOString().split('T')[0]}. Corrected to ${correctedDate.toISOString().split('T')[0]} (${reason})`;
+
+      loanUpdates.push({
+        loanId,
+        newDisbursementDate: correctedDate,
+        note
+      });
+
+      const validation: InterestAccrualValidation = {
+        loanId,
+        legacyLoanId: withAccrualData.legacyLoanId,
+        originalDisbursementDate: originalDate ? originalDate.toISOString().split('T')[0] : null,
+        firstTransactionDate: firstTxn.transactionDate.toISOString().split('T')[0],
+        earliestTransactionDate: firstTxn.transactionDate.toISOString().split('T')[0],
+        daysAccrued,
+        perDiemRate: perDiem,
+        accruedInterest,
+        currentDueDate: currentDueDate ? currentDueDate.toISOString().split('T')[0] : null,
+        correctedOriginationDate: correctedDate.toISOString().split('T')[0],
+        status: 'updated',
+        message: note
+      };
+      validations.push(validation);
+    } else if (correctedDate) {
+      // No gap or gap is handled, info-only entry
+      const validation: InterestAccrualValidation = {
+        loanId,
+        legacyLoanId: withAccrualData.legacyLoanId,
+        originalDisbursementDate: originalDate ? originalDate.toISOString().split('T')[0] : null,
+        firstTransactionDate: firstTxn.transactionDate.toISOString().split('T')[0],
+        earliestTransactionDate: firstTxn.transactionDate.toISOString().split('T')[0],
+        daysAccrued,
+        perDiemRate: perDiem,
+        accruedInterest,
+        currentDueDate: currentDueDate ? currentDueDate.toISOString().split('T')[0] : null,
+        correctedOriginationDate: correctedDate.toISOString().split('T')[0],
+        status: 'ok',
+        message: 'No origination date adjustment needed'
+      };
+      validations.push(validation);
+    }
+  }
+
+  return { loanUpdates, validations };
+}
+
 async function fetchDbTotals(
   client: Client,
   externalIds: string[],
@@ -632,6 +838,17 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
     };
   }
 
+  // Analyze loans for origination date corrections before importing transactions
+  const { loanUpdates, validations } = analyzeLoanOriginationDates(records);
+  const updatedLoans = loanUpdates.length;
+
+  if (updatedLoans > 0) {
+    warnings.push(
+      `${updatedLoans} loan(s) will have origination date updated to correct for transaction history gaps. ` +
+        `Original dates will be documented in loan notes.`
+    );
+  }
+
   const client = new Client({
     host: db.host,
     port: db.port,
@@ -660,6 +877,35 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
     // Phase 2: data insertion and reconciliation — rolled back as a unit if
     // totals don't match.
     await client.query('BEGIN');
+
+    // Update loan origination dates for loans with transaction history gaps
+    if (apply && loanUpdates.length > 0) {
+      for (const update of loanUpdates) {
+        const disbursementDateStr = update.newDisbursementDate.toISOString().split('T')[0];
+        await client.query(
+          `UPDATE m_loan SET disbursement_date = $1, last_modified_date = current_timestamp
+           WHERE id = $2`,
+          [
+            disbursementDateStr,
+            update.loanId
+          ]
+        );
+        // Add note to loan documenting the original date
+        await client.query(
+          `INSERT INTO m_note (id, client_id, group_id, loan_id, loan_transaction_id, savings_account_id,
+            savings_account_transaction_id, share_account_id, note_type_enum, note,
+            created_date, created_by, lastmodified_date, last_modified_by,
+            created_on_utc, last_modified_on_utc)
+           VALUES (nextval('m_note_id_seq'), NULL, NULL, $1, NULL, NULL, NULL, NULL, 300, $2,
+            current_timestamp, $3, current_timestamp, $3, current_timestamp, current_timestamp)`,
+          [
+            update.loanId,
+            update.note,
+            createdBy
+          ]
+        );
+      }
+    }
 
     const externalIds = records.map((r) => r.externalId);
     const existingIds = await fetchExistingExternalIds(client, externalIds, DEFAULT_BATCH_SIZE);
@@ -803,11 +1049,12 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
 
       return {
         success: true,
-        message: `Committed ${insertedCount} transaction rows. Notes written: ${insertedNoteCount} (m_note), ${upsertedImportNoteCount} (c_txn_note).`,
+        message: `Committed ${insertedCount} transaction rows. Updated origination dates for ${updatedLoans} loan(s). Notes written: ${insertedNoteCount} (m_note), ${upsertedImportNoteCount} (c_txn_note).`,
         inserted: insertedCount,
         skipped: existingIds.size,
         warnings,
-        reconciliation
+        reconciliation,
+        interestAccrualValidation: validations
       };
     } else if (apply) {
       await client.query('ROLLBACK');
@@ -817,17 +1064,19 @@ async function runImport(req: ImportRequest): Promise<ImportResponse> {
         inserted: 0,
         skipped: existingIds.size,
         warnings,
-        reconciliation
+        reconciliation,
+        interestAccrualValidation: validations
       };
     } else {
       await client.query('ROLLBACK');
       return {
         success: true,
-        message: `Dry run complete. ${records.length} transactions ready. Re-run with Apply to commit.`,
+        message: `Dry run complete. ${records.length} transactions ready. Will update origination dates for ${updatedLoans} loan(s). Re-run with Apply to commit.`,
         inserted: 0,
         skipped: existingIds.size,
         warnings,
-        reconciliation
+        reconciliation,
+        interestAccrualValidation: validations
       };
     }
   } catch (e: any) {
@@ -992,6 +1241,29 @@ function csvHistoryType(row: Record<string, string>): string {
   return 'Source transaction history';
 }
 
+function csvPerDiemInterestRate(row: Record<string, string>): string | null {
+  return csvDecimal(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c');
+}
+
+function csvAccruedInterestAll(row: Record<string, string>): string | null {
+  return csvDecimal(row, 'IvytekTestPkg__AccruedInterestAll__c');
+}
+
+function csvCurrentDueDate(row: Record<string, string>): string {
+  return csvVal(row, 'IvytekTestPkg__CurrentDueDate__c');
+}
+
+function csvOriginalDisbursementDate(row: Record<string, string>): string {
+  return csvVal(
+    row,
+    'IvytekTestPkg__OriginalDisbursementDate__c',
+    'IvytekTestPkg__OriginalDate__c',
+    'IvytekTestPkg__DateOriginated__c',
+    'OriginalDisbursementDate',
+    'Origination_Date__c'
+  );
+}
+
 /** Resolves legacyLoanId → Fineract loan id via m_loan.account_no lookup. */
 async function lookupLoanIds(client: Client, legacyIds: string[]): Promise<Map<string, number>> {
   const unique = [...new Set(legacyIds.filter(Boolean))];
@@ -1101,7 +1373,12 @@ function csvRowToSqlTransaction(
       .filter(Boolean)
       .join(' | '),
     receiptNumber: csvVal(row, 'IvytekTestPkg__ReceiptNumber__c'),
-    checkNumber: csvVal(row, 'IvytekTestPkg__Check_Number__c', 'IvytekTestPkg__CheckDisbursement__c')
+    checkNumber: csvVal(row, 'IvytekTestPkg__Check_Number__c', 'IvytekTestPkg__CheckDisbursement__c'),
+    // Interest accrual fields
+    perDiemInterestRate: csvPerDiemInterestRate(row) ?? undefined,
+    accruedInterestAll: csvAccruedInterestAll(row) ?? undefined,
+    currentDueDate: csvCurrentDueDate(row) || undefined,
+    originalDisbursementDate: csvOriginalDisbursementDate(row) || undefined
   };
 }
 

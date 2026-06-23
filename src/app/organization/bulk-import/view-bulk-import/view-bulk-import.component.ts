@@ -11305,4 +11305,36 @@ export class ViewBulkImportComponent implements OnInit {
       this.isRunningReconciliation = false;
     }
   }
+
+  /**
+   * Exports loan reconciliation results to CSV.
+   */
+  exportReconciliationResults() {
+    if (!this.reconciliationResults.length) {
+      return;
+    }
+
+    const headers = [
+      'Loan ID',
+      'External ID',
+      'Client',
+      'Issue',
+      'Loan Balance',
+      'Principal Outstanding',
+      'Interest Outstanding'
+    ];
+
+    const rows = this.reconciliationResults.map((item: any) => ({
+      'Loan ID': item.loanId,
+      'External ID': item.externalId,
+      Client: item.clientName,
+      Issue: item.issue,
+      'Loan Balance': item.loanBalance,
+      'Principal Outstanding': item.principalOutstanding,
+      'Interest Outstanding': item.interestOutstanding
+    }));
+
+    const csv = this.buildIvyTekCsv(headers, rows);
+    this.downloadIvyTekCsv(`loan-reconciliation-${this.getIvyTekCsvTimestamp()}.csv`, csv);
+  }
 }
