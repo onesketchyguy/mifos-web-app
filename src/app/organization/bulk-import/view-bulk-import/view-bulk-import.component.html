@@ -190,8 +190,8 @@
       }
 
       <form [formGroup]="ivyTekImportForm">
-        <mat-card-content class="ivytek-start-stage-row">
-          <mat-form-field>
+        <mat-card-content class="ivytek-start-stage-row layout-row gap-2percent">
+          <mat-form-field class="flex-fill">
             <mat-label>{{ 'labels.inputs.Start Stage' | translate }}</mat-label>
             <mat-select required formControlName="startStage">
               <mat-option value="clients">{{ 'labels.heading.Stage 1 Clients' | translate }}</mat-option>
@@ -200,6 +200,11 @@
               <mat-option value="notes">{{ 'labels.heading.Stage 4 Notes' | translate }}</mat-option>
               <mat-option value="attachments">{{ 'labels.heading.Stage 5 Attachments' | translate }}</mat-option>
             </mat-select>
+          </mat-form-field>
+          <mat-form-field class="flex-fill">
+            <mat-label>{{ 'labels.inputs.IvyTek Export Date' | translate }}</mat-label>
+            <input matInput type="date" required formControlName="ivyTekExportDate" />
+            <mat-hint>{{ 'labels.text.IvyTek Export Date Hint' | translate }}</mat-hint>
           </mat-form-field>
         </mat-card-content>
       </form>

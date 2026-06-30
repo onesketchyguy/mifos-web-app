@@ -541,6 +541,10 @@ export class ViewBulkImportComponent implements OnInit {
       officeId: [
         '',
         Validators.required
+      ],
+      ivyTekExportDate: [
+        '',
+        Validators.required
       ]
     });
     this.ivyTekResultDetailsForm = this.formBuilder.group({
@@ -11244,13 +11248,20 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
-   * Runs reconciliation on current loans in the system to check their state before import.
+   * Runs reconciliation on loans as of the export date to check their state before import.
    */
   async runPreImportReconciliation() {
     this.isRunningReconciliation = true;
     this.reconciliationResults = [];
 
     try {
+      const exportDateStr = this.ivyTekImportForm.get('ivyTekExportDate')?.value;
+      if (!exportDateStr) {
+        this.reconciliationSummary = 'Please select an export date first.';
+        return;
+      }
+
+      const exportDate = new Date(exportDateStr);
       const issues: any[] = [];
       const loansResponse = await firstValueFrom(this.loansService.getLoans(0, 10000));
       const loans = loansResponse.pageItems || [];
@@ -11259,32 +11270,27 @@ export class ViewBulkImportComponent implements OnInit {
         const loanId = loan.id;
         const externalId = loan.externalId || '-';
         const clientName = loan.clientName || '-';
-        const loanBalance = ((loan.summary?.totalOutstanding ?? 0) || 0).toFixed(2);
-        const principalOutstanding = ((loan.summary?.principalOutstanding ?? 0) || 0).toFixed(2);
-        const interestOutstanding = ((loan.summary?.interestOutstanding ?? 0) || 0).toFixed(2);
+
+        // Calculate balance as of the export date by summing transactions up to that date
+        const balanceAsOfDate = await this.calculateBalanceAsOfDate(loanId, exportDate);
+
+        const loanBalance = (balanceAsOfDate.totalOutstanding || 0).toFixed(2);
+        const principalOutstanding = (balanceAsOfDate.principalOutstanding || 0).toFixed(2);
+        const interestOutstanding = (balanceAsOfDate.interestOutstanding || 0).toFixed(2);
 
         // Flag loans with potential issues
         const potentialIssues = [];
 
         // Check for zero or very low total balance (might indicate closed loans or issues)
-        if (
-          loan.summary?.totalOutstanding !== null &&
-          loan.summary?.totalOutstanding !== undefined &&
-          loan.summary.totalOutstanding > 0.005
-        ) {
+        if (balanceAsOfDate.totalOutstanding > 0.005) {
           // Loan has an outstanding balance - check components
-          if (
-            loan.summary?.principalOutstanding !== null &&
-            loan.summary?.principalOutstanding !== undefined &&
-            loan.summary.principalOutstanding < 0.005 &&
-            loan.summary?.interestOutstanding > 0.005
-          ) {
+          if (balanceAsOfDate.principalOutstanding < 0.005 && balanceAsOfDate.interestOutstanding > 0.005) {
             potentialIssues.push('Interest without principal');
           }
         }
 
         // Add loan details to results for review
-        if (potentialIssues.length > 0 || loan.summary?.totalOutstanding > 0.005) {
+        if (potentialIssues.length > 0 || balanceAsOfDate.totalOutstanding > 0.005) {
           issues.push({
             loanId,
             externalId,
@@ -11298,11 +11304,67 @@ export class ViewBulkImportComponent implements OnInit {
       }
 
       this.reconciliationResults = issues;
-      this.reconciliationSummary = `Scanned ${loans.length} loans. Found ${issues.length} loans with active balances or issues.`;
+      const exportDateFormatted = new Date(exportDate).toLocaleDateString();
+      this.reconciliationSummary = `Scanned ${loans.length} loans as of ${exportDateFormatted}. Found ${issues.length} loans with active balances or issues.`;
     } catch (error: any) {
       this.reconciliationSummary = `Reconciliation failed: ${this.getErrorMessage(error)}`;
     } finally {
       this.isRunningReconciliation = false;
+    }
+  }
+
+  /**
+   * Calculates the loan balance as of a specific date by summing transactions up to that date.
+   */
+  private async calculateBalanceAsOfDate(
+    loanId: number,
+    asOfDate: Date
+  ): Promise<{ totalOutstanding: number; principalOutstanding: number; interestOutstanding: number }> {
+    try {
+      const detailsResponse = await firstValueFrom(this.loansService.getLoansAccountAndTemplateResource(loanId));
+      const details = detailsResponse;
+
+      // Get all transactions for the loan
+      const transactions = details.loanScheduleItemData || details.repaymentSchedule || [];
+      const loanTransactions = details.loanTransactions || [];
+
+      // Filter transactions to only those on or before the export date
+      const relevantTransactions = loanTransactions.filter((txn: any) => {
+        const txnDate = new Date(txn.date);
+        return txnDate <= asOfDate;
+      });
+
+      // Start with the principal and calculate remaining balances
+      const principal = Number(details.principal) || 0;
+      let principalPaid = 0;
+      let interestPaid = 0;
+
+      // Sum up all principal and interest payments made up to the export date
+      for (const txn of relevantTransactions) {
+        if (txn.type?.value === 'DISBURSEMENT') {
+          // Disbursements don't reduce balance
+          continue;
+        }
+        principalPaid += Number(txn.principalPortion) || 0;
+        interestPaid += Number(txn.interestPortion) || 0;
+      }
+
+      // Calculate outstanding balances
+      const principalOutstanding = Math.max(0, principal - principalPaid);
+      const interestOutstanding = Math.max(0, (Number(details.interestAccrued) || 0) - interestPaid);
+
+      return {
+        totalOutstanding: principalOutstanding + interestOutstanding,
+        principalOutstanding,
+        interestOutstanding
+      };
+    } catch (error) {
+      // Fallback to returning zero if we can't calculate
+      return {
+        totalOutstanding: 0,
+        principalOutstanding: 0,
+        interestOutstanding: 0
+      };
     }
   }
 
