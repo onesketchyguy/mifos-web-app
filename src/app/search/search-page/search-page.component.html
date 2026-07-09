@@ -6,69 +6,281 @@
   file, You can obtain one at http://mozilla.org/MPL/2.0/.
 -->
 
-<div class="container">
-  @if (hasResults) {
-    <mat-card class="layout-column gap-2percent">
-      @if (overload) {
-        <mat-error>{{ 'error.Searched query resulted more than 200 records' | translate }}</mat-error>
-      }
-      <table mat-table [dataSource]="dataSource">
-        <ng-container matColumnDef="entityType">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Entity Type' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">{{ entity.entityType }}</td>
-        </ng-container>
-        <ng-container matColumnDef="entityName">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Entity Name' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">{{ entity.entityName }}</td>
-        </ng-container>
-        <ng-container matColumnDef="entityAccount">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Account No' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">
-            {{ entity.entityAccountNo }}
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="externalId">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.External Id' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">
-            <mifosx-external-identifier externalId="{{ entity.entityExternalId }}"></mifosx-external-identifier>
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="parentType">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Parent Type' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">
-            {{ ['CLIENT', 'GROUP', 'CENTER'].includes(entity.entityType) ? 'Office' : 'Client' }}
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="parentName">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Parent Name' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">{{ entity.parentName }}</td>
-        </ng-container>
-        <ng-container matColumnDef="details">
-          <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Details' | translate }}</th>
-          <td mat-cell *matCellDef="let entity" class="view-details">
-            <button
-              mat-icon-button
-              matTooltip="{{ 'tooltips.View Entity' | translate }}"
-              (click)="navigate(entity)"
-              matTooltipPosition="right"
-            >
-              <fa-icon icon="eye" size="lg"></fa-icon>
-            </button>
-          </td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-        <tr mat-row *matRowDef="let entity; columns: displayedColumns"></tr>
-      </table>
-      <mat-paginator [pageSizeOptions]="[10, 25, 50, 100]" showFirstLastButtons></mat-paginator>
-    </mat-card>
+<div class="container search-results">
+  <div class="results-header">
+    <h1>{{ 'labels.heading.Search Results' | translate }}</h1>
+    @if (query) {
+      <span class="results-count">{{ totalResults }} {{ 'labels.text.results for' | translate }} “{{ query }}”</span>
+    }
+  </div>
+
+  @if (overload) {
+    <div class="overload-warning">
+      {{ 'error.Searched query resulted more than 200 records' | translate }}
+    </div>
   }
 
-  @if (!hasResults) {
-    <mat-card class="layout-column gap-2percent">
+  @if (hasResults) {
+    <div class="filter-chips">
+      @for (chip of filters; track chip.key) {
+        <button
+          type="button"
+          class="filter-chip"
+          [class.selected]="activeFilter === chip.key"
+          (click)="setFilter(chip.key)"
+        >
+          {{ 'labels.text.' + chip.label | translate }}
+          <span class="chip-count">{{ chip.count }}</span>
+        </button>
+      }
+    </div>
+
+    <!-- Clients -->
+    @if (clientResults.length && isSectionVisible('clients')) {
+      <mat-card class="result-section">
+        <h2 class="section-title">
+          {{ 'labels.text.Clients' | translate }}
+          <span class="section-count">{{ clientResults.length }}</span>
+        </h2>
+        <div class="table-wrapper">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>{{ 'labels.inputs.name' | translate }}</th>
+                <th>{{ 'labels.inputs.EntityID' | translate }}</th>
+                <th>{{ 'labels.inputs.Status' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Active Balance' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Overdue Balance' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Arrears' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Active Loans' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (client of visibleClientResults(); track client.clientId) {
+                <tr class="result-row" (click)="viewClient(client)" tabindex="0" (keydown.enter)="viewClient(client)">
+                  <td class="primary-cell">{{ client.name }}</td>
+                  <td>
+                    @if (isClientLoading(client.clientId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ client.entityIdNumber }}
+                    }
+                  </td>
+                  <td>
+                    @if (client.status) {
+                      <span [class]="statusClass(client.status)">{{ client.status }}</span>
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isClientLoading(client.clientId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{
+                        client.activeBalance !== null
+                          ? (client.activeBalance | currency: 'USD' : 'symbol-narrow' : '1.2-2')
+                          : ''
+                      }}
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isClientLoading(client.clientId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{
+                        client.overdueBalance !== null
+                          ? (client.overdueBalance | currency: 'USD' : 'symbol-narrow' : '1.2-2')
+                          : ''
+                      }}
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isClientLoading(client.clientId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ client.daysInArrears !== null && client.daysInArrears > 0 ? client.daysInArrears : '' }}
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isClientLoading(client.clientId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ client.activeLoansCount }}
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (hiddenRowCount('clients', clientResults.length) > 0) {
+          <button mat-button color="primary" class="show-more" (click)="showMore('clients')">
+            {{ 'labels.buttons.Show more' | translate }} ({{ hiddenRowCount('clients', clientResults.length) }})
+          </button>
+        }
+      </mat-card>
+    }
+
+    <!-- Loans -->
+    @if (loanResults.length && isSectionVisible('loans')) {
+      <mat-card class="result-section">
+        <h2 class="section-title">
+          {{ 'labels.text.Loans' | translate }}
+          <span class="section-count">{{ loanResults.length }}</span>
+        </h2>
+        <div class="table-wrapper">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>{{ 'labels.inputs.Loan Id' | translate }}</th>
+                <th>{{ 'labels.inputs.Borrower Name' | translate }}</th>
+                <th>{{ 'labels.inputs.Loan Product' | translate }}</th>
+                <th>{{ 'labels.inputs.Status' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Balance Now' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Amount Now Due' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Interest Rate' | translate }}</th>
+                <th class="numeric">{{ 'labels.inputs.Days Late' | translate }}</th>
+                <th>{{ 'labels.inputs.Maturity Date' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (loan of visibleLoanResults(); track loan.loanId) {
+                <tr class="result-row" (click)="viewLoan(loan)" tabindex="0" (keydown.enter)="viewLoan(loan)">
+                  <td class="primary-cell">{{ loan.accountNo }}</td>
+                  <td>
+                    @if (loan.entity.parentId) {
+                      <span
+                        class="borrower-link"
+                        role="link"
+                        tabindex="0"
+                        (click)="viewLoanBorrower(loan, $event)"
+                        (keydown.enter)="viewLoanBorrower(loan, $event)"
+                      >
+                        {{ loan.borrowerName }}
+                      </span>
+                    } @else {
+                      {{ loan.borrowerName }}
+                    }
+                  </td>
+                  <td>
+                    @if (isLoanLoading(loan.loanId) && !loan.productName) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ loan.productName }}
+                    }
+                  </td>
+                  <td>
+                    @if (loan.status) {
+                      <span [class]="statusClass(loan.status)">{{ loan.status }}</span>
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isLoanLoading(loan.loanId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ loan.balance | formatNumber }}
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isLoanLoading(loan.loanId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ loan.amountDue | formatNumber }}
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isLoanLoading(loan.loanId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ loan.interestRate | formatNumber }}
+                    }
+                  </td>
+                  <td class="numeric">
+                    @if (isLoanLoading(loan.loanId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ loan.daysLate }}
+                    }
+                  </td>
+                  <td>
+                    @if (isLoanLoading(loan.loanId)) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ loan.maturityDate | dateFormat }}
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (hiddenRowCount('loans', loanResults.length) > 0) {
+          <button mat-button color="primary" class="show-more" (click)="showMore('loans')">
+            {{ 'labels.buttons.Show more' | translate }} ({{ hiddenRowCount('loans', loanResults.length) }})
+          </button>
+        }
+      </mat-card>
+    }
+
+    <!-- Groups, Centers, Savings, Shares -->
+    @for (section of genericSections; track section.key) {
+      @if (isSectionVisible(section.key)) {
+        <mat-card class="result-section">
+          <h2 class="section-title">
+            {{ 'labels.text.' + section.label | translate }}
+            <span class="section-count">{{ section.rows.length }}</span>
+          </h2>
+          <div class="table-wrapper">
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th>{{ 'labels.inputs.name' | translate }}</th>
+                  <th>{{ 'labels.inputs.Account No' | translate }}</th>
+                  <th>{{ 'labels.inputs.External Id' | translate }}</th>
+                  <th>{{ 'labels.inputs.' + section.parentLabel | translate }}</th>
+                  <th>{{ 'labels.inputs.Status' | translate }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of visibleGenericRows(section); track row.entity.entityId) {
+                  <tr
+                    class="result-row"
+                    (click)="navigate(row.entity)"
+                    tabindex="0"
+                    (keydown.enter)="navigate(row.entity)"
+                  >
+                    <td class="primary-cell">{{ row.name }}</td>
+                    <td>{{ row.accountNo }}</td>
+                    <td>
+                      <mifosx-external-identifier externalId="{{ row.externalId }}"></mifosx-external-identifier>
+                    </td>
+                    <td>{{ row.parentName }}</td>
+                    <td>
+                      @if (row.status) {
+                        <span [class]="statusClass(row.status)">{{ row.status }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (hiddenRowCount(section.key, section.rows.length) > 0) {
+            <button mat-button color="primary" class="show-more" (click)="showMore(section.key)">
+              {{ 'labels.buttons.Show more' | translate }} ({{ hiddenRowCount(section.key, section.rows.length) }})
+            </button>
+          }
+        </mat-card>
+      }
+    }
+  } @else {
+    <mat-card class="result-section">
       <div class="alert">
         <div class="message">
           <i class="fa fa-exclamation-circle alert-check"></i>
           {{ 'labels.text.No data found' | translate }}
+          @if (query) {
+            — “{{ query }}”
+          }
         </div>
       </div>
     </mat-card>

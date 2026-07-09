@@ -69,6 +69,28 @@ describe('SearchService', () => {
       johnSavings
     ]);
   });
+
+  it('searches each token of a multi-word query and keeps results matching all tokens', async () => {
+    const johnSmith = createSearchResult(1, 'Smith, John');
+    const janeSmith = createSearchResult(2, 'Smith, Jane');
+    const resultsPromise = firstValueFrom(service.getSearchResults('John Smith', 'clients'));
+
+    const requests = httpMock.match((req) => req.url === '/search' && req.method === 'GET');
+    expect(requests.map((request) => request.request.params.get('query'))).toEqual([
+      'John Smith',
+      'John',
+      'Smith'
+    ]);
+
+    requests[0].flush([]);
+    requests[1].flush([johnSmith]);
+    requests[2].flush([
+      johnSmith,
+      janeSmith
+    ]);
+
+    await expect(resultsPromise).resolves.toEqual([johnSmith]);
+  });
 });
 
 function createSearchResult(entityId: number, entityName: string): SearchData {

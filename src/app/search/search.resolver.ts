@@ -30,7 +30,7 @@ export class SearchResolver {
    */
   resolve(route: ActivatedRouteSnapshot): Observable<any> {
     const query = route.queryParams['query'];
-    const resource = route.queryParams['resource'];
+    const resource = route.queryParams['resource'] || 'clients,clientIdentifiers,groups,loans';
     return this.searchService.getSearchResults(query, resource, true);
   }
 }

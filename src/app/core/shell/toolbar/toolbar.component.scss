@@ -90,14 +90,9 @@
   }
 }
 
-.white-text-search ::ng-deep mifosx-search-tool {
-  color: white !important;
-  /* stylelint-disable-next-line selector-max-universal */
-  * {
-    background-color: transparent !important;
-    color: white !important;
-    margin-bottom: 0;
-  }
+.white-text-search {
+  margin-top: 27px;
+  margin-right: 0.5rem;
 }
 
 .white-text-language {

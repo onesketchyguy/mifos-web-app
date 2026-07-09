@@ -7,92 +7,91 @@
  */
 
 /** Angular Imports */
-import { Component, inject } from '@angular/core';
-import { style, animate, transition, trigger } from '@angular/animations';
-import { Router } from '@angular/router';
-import { UntypedFormControl, ReactiveFormsModule } from '@angular/forms';
-import { MatIconButton } from '@angular/material/button';
+import { Component, ElementRef, OnDestroy, ViewChild, inject } from '@angular/core';
+import { NavigationEnd, Router } from '@angular/router';
+import { UntypedFormControl } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { MatIconButton } from '@angular/material/button';
 import { MatTooltip } from '@angular/material/tooltip';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 
+/** rxjs Imports */
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
+
 /**
  * Search Tool Component
+ *
+ * Always-visible global search field in the toolbar, styled like the other
+ * toolbar form fields. Type a query and press enter (or click the search
+ * icon) to search across all resources; results can be narrowed by type on
+ * the search results page.
  */
 @Component({
   selector: 'mifosx-search-tool',
   templateUrl: './search-tool.component.html',
   styleUrls: ['./search-tool.component.scss'],
-  animations: [
-    trigger('fadeInOut', [
-      transition(':enter', [
-        style({ opacity: 0 }),
-        animate(500, style({ opacity: 1 }))
-      ]),
-      transition(':leave', [
-        animate(500, style({ opacity: 0 }))
-      ])
-    ])
-  ],
   imports: [
     ...STANDALONE_SHARED_IMPORTS,
-    MatIconButton,
     FaIconComponent,
+    MatIconButton,
     MatTooltip
   ]
 })
-export class SearchToolComponent {
+export class SearchToolComponent implements OnDestroy {
   private router = inject(Router);
 
   /** Query Form Control */
   query = new UntypedFormControl('');
-  /** Resource Form Control */
-  resource = new UntypedFormControl('');
+  /** All searchable resources. Results are filtered by type on the search page. */
+  private readonly resource = 'clients,clientIdentifiers,groups,loans';
+  /** Router events subscription, used to keep the input in sync with the search page. */
+  private routerSubscription: Subscription;
 
-  /** Sets the initial visibility of search input as hidden. Visible if true. */
-  searchVisible = false;
-  /** Resource Options */
-  resourceOptions: any[] = [
-    {
-      name: 'All',
-      value: 'clients,clientIdentifiers,groups,loans'
-    },
-    {
-      name: 'Clients',
-      value: 'clients,clientIdentifiers'
-    },
-    {
-      name: 'Groups',
-      value: 'groups'
-    },
-    {
-      name: 'Loans',
-      value: 'loans'
-    }
-  ];
+  @ViewChild('searchInput') searchInput: ElementRef<HTMLInputElement>;
 
-  /**
-   * @param {Router} router Router
-   */
   constructor() {
-    this.resource.patchValue('clients,clientIdentifiers,groups,loans');
+    this.syncQueryFromUrl(this.router.url);
+    this.routerSubscription = this.router.events
+      .pipe(filter((event) => event instanceof NavigationEnd))
+      .subscribe((event: NavigationEnd) => this.syncQueryFromUrl(event.urlAfterRedirects));
+  }
+
+  ngOnDestroy() {
+    this.routerSubscription.unsubscribe();
+  }
+
+  /** Focuses the search input so clicking anywhere on the pill starts typing. */
+  focusInput() {
+    this.searchInput?.nativeElement.focus();
   }
 
   /**
-   * Toggles the visibility of search input with fadeInOut animation.
-   */
-  toggleSearchVisibility() {
-    this.searchVisible = !this.searchVisible;
-  }
-
-  /**
-   * Searches server for query and resource.
+   * Searches server for query across all resources.
    */
   search() {
-    const queryParams: any = {
-      query: this.query.value,
-      resource: this.resource.value
-    };
-    this.router.navigate(['/search'], { queryParams: queryParams });
+    const query = (this.query.value || '').trim();
+    if (!query) {
+      this.focusInput();
+      return;
+    }
+    this.router.navigate(['/search'], { queryParams: { query, resource: this.resource } });
+  }
+
+  /** Clears the query and refocuses the input. */
+  clear() {
+    this.query.setValue('');
+    this.focusInput();
+  }
+
+  /** Mirrors the active search query into the input when on the search page. */
+  private syncQueryFromUrl(url: string) {
+    if (!url.startsWith('/search')) {
+      return;
+    }
+    const queryParam = this.router.parseUrl(url).queryParams['query'] || '';
+    if (queryParam !== this.query.value) {
+      this.query.setValue(queryParam);
+    }
   }
 }

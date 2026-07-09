@@ -5,3 +5,202 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+
+@use 'assets/styles/colours' as *;
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.results-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+
+  h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 500;
+  }
+
+  .results-count {
+    opacity: 0.7;
+    font-size: 0.9375rem;
+  }
+}
+
+.overload-warning {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border-left: 4px solid $status-pending;
+  background-color: rgb(255 165 0 / 12%);
+  font-size: 0.875rem;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.9rem;
+    border: 1px solid rgb(128 128 128 / 40%);
+    border-radius: 16px;
+    background: transparent;
+    color: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease-in-out,
+      border-color 150ms ease-in-out;
+
+    &:hover {
+      background-color: rgb(128 128 128 / 12%);
+    }
+
+    &.selected {
+      border-color: $highlight;
+      background-color: $highlight;
+      color: #fff;
+
+      .chip-count {
+        background-color: rgb(255 255 255 / 25%);
+        color: #fff;
+      }
+    }
+
+    .chip-count {
+      padding: 0 0.45rem;
+      border-radius: 10px;
+      background-color: rgb(128 128 128 / 20%);
+      font-size: 0.75rem;
+      line-height: 1.3rem;
+    }
+  }
+}
+
+.result-section {
+  padding: 1rem 1.25rem;
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 500;
+
+    .section-count {
+      padding: 0 0.5rem;
+      border-radius: 10px;
+      background-color: rgb(128 128 128 / 20%);
+      font-size: 0.8125rem;
+      line-height: 1.4rem;
+      font-weight: 400;
+    }
+  }
+
+  .show-more {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+  }
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  th {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 2px solid rgb(128 128 128 / 30%);
+    text-align: left;
+    font-weight: 500;
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgb(128 128 128 / 18%);
+    white-space: nowrap;
+  }
+
+  .numeric {
+    text-align: right;
+  }
+
+  .numeric mat-spinner {
+    margin-left: auto;
+  }
+
+  .result-row {
+    cursor: pointer;
+    transition: background-color 100ms ease-in-out;
+
+    &:hover,
+    &:focus {
+      background-color: rgb(128 128 128 / 10%);
+      outline: none;
+    }
+
+    .primary-cell {
+      font-weight: 500;
+    }
+
+    .borrower-link {
+      color: $highlight;
+      text-decoration: none;
+      cursor: pointer;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+
+  &.active {
+    background-color: $status-active;
+  }
+
+  &.overdue {
+    background-color: $status-active-overdue;
+  }
+
+  &.pending {
+    background-color: $status-pending;
+  }
+
+  &.approved {
+    background-color: $status-approved;
+  }
+
+  &.overpaid {
+    background-color: $status-overpaid;
+  }
+
+  &.closed,
+  &.unknown {
+    background-color: $status-inactive;
+  }
+}

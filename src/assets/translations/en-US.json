@@ -1617,7 +1617,8 @@
       "Payout Assignment": "Payout Assignment",
       "Identification": "Identification",
       "Professional Information": "Professional Information",
-      "Add Profile Entry": "Add Profile Entry"
+      "Add Profile Entry": "Add Profile Entry",
+      "Search Results": "Search Results"
     },
     "inputs": {
       "Active Balance": "Active Balance",
@@ -4277,7 +4278,9 @@
       "Failed to assign payout. Please try again.": "Failed to assign payout. Please try again.",
       "Remittance not found. Please check the reference number and try again.": "Remittance not found. Please check the reference number and try again.",
       "Unable to load vendors. Please check your connection and try again.": "Unable to load vendors. Please check your connection and try again.",
-      "Failed to update payment type. Please try again.": "Failed to update payment type. Please try again."
+      "Failed to update payment type. Please try again.": "Failed to update payment type. Please try again.",
+      "results for": "results for",
+      "Search clients and loans": "Search clients and loans"
     },
     "permissions": {
       "actions": {
