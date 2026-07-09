@@ -107,6 +107,14 @@ export class ViewBulkImportComponent implements OnInit {
   private readonly ivyTekAnnualInterestRateFrequencyType = 3;
   private readonly ivyTekStaticSnapshotImport = true;
   private readonly ivyTekPostHistoricalRepaymentsToFineract = false;
+  /**
+   * Full-SQL loan import: the REST stage only creates loan shells; every balance,
+   * date, schedule, and arrears value is then written directly from IvyTek source
+   * truth by /api/ivytek/loan-state-sync. Fineract never computes interest or
+   * arrears for migrated loans, so no date corrections or migration repayments
+   * are needed on the REST path.
+   */
+  private readonly ivyTekFullSqlLoanImport = true;
   private readonly ivyTekDefaultChargeName = '';
   private readonly ivyTekDefaultChargeAmountSource = 'amount_financed';
   private readonly ivyTekImportNames = [
@@ -131,6 +139,8 @@ export class ViewBulkImportComponent implements OnInit {
   private ivyTekFieldMapping = inject(IvyTekFieldMappingService);
   private ivyTekClientAddressTemplate: any = null;
   private ivyTekClientAddressTemplateUnavailable = false;
+  /** Fineract tenant business date fetched at import time; caps corrected loan dates. */
+  private ivyTekFineractBusinessDate: Date | null = null;
   private ivyTekLoanTribalDatatableColumns: any[] = [];
   private ivyTekEntityDatatableDefinitionsByAppTable = new Map<string, any[]>();
   private ivyTekDatatableColumnsByAppTable = new Map<string, IvyTekDatatableColumnReference[]>();
@@ -247,6 +257,26 @@ export class ViewBulkImportComponent implements OnInit {
   ivyTekSqlImportResult: any = null;
   /** Error message from the last SQL import attempt. */
   ivyTekSqlImportError: string | null = null;
+  /** Whether the schedule-fix request is in flight. */
+  ivyTekScheduleFixRunning = false;
+  /** Result returned by the schedule-fix server after the last run. */
+  ivyTekScheduleFixResult: any = null;
+  /** Error message from the last schedule-fix attempt. */
+  ivyTekScheduleFixError: string | null = null;
+  /** Whether the full-SQL loan-state-sync request is in flight. */
+  ivyTekLoanStateSyncRunning = false;
+  /** Result returned by the loan-state-sync server after the last run. */
+  ivyTekLoanStateSyncResult: any = null;
+  /** Error message from the last loan-state-sync attempt. */
+  ivyTekLoanStateSyncError: string | null = null;
+  /** Loan CSV rows retained for the loan-state-sync step. */
+  private ivyTekLoanStateSyncRows: any[] = [];
+  /** Whether the interest-rate-fix request is in flight. */
+  ivyTekInterestRateFixRunning = false;
+  /** Result returned by the interest-rate-fix server after the last run. */
+  ivyTekInterestRateFixResult: any = null;
+  /** Error message from the last interest-rate-fix attempt. */
+  ivyTekInterestRateFixError: string | null = null;
   /** CSV file selected for direct server-side import (bypasses Stage 3). */
   ivyTekSqlCsvFile: File | null = null;
   /** IvyTek Users CSV file (Salesforce export) for per-note user attribution. */
@@ -371,6 +401,7 @@ export class ViewBulkImportComponent implements OnInit {
         this.ivyTekStartStage === 'notes' ||
         this.ivyTekStartStage === 'attachments' ||
         this.ivyTekImportForm.get('officeId').valid) &&
+      this.hasIvyTekReconciliationDateForStartStage() &&
       this.ivyTekLoanImportForm.valid &&
       !this.isIvyTekPipelineRunning &&
       !this.hasPendingIvyTekPipelineRun
@@ -386,9 +417,21 @@ export class ViewBulkImportComponent implements OnInit {
         this.ivyTekStartStage === 'notes' ||
         this.ivyTekStartStage === 'attachments' ||
         this.ivyTekImportForm.get('officeId').valid) &&
+      this.hasIvyTekReconciliationDateForStartStage() &&
       this.ivyTekLoanImportForm.valid &&
       !this.isIvyTekPipelineRunning
     );
+  }
+
+  /**
+   * Checks the IvyTek export (reconciliation) date is set for stages that reconcile
+   * interest to it — loan creation and the transaction import anchor accrual there.
+   */
+  private hasIvyTekReconciliationDateForStartStage(): boolean {
+    if (this.ivyTekStartStage === 'notes' || this.ivyTekStartStage === 'attachments') {
+      return true;
+    }
+    return !!this.getIvyTekReconciliationDateString();
   }
 
   get hasIvyTekExportableResults(): boolean {
@@ -997,11 +1040,26 @@ export class ViewBulkImportComponent implements OnInit {
 
       if (shouldRunTransactions) {
         await this.runIvyTekSqlCsvImport(true);
+        // Full-SQL mode: after transactions land, write source-truth loan state
+        // (dates, balances, schedule, arrears) directly into the Fineract tables.
+        if (this.ivyTekFullSqlLoanImport && this.ivyTekSqlImportResult?.success) {
+          await this.runIvyTekLoanStateSync(true, loanRows);
+        }
         if (!shouldRunNotes && !shouldRunAttachments) {
+          const transactionsOk = this.ivyTekSqlImportResult?.success && !this.ivyTekLoanStateSyncError;
           this.finishIvyTekPipelineRun(
-            this.ivyTekSqlImportResult?.success ? 'labels.inputs.Completed' : 'labels.inputs.Needs Review',
-            this.ivyTekSqlImportError ?? ''
+            transactionsOk ? 'labels.inputs.Completed' : 'labels.inputs.Needs Review',
+            this.joinIvyTekMessages([
+              this.ivyTekSqlImportError ?? '',
+              this.ivyTekLoanStateSyncError ?? ''
+            ])
           );
+          return;
+        }
+      } else if (this.ivyTekFullSqlLoanImport && shouldRunLoans) {
+        await this.runIvyTekLoanStateSync(true, loanRows);
+        if (this.ivyTekLoanStateSyncError && !shouldRunNotes && !shouldRunAttachments) {
+          this.finishIvyTekPipelineRun('labels.inputs.Needs Review', this.ivyTekLoanStateSyncError);
           return;
         }
       }
@@ -1191,6 +1249,7 @@ export class ViewBulkImportComponent implements OnInit {
     });
 
     try {
+      await this.refreshIvyTekFineractBusinessDate();
       const productRows = await this.loadIvyTekLoanProducts();
       const productsByName = this.buildIvyTekLoanProductsByName(productRows);
       const helperRowsByLoanId = this.buildIvyTekLoanRowsById(contactRows);
@@ -1439,6 +1498,26 @@ export class ViewBulkImportComponent implements OnInit {
       checkNumber:
         this.getCsvValue(row, 'source.IvytekTestPkg__Check_Number__c') ||
         this.getCsvValue(row, 'source.IvytekTestPkg__CheckDisbursement__c') ||
+        '',
+      // Interest accrual fields so the SQL server can reconcile interest_charged_from_date
+      // to the reconciliation date for legacy loans with transaction-history gaps.
+      perDiemInterestRate:
+        this.getCsvValue(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c') ||
+        this.getCsvValue(row, 'source.IvytekTestPkg__Per_Diem_Interest_Rate__c') ||
+        '',
+      accruedInterestAll:
+        this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c') ||
+        this.getCsvValue(row, 'source.IvytekTestPkg__AccruedInterestAll__c') ||
+        '',
+      currentDueDate:
+        this.getCsvValue(row, 'IvytekTestPkg__CurrentDueDate__c') ||
+        this.getCsvValue(row, 'source.IvytekTestPkg__CurrentDueDate__c') ||
+        '',
+      originalDisbursementDate:
+        this.getCsvValue(row, 'IvytekTestPkg__LoanDate__c') ||
+        this.getCsvValue(row, 'source.IvytekTestPkg__LoanDate__c') ||
+        this.getCsvValue(row, 'IvytekTestPkg__SetUpDate__c') ||
+        this.getCsvValue(row, 'source.IvytekTestPkg__SetUpDate__c') ||
         ''
     };
   }
@@ -1457,6 +1536,13 @@ export class ViewBulkImportComponent implements OnInit {
       return;
     }
 
+    const reconciliationDate = this.getIvyTekReconciliationDateString();
+    if (!reconciliationDate) {
+      this.ivyTekSqlImportError =
+        'Set the IvyTek Export Date first — the import reconciles interest accrual to that date.';
+      return;
+    }
+
     this.ivyTekSqlImportRunning = true;
     this.ivyTekSqlImportError = null;
     this.ivyTekSqlImportResult = null;
@@ -1469,7 +1555,8 @@ export class ViewBulkImportComponent implements OnInit {
           db: this.ivyTekSqlDbForm.value,
           transactions,
           createdBy: 4,
-          apply
+          apply,
+          reconciliationDate
         })
       });
 
@@ -1495,6 +1582,337 @@ export class ViewBulkImportComponent implements OnInit {
     this.ivyTekSqlCsvFile = input?.files?.[0] ?? null;
     this.ivyTekSqlImportResult = null;
     this.ivyTekSqlImportError = null;
+  }
+
+  /** Number of loans that have accrual data available for the schedule-fix step. */
+  get ivyTekScheduleFixLoanCount(): number {
+    return this.buildScheduleFixLoans().length;
+  }
+
+  /**
+   * Builds the per-loan payload for /api/ivytek/schedule-fix by grouping staged
+   * transaction results by Fineract loan ID and extracting IvyTek accrual fields.
+   * One entry per loan; the transaction row with the most complete accrual data wins.
+   */
+  private buildScheduleFixLoans(): any[] {
+    const byLoanId = new Map<number, any>();
+
+    for (const result of this.ivyTekTransactionExportResults) {
+      const iv = result.importedValues || {};
+      const row = result.row || {};
+      const loanId = parseInt(iv.sqlTransactionHistoryLoanId);
+      if (!loanId || isNaN(loanId)) continue;
+
+      const perDiem = this.parseIvyTekDecimal(
+        this.getCsvValue(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c') ||
+          this.getCsvValue(row, 'source.IvytekTestPkg__Per_Diem_Interest_Rate__c')
+      );
+      const accrued = this.parseIvyTekDecimal(
+        this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c') ||
+          this.getCsvValue(row, 'source.IvytekTestPkg__AccruedInterestAll__c')
+      );
+      const dueDate =
+        this.getCsvValue(row, 'IvytekTestPkg__CurrentDueDate__c') ||
+        this.getCsvValue(row, 'source.IvytekTestPkg__CurrentDueDate__c');
+
+      if (perDiem === null || accrued === null || !dueDate) continue;
+
+      // Keep the most recent row for this loan (highest accrued interest = latest snapshot)
+      const existing = byLoanId.get(loanId);
+      if (!existing || accrued > parseFloat(existing.accruedInterestAll)) {
+        const correctedDate =
+          this.ivyTekSqlImportResult?.interestAccrualValidation?.find((v: any) => v.loanId === loanId)
+            ?.correctedOriginationDate ?? undefined;
+
+        byLoanId.set(loanId, {
+          loanId,
+          legacyLoanId: iv.sqlHistoryLegacyLoanId || '',
+          accruedInterestAll: String(accrued),
+          perDiemInterestRate: String(perDiem),
+          currentDueDate: dueDate,
+          correctedOriginationDate: correctedDate
+        });
+      }
+    }
+
+    return [...byLoanId.values()];
+  }
+
+  /** Calls /api/ivytek/schedule-fix to correct repayment schedules for pre-2021 legacy loans. */
+  async runIvyTekScheduleFix(apply: boolean): Promise<void> {
+    const loans = this.buildScheduleFixLoans();
+
+    if (!loans.length) {
+      this.ivyTekScheduleFixError =
+        'No loans with accrual data found. Run Stage 3 and the SQL import first so loan IDs are resolved.';
+      return;
+    }
+
+    if (!this.getIvyTekReconciliationDateString()) {
+      this.ivyTekScheduleFixError =
+        'Set the IvyTek Export Date first — schedule corrections reconcile interest to that date.';
+      return;
+    }
+
+    this.ivyTekScheduleFixRunning = true;
+    this.ivyTekScheduleFixError = null;
+    this.ivyTekScheduleFixResult = null;
+
+    try {
+      const response = await fetch('/api/ivytek/schedule-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          db: this.ivyTekSqlDbForm.value,
+          loans,
+          apply,
+          reconciliationDate: this.getIvyTekReconciliationDateString()
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        this.ivyTekScheduleFixError = result?.message || `Server error ${response.status}`;
+      } else {
+        this.ivyTekScheduleFixResult = result;
+        if (!result.success) {
+          this.ivyTekScheduleFixError = result.message || 'Schedule fix did not complete successfully.';
+        }
+      }
+    } catch {
+      this.ivyTekScheduleFixError =
+        'Could not reach the SQL import server. Make sure it started with the app (npm start).';
+    } finally {
+      this.ivyTekScheduleFixRunning = false;
+    }
+  }
+
+  /** Number of loans ready for the full-SQL loan-state-sync step. */
+  get ivyTekLoanStateSyncLoanCount(): number {
+    return this.buildLoanStateSyncLoans().length;
+  }
+
+  /**
+   * Retains the parsed loan CSV rows so loan-state-sync can run from the pipeline
+   * or from its card without re-reading files.
+   */
+  private setIvyTekLoanStateSyncRows(loanRows: any[]): void {
+    if (Array.isArray(loanRows) && loanRows.length) {
+      this.ivyTekLoanStateSyncRows = loanRows;
+    }
+  }
+
+  /**
+   * Builds the per-loan source-truth payload for /api/ivytek/loan-state-sync from
+   * the loan CSV rows, with paid totals aggregated from the staged transaction rows.
+   */
+  private buildLoanStateSyncLoans(): any[] {
+    const rows = this.ivyTekLoanStateSyncRows.length
+      ? this.ivyTekLoanStateSyncRows
+      : this.ivyTekLoanImportResults.map((r: any) => r.row).filter(Boolean);
+    if (!rows.length) {
+      return [];
+    }
+
+    // Aggregate non-voided paid amounts and last payment date per legacy loan id.
+    const paidByLegacyId = new Map<string, { principalPaid: number; interestPaid: number; lastDate: string }>();
+    for (const result of this.ivyTekTransactionExportResults) {
+      const iv = result.importedValues || {};
+      const legacyId = (iv.sqlHistoryLegacyLoanId || '').toString();
+      if (!legacyId || iv.sqlHistoryVoided === 'Yes') {
+        continue;
+      }
+      const entry = paidByLegacyId.get(legacyId) || { principalPaid: 0, interestPaid: 0, lastDate: '' };
+      entry.principalPaid += this.parseIvyTekDecimal((iv.sqlHistoryPrincipalPaid ?? '').toString()) || 0;
+      entry.interestPaid += this.parseIvyTekDecimal((iv.sqlHistoryInterestPaid ?? '').toString()) || 0;
+      const txnDate = (iv.sqlHistoryTransactionDate || '').toString();
+      if (txnDate && (!entry.lastDate || txnDate > entry.lastDate)) {
+        entry.lastDate = txnDate;
+      }
+      paidByLegacyId.set(legacyId, entry);
+    }
+
+    const loans: any[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const legacyLoanId = this.getIvyTekLegacyLoanId(row);
+      if (!legacyLoanId || seen.has(legacyLoanId)) {
+        continue;
+      }
+      seen.add(legacyLoanId);
+
+      const balanceNow = this.getIvyTekLoanBalanceNow(row);
+      const principalOriginal = this.getIvyTekLoanPrincipal(row);
+      const paid = paidByLegacyId.get(legacyLoanId);
+      loans.push({
+        legacyLoanId,
+        externalId: this.getIvyTekLoanExternalId(row),
+        originationDate: this.getIvyTekSourceLoanDate(row),
+        maturityDate: this.getIvyTekSourceMaturityDate(row),
+        currentDueDate: this.getCsvValue(row, 'IvytekTestPkg__CurrentDueDate__c'),
+        lastPaymentDate: paid?.lastDate || this.getCsvValue(row, 'IvytekTestPkg__DateLastPaid__c'),
+        principalOriginal: principalOriginal ?? '',
+        principalOutstanding: balanceNow ?? '',
+        principalPaid: paid ? paid.principalPaid.toFixed(2) : '',
+        interestPaid: paid ? paid.interestPaid.toFixed(2) : '',
+        interestOutstanding: this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c'),
+        // Kept separate from interestOutstanding: IvyTek carries back interest in its
+        // own bucket while Mifos has a single interest field, so the server adds it to
+        // the FINAL outstanding only — folding it into the accrued value here would
+        // corrupt the accrued÷per-diem day math that anchors the interest snapshot.
+        backInterestDue:
+          this.getCsvValue(row, 'IvytekTestPkg__BackInterestDue__c') ||
+          this.getCsvValue(row, 'source.IvytekTestPkg__BackInterestDue__c') ||
+          '',
+        // Per-diem rate so the server can project accrued interest forward from the
+        // reconciliation (export) date to today, instead of freezing it at export.
+        // The server derives ACT/365 from the annual rate when both lookups miss.
+        perDiemInterestRate:
+          this.getCsvValue(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c') ||
+          this.getCsvValue(row, 'source.IvytekTestPkg__Per_Diem_Interest_Rate__c') ||
+          '',
+        annualInterestRatePercent: this.getIvyTekLoanInterestRatePercent(row),
+        amountOverdue: this.getCsvValue(row, 'IvytekTestPkg__AmtNowDueAll__c'),
+        closed: this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow),
+        closedDate: this.getIvyTekHistoricalLoanCloseDate(row)
+      });
+    }
+    return loans;
+  }
+
+  /**
+   * Calls /api/ivytek/loan-state-sync to write IvyTek source truth directly into
+   * m_loan, m_loan_repayment_schedule, and m_loan_arrears_aging.
+   * @param {boolean} apply Whether to commit (true) or dry-run (false).
+   * @param {any[]} loanRows Optional freshly parsed loan CSV rows from the pipeline.
+   */
+  async runIvyTekLoanStateSync(apply: boolean, loanRows: any[] = []): Promise<void> {
+    this.setIvyTekLoanStateSyncRows(loanRows);
+    const loans = this.buildLoanStateSyncLoans();
+
+    if (!loans.length) {
+      this.ivyTekLoanStateSyncError = 'No loan rows available. Load the loan CSV / run Stage 2 first.';
+      return;
+    }
+    const reconciliationDate = this.getIvyTekReconciliationDateString();
+    if (!reconciliationDate) {
+      this.ivyTekLoanStateSyncError = 'Set the IvyTek Export Date first — loan state is reconciled to that date.';
+      return;
+    }
+
+    this.ivyTekLoanStateSyncRunning = true;
+    this.ivyTekLoanStateSyncError = null;
+    this.ivyTekLoanStateSyncResult = null;
+
+    try {
+      // No asOfDate is sent: the server projects interest to its own wall-clock today.
+      // The Fineract tenant business date is deliberately NOT used here — it lags the
+      // wall clock on this instance, and IvyTek accrues by wall clock, so anchoring to
+      // the business date made the projection add zero days and freeze interest.
+      const response = await fetch('/api/ivytek/loan-state-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          db: this.ivyTekSqlDbForm.value,
+          loans,
+          apply,
+          createdBy: 4,
+          reconciliationDate
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        this.ivyTekLoanStateSyncError = result?.message || `Server error ${response.status}`;
+      } else {
+        this.ivyTekLoanStateSyncResult = result;
+        if (!result.success) {
+          this.ivyTekLoanStateSyncError = result.message || 'Loan state sync did not complete successfully.';
+        }
+      }
+    } catch {
+      this.ivyTekLoanStateSyncError =
+        'Could not reach the SQL import server. Make sure it started with the app (npm start).';
+    } finally {
+      this.ivyTekLoanStateSyncRunning = false;
+    }
+  }
+
+  /** Number of loan import results that need SQL-level interest rate correction. */
+  get ivyTekInterestRateFixLoanCount(): number {
+    return this.buildInterestRateFixLoans().length;
+  }
+
+  /**
+   * Builds the per-loan payload for /api/ivytek/interest-rate-fix by scanning loan
+   * import results for entries where Stage 6 REST rate restoration failed (HTTP 403).
+   */
+  private buildInterestRateFixLoans(): any[] {
+    const loans: any[] = [];
+    for (const result of this.ivyTekLoanImportResults) {
+      const vv = result.validationValues || {};
+      const outcome = vv.stage6InterestRateOutcome;
+      if (outcome !== 'Needs SQL/Staging' && outcome !== 'Needs Correction') {
+        continue;
+      }
+      const loanId = Number(result.loanId);
+      if (!loanId || isNaN(loanId)) {
+        continue;
+      }
+      const annualRatePercent = parseFloat(String(vv.sourceInterestRatePercent ?? ''));
+      if (isNaN(annualRatePercent) || annualRatePercent <= 0) {
+        continue;
+      }
+      loans.push({
+        loanId,
+        legacyLoanId: result.mappedValues?.legacyLoanId || result.mappedValues?.sourceLoanId || '',
+        annualRatePercent
+      });
+    }
+    return loans;
+  }
+
+  /** Calls /api/ivytek/interest-rate-fix to SQL-correct the nominal interest rate for
+   *  loans where Stage 6 REST restoration returned HTTP 403. */
+  async runIvyTekInterestRateFix(apply: boolean): Promise<void> {
+    const loans = this.buildInterestRateFixLoans();
+
+    if (!loans.length) {
+      this.ivyTekInterestRateFixError =
+        'No loans with failed Stage 6 rate restoration found. Run the loan import first so results are available.';
+      return;
+    }
+
+    this.ivyTekInterestRateFixRunning = true;
+    this.ivyTekInterestRateFixError = null;
+    this.ivyTekInterestRateFixResult = null;
+
+    try {
+      const response = await fetch('/api/ivytek/interest-rate-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          db: this.ivyTekSqlDbForm.value,
+          loans,
+          apply
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        this.ivyTekInterestRateFixError = result?.message || `Server error ${response.status}`;
+      } else {
+        this.ivyTekInterestRateFixResult = result;
+        if (!result.success) {
+          this.ivyTekInterestRateFixError = result.message || 'Interest rate fix did not complete successfully.';
+        }
+      }
+    } catch {
+      this.ivyTekInterestRateFixError =
+        'Could not reach the SQL import server. Make sure it started with the app (npm start).';
+    } finally {
+      this.ivyTekInterestRateFixRunning = false;
+    }
   }
 
   async runIvyTekSqlCsvImport(apply: boolean): Promise<void> {
@@ -1533,6 +1951,7 @@ export class ViewBulkImportComponent implements OnInit {
       db: this.ivyTekSqlDbForm.value,
       apply,
       createdBy: 4,
+      reconciliationDate: this.getIvyTekReconciliationDateString(),
       csvText,
       csvFileName: this.ivyTekSqlCsvFile!.name,
       csvFileSizeOnDisk: this.ivyTekSqlCsvFile!.size,
@@ -2661,7 +3080,12 @@ export class ViewBulkImportComponent implements OnInit {
         this.getIvyTekLoanDate(row),
         principal
       );
-      const mappedValueReviewMessage = this.getIvyTekLoanMappedValueReviewMessage(row, principal, balanceNow);
+      const mappedValueReviewMessage = this.getIvyTekLoanMappedValueReviewMessage(
+        row,
+        principal,
+        balanceNow,
+        repayments
+      );
       result.mappedValues = this.getIvyTekLoanMappedValues(row, productName, principal, balanceNow, repayments);
       result.mappedValues = {
         ...result.mappedValues,
@@ -2742,7 +3166,8 @@ export class ViewBulkImportComponent implements OnInit {
         shouldCloseAfterDisbursement
       );
       const principalSnapshotAdjustment = this.getIvyTekPrincipalSnapshotAdjustment(principal, payloadPrincipal);
-      const payloadLoanDate = this.getIvyTekLoanPayloadDate(row);
+      const originationDateCorrection = this.getIvyTekOriginationDateCorrection(row, historicalRepaymentSummary);
+      const payloadLoanDate = this.getIvyTekLoanPayloadDate(row, historicalRepaymentSummary);
       const payloadInterestRatePercent = this.getIvyTekLoanPayloadInterestRatePercent(
         row,
         balanceNow,
@@ -2773,6 +3198,7 @@ export class ViewBulkImportComponent implements OnInit {
         payloadLoanDate,
         payloadInterestChargedFromDate,
         sourceLoanDate: this.getIvyTekSourceLoanDate(row),
+        originationDateCorrection: originationDateCorrection?.note || '',
         interestAccrualSuppressed: this.isIvyTekLoanInterestAccrualSuppressed(
           row,
           balanceNow,
@@ -2918,8 +3344,10 @@ export class ViewBulkImportComponent implements OnInit {
         if (result.loanId && shouldApproveAndDisburse) {
           await this.approveAndDisburseIvyTekLoan(result.loanId, createdLoanDate);
         }
+        // Full-SQL mode: balances, closure, and arrears come from the loan-state-sync
+        // SQL step, so no REST migration repayment or settle/close is posted.
         const migrationRepaymentMessage =
-          result.loanId && shouldApproveAndDisburse
+          result.loanId && shouldApproveAndDisburse && !this.ivyTekFullSqlLoanImport
             ? await this.repayIvyTekActiveLoanToBalanceNow(
                 result.loanId,
                 row,
@@ -2931,7 +3359,7 @@ export class ViewBulkImportComponent implements OnInit {
               )
             : '';
         const closeMessage =
-          result.loanId && !this.shouldPostIvyTekTransactionsInStage3()
+          result.loanId && !this.shouldPostIvyTekTransactionsInStage3() && !this.ivyTekFullSqlLoanImport
             ? await this.settleAndCloseIvyTekNonActiveLoan(result.loanId, row, balanceNow, createdLoanDate)
             : '';
         this.setIvyTekLoanResultStatus(
@@ -3010,11 +3438,50 @@ export class ViewBulkImportComponent implements OnInit {
         }
       }
     } catch (error: any) {
-      this.setIvyTekLoanResultStatus(result, 'labels.inputs.Failed', this.getErrorMessage(error));
+      this.setIvyTekLoanResultStatus(
+        result,
+        'labels.inputs.Failed',
+        this.joinIvyTekMessages([
+          this.getErrorMessage(error),
+          this.getIvyTekLoanDateDebugSummary(row, payload, error)
+        ])
+      );
     }
 
     await this.setIvyTekLoanImportedSnapshotResult(result, result.loanId, row, payload);
     this.ivyTekLoanImportResults.push(result);
+  }
+
+  /**
+   * Summarizes every date involved in a failed loan submission so date-rule
+   * rejections show exactly which value Fineract refused.
+   * @param {any} row IvyTek loan row.
+   * @param {any} payload Loan payload built for the row (may be null on early failures).
+   * @param {any} error API error — retried attempts attach the payload they sent.
+   */
+  private getIvyTekLoanDateDebugSummary(row: any, payload: any, error: any = null): string {
+    const attempted = error?.ivyTekAttemptedPayload || payload;
+    const perDiem = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c'));
+    const accrued = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c'));
+    const daysAccrued =
+      perDiem && perDiem > 0 && accrued !== null && accrued >= 0 ? Math.round(accrued / perDiem) : null;
+    const parts = [
+      attempted?.submittedOnDate ? `submittedOnDate=${attempted.submittedOnDate}` : '',
+      attempted?.expectedDisbursementDate ? `expectedDisbursementDate=${attempted.expectedDisbursementDate}` : '',
+      attempted?.repaymentsStartingFromDate ? `repaymentsStartingFromDate=${attempted.repaymentsStartingFromDate}` : '',
+      attempted?.interestChargedFromDate ? `interestChargedFromDate=${attempted.interestChargedFromDate}` : '',
+      error?.ivyTekAttemptedPayload ? '(dates above are from the final clamped retry)' : '',
+      `sourceLoanDate=${this.getIvyTekSourceLoanDate(row) || '(none)'}`,
+      `currentDueDate=${this.getCsvValue(row, 'IvytekTestPkg__CurrentDueDate__c') || '(none)'}`,
+      `perDiem=${perDiem ?? '(none)'}`,
+      `accruedInterestAll=${accrued ?? '(none)'}`,
+      daysAccrued !== null ? `daysAccrued=${daysAccrued}` : '',
+      `ivyTekExportDate=${this.getIvyTekReconciliationDateString() || '(not set)'}`,
+      this.ivyTekFineractBusinessDate
+        ? `serverBusinessDate=${this.dateUtils.formatDate(this.ivyTekFineractBusinessDate, this.settingsService.dateFormat)}`
+        : 'serverBusinessDate=(not yet learned)'
+    ].filter(Boolean);
+    return `[Date debug — ${parts.join('; ')}]`;
   }
 
   /**
@@ -3026,22 +3493,195 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private async createIvyTekLoanWithClientActivationFallback(row: any, client: any, payload: any) {
     try {
+      return await this.createIvyTekLoanWithFutureDateFallback(row, payload);
+    } catch (error: any) {
+      if (!this.isIvyTekClientActivationLoanDateError(error)) {
+        throw error;
+      }
+      let activationMessage = '';
+      try {
+        activationMessage = await this.backdateIvyTekLoanClientActivation(client, row, payload.submittedOnDate);
+      } catch (backdateError: any) {
+        // Fall through to the retry/floor path — the loan can still import on the
+        // client's current activation date.
+        activationMessage = `Client activation backdate failed: ${this.getErrorMessage(backdateError)}`;
+      }
+      try {
+        const created = await this.createIvyTekLoanWithFutureDateFallback(row, payload);
+        return {
+          ...created,
+          activationMessage: this.joinIvyTekMessages([
+            activationMessage,
+            created.activationMessage
+          ])
+        };
+      } catch (retryError: any) {
+        if (!this.isIvyTekClientActivationLoanDateError(retryError)) {
+          throw retryError;
+        }
+        // Backdating could not reach the corrected loan date — raise the loan date to
+        // the client's actual activation date instead so the import still completes.
+        const floored = await this.getIvyTekLoanPayloadFlooredToClientActivation(row, client, payload);
+        if (!floored) {
+          throw retryError;
+        }
+        try {
+          const created = await this.createIvyTekLoanWithFutureDateFallback(row, floored.payload);
+          return {
+            ...created,
+            loanDate: created.loanDate,
+            activationMessage: this.joinIvyTekMessages([
+              activationMessage,
+              floored.message,
+              created.activationMessage
+            ])
+          };
+        } catch (flooredError: any) {
+          flooredError.ivyTekAttemptedPayload = flooredError.ivyTekAttemptedPayload || floored.payload;
+          throw flooredError;
+        }
+      }
+    }
+  }
+
+  /**
+   * Rebuilds a rejected loan payload with its dates raised to the client's actual
+   * activation date — the last resort when the activation date cannot be backdated
+   * far enough to cover a corrected origination date.
+   * @param {any} row IvyTek loan row.
+   * @param {any} client Matched client.
+   * @param {any} payload Rejected loan payload.
+   */
+  private async getIvyTekLoanPayloadFlooredToClientActivation(
+    row: any,
+    client: any,
+    payload: any
+  ): Promise<{ payload: any; message: string } | null> {
+    const clientId = this.getIvyTekClientId(client);
+    if (!clientId) {
+      return null;
+    }
+    let activationDate: Date | null = null;
+    try {
+      const clientData: any = await firstValueFrom(this.clientsService.getClientDataAndTemplate(clientId));
+      activationDate = this.parseIvyTekDateValue(
+        clientData?.activationDate || clientData?.timeline?.activatedOnDate || clientData?.timeline?.submittedOnDate
+      );
+    } catch {
+      activationDate = null;
+    }
+    if (!activationDate) {
+      return null;
+    }
+    const submitted = this.parseIvyTekDate(payload.submittedOnDate);
+    if (!submitted || submitted.getTime() >= activationDate.getTime()) {
+      return null;
+    }
+    const floorText = this.dateUtils.formatDate(activationDate, this.settingsService.dateFormat);
+    const floored = this.getIvyTekLoanPayloadWithDate(row, payload, floorText);
+    if (floored.interestChargedFromDate) {
+      const interestStart = this.parseIvyTekDate(floored.interestChargedFromDate);
+      if (!interestStart || interestStart.getTime() <= activationDate.getTime()) {
+        delete floored.interestChargedFromDate;
+      }
+    }
+    Object.keys(floored).forEach((key: string) => {
+      if (floored[key] === '' || floored[key] === null || floored[key] === undefined) {
+        delete floored[key];
+      }
+    });
+    return {
+      payload: floored,
+      message: `Client activation could not be backdated below ${floorText}; the loan was submitted on the activation date instead.`
+    };
+  }
+
+  /**
+   * Creates a loan, retrying once with dates clamped to the server-reported business
+   * date when Fineract rejects the corrected dates as being in the future. The learned
+   * date is cached so every subsequent loan in the run clamps correctly up front.
+   * @param {any} row IvyTek loan row.
+   * @param {any} payload Loan payload.
+   */
+  private async createIvyTekLoanWithFutureDateFallback(row: any, payload: any) {
+    try {
       return {
         response: await firstValueFrom(this.loansService.createLoansAccount('loans', payload)),
         activationMessage: '',
         loanDate: payload.submittedOnDate
       };
     } catch (error: any) {
-      if (!this.isIvyTekClientActivationLoanDateError(error)) {
+      if (!this.isIvyTekFutureLoanDateError(error)) {
         throw error;
       }
-      const activationMessage = await this.backdateIvyTekLoanClientActivation(client, row);
-      return {
-        response: await firstValueFrom(this.loansService.createLoansAccount('loans', payload)),
-        activationMessage,
-        loanDate: payload.submittedOnDate
-      };
+      const clamped = await this.getIvyTekLoanPayloadClampedToServerDate(row, payload);
+      if (!clamped) {
+        throw error;
+      }
+      try {
+        return {
+          response: await firstValueFrom(this.loansService.createLoansAccount('loans', clamped.payload)),
+          activationMessage: clamped.message,
+          loanDate: clamped.payload.submittedOnDate
+        };
+      } catch (clampedError: any) {
+        clampedError.ivyTekAttemptedPayload = clamped.payload;
+        throw clampedError;
+      }
     }
+  }
+
+  /**
+   * Learns the effective Fineract business date from a loan template — its default
+   * expectedDisbursementDate is the server's "today" — and rebuilds the payload with
+   * all dates clamped to it. Returns null when the server date cannot be determined
+   * or the payload dates were not actually beyond it.
+   * @param {any} row IvyTek loan row.
+   * @param {any} payload Rejected loan payload.
+   */
+  private async getIvyTekLoanPayloadClampedToServerDate(
+    row: any,
+    payload: any
+  ): Promise<{ payload: any; message: string } | null> {
+    let serverDate: Date | null = null;
+    try {
+      const template: any = await firstValueFrom(
+        this.loansService.getLoansAccountTemplateResource(payload.clientId, false, payload.productId)
+      );
+      serverDate = this.parseIvyTekDateValue(
+        template?.timeline?.expectedDisbursementDate ?? template?.expectedDisbursementDate
+      );
+    } catch {
+      serverDate = null;
+    }
+    if (!serverDate) {
+      return null;
+    }
+    serverDate.setHours(0, 0, 0, 0);
+    this.ivyTekFineractBusinessDate = serverDate;
+
+    const submitted = this.parseIvyTekDate(payload.submittedOnDate);
+    if (!submitted || submitted.getTime() <= serverDate.getTime()) {
+      return null;
+    }
+
+    const clampedText = this.dateUtils.formatDate(serverDate, this.settingsService.dateFormat);
+    const clampedPayload = this.getIvyTekLoanPayloadWithDate(row, payload, clampedText);
+    if (clampedPayload.interestChargedFromDate) {
+      const interestStart = this.parseIvyTekDate(clampedPayload.interestChargedFromDate);
+      if (!interestStart || interestStart.getTime() >= serverDate.getTime()) {
+        delete clampedPayload.interestChargedFromDate;
+      }
+    }
+    Object.keys(clampedPayload).forEach((key: string) => {
+      if (clampedPayload[key] === '' || clampedPayload[key] === null || clampedPayload[key] === undefined) {
+        delete clampedPayload[key];
+      }
+    });
+    return {
+      payload: clampedPayload,
+      message: `Fineract rejected ${payload.submittedOnDate} as a future date; the loan was submitted on the server business date ${clampedText} instead.`
+    };
   }
 
   /**
@@ -3057,12 +3697,45 @@ export class ViewBulkImportComponent implements OnInit {
       await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, payload));
       return '';
     } catch (error: any) {
+      if (this.isIvyTekFutureLoanDateError(error)) {
+        const clamped = await this.getIvyTekLoanPayloadClampedToServerDate(row, payload);
+        if (!clamped) {
+          throw error;
+        }
+        await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, clamped.payload));
+        return clamped.message;
+      }
       if (!this.isIvyTekClientActivationLoanDateError(error)) {
         throw error;
       }
-      const activationMessage = await this.backdateIvyTekLoanClientActivation(client, row);
-      await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, payload));
-      return activationMessage;
+      let activationMessage = '';
+      try {
+        activationMessage = await this.backdateIvyTekLoanClientActivation(client, row, payload.submittedOnDate);
+      } catch (backdateError: any) {
+        activationMessage = `Client activation backdate failed: ${this.getErrorMessage(backdateError)}`;
+      }
+      try {
+        await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, payload));
+        return activationMessage;
+      } catch (retryError: any) {
+        if (!this.isIvyTekClientActivationLoanDateError(retryError)) {
+          throw retryError;
+        }
+        const floored = await this.getIvyTekLoanPayloadFlooredToClientActivation(row, client, payload);
+        if (!floored) {
+          throw retryError;
+        }
+        try {
+          await firstValueFrom(this.loansService.updateLoansAccount('loans', loanId, floored.payload));
+        } catch (flooredError: any) {
+          flooredError.ivyTekAttemptedPayload = flooredError.ivyTekAttemptedPayload || floored.payload;
+          throw flooredError;
+        }
+        return this.joinIvyTekMessages([
+          activationMessage,
+          floored.message
+        ]);
+      }
     }
   }
 
@@ -3070,24 +3743,35 @@ export class ViewBulkImportComponent implements OnInit {
    * Backdates the matched loan client activation date from source-backed IvyTek loan dates.
    * @param {any} client Matched client.
    * @param {any} row IvyTek loan row.
+   * @param {string} loanDateText The loan submission date being retried — the corrected
+   *   origination date can precede every source row date, so activation must reach it.
    */
-  private async backdateIvyTekLoanClientActivation(client: any, row: any): Promise<string> {
+  private async backdateIvyTekLoanClientActivation(client: any, row: any, loanDateText: string = ''): Promise<string> {
     const clientId = this.getIvyTekClientId(client);
     if (!clientId) {
       throw new Error(
         'Historical IvyTek loan date is earlier than the matched Mifos client activation date, but the matched client id was not returned. Exact historical import stopped before changing loan dates.'
       );
     }
-    return this.backdateIvyTekClientActivationFromRow(clientId, row);
+    return this.backdateIvyTekClientActivationFromRow(clientId, row, loanDateText);
   }
 
   /**
    * Backdates an existing client activation date from an IvyTek source row.
    * @param {string} clientId Client id.
    * @param {any} row IvyTek client or loan row.
+   * @param {string} loanDateText Loan submission date the activation must not exceed.
    */
-  private async backdateIvyTekClientActivationFromRow(clientId: string, row: any): Promise<string> {
-    const targetActivationDate = this.getIvyTekClientActivationBackdateDate(row);
+  private async backdateIvyTekClientActivationFromRow(
+    clientId: string,
+    row: any,
+    loanDateText: string = ''
+  ): Promise<string> {
+    let targetActivationDate = this.getIvyTekClientActivationBackdateDate(row);
+    const loanDate = loanDateText ? this.parseIvyTekDate(loanDateText) : null;
+    if (loanDate && (!targetActivationDate || loanDate.getTime() < targetActivationDate.getTime())) {
+      targetActivationDate = loanDate;
+    }
     if (!targetActivationDate) {
       throw new Error(
         'Historical IvyTek loan date is earlier than the matched Mifos client activation date, but no source-backed IvyTek loan/setup date was available for client backdating. Exact historical import stopped before changing loan dates.'
@@ -8186,6 +8870,16 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
+   * Checks whether Fineract rejected a loan because a submitted/approval/disbursal
+   * date is after the tenant business date.
+   * @param {any} error API error.
+   */
+  private isIvyTekFutureLoanDateError(error: any) {
+    const message = this.getErrorMessage(error).toLowerCase();
+    return message.includes('cannot be in the future');
+  }
+
+  /**
    * Checks whether Fineract rejected a loan update because the account is no longer editable.
    * @param {any} error API error.
    */
@@ -8314,11 +9008,124 @@ export class ViewBulkImportComponent implements OnInit {
   }
 
   /**
-   * Gets the submitted/disbursement date sent to Fineract.
+   * Gets the submitted/disbursement date sent to Fineract, corrected so interest
+   * reconciles to the IvyTek export date.
    * @param {any} row IvyTek loan row.
+   * @param {any} historicalRepaymentSummary Historical payment rows grouped for this loan.
    */
-  private getIvyTekLoanPayloadDate(row: any): string {
+  private getIvyTekLoanPayloadDate(row: any, historicalRepaymentSummary: any = null): string {
+    const correction = this.getIvyTekOriginationDateCorrection(row, historicalRepaymentSummary);
+    if (correction) {
+      return this.dateUtils.formatDate(correction.correctedDate, this.settingsService.dateFormat);
+    }
     return this.getIvyTekLoanDate(row);
+  }
+
+  /**
+   * Calculates the corrected origination date so that interest accrued from origination
+   * to the IvyTek export (reconciliation) date equals the IvyTek-reported AccruedInterestAll:
+   *   days_accrued = AccruedInterestAll / Per_Diem_Interest_Rate
+   *   corrected origination = reconciliation date - days_accrued
+   *
+   * Fineract computes interest from the loan's origination date, so loans older than the
+   * transaction-history window (February 2021) otherwise accrue phantom interest across
+   * every day since the true origination. The origination moves backward when the accrual
+   * window predates the recorded loan date, and forward when the loan has no repayment
+   * history to pin it (never-paid legacy loans). Loans with repayment history keep their
+   * source origination — interestChargedFromDate carries the reconciliation there.
+   * Returns null when no correction applies.
+   * @param {any} row IvyTek loan row.
+   * @param {any} historicalRepaymentSummary Historical payment rows grouped for this loan.
+   */
+  private getIvyTekOriginationDateCorrection(
+    row: any,
+    historicalRepaymentSummary: any = null
+  ): { correctedDate: Date; daysAccrued: number; note: string } | null {
+    // Full-SQL mode: the loan-state-sync step writes true dates/balances directly,
+    // so loans are created with plain source dates and never date-corrected.
+    if (this.ivyTekFullSqlLoanImport) {
+      return null;
+    }
+    const perDiem = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c'));
+    const accrued = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c'));
+    const anchorDate =
+      this.getIvyTekReconciliationDate() ||
+      this.parseIvyTekDate(this.getCsvValue(row, 'IvytekTestPkg__CurrentDueDate__c'));
+    const sourceLoanDate = this.parseIvyTekDate(this.getIvyTekSourceLoanDate(row));
+
+    if (!perDiem || perDiem <= 0 || !accrued || accrued <= 0 || !anchorDate || !sourceLoanDate) {
+      return null;
+    }
+
+    const daysAccrued = Math.round(accrued / perDiem);
+    let accrualStart = new Date(anchorDate);
+    accrualStart.setDate(accrualStart.getDate() - daysAccrued);
+    // IvyTek computes AccruedInterestAll from origination dates stored without century
+    // digits, so ancient results (e.g. year 0094) are Y2K artifacts — window them back
+    // into 19xx/20xx. Anything still outside a sane range means corrupt accrual data.
+    accrualStart = this.applyIvyTekCenturyWindow(accrualStart);
+    if (isNaN(accrualStart.getTime()) || accrualStart.getFullYear() < 1900) {
+      return null;
+    }
+
+    const describe = (direction: string, correctedDate: Date) =>
+      `Origination ${direction}: ${this.dateUtils.formatDate(sourceLoanDate, this.settingsService.dateFormat)} -> ` +
+      `${this.dateUtils.formatDate(correctedDate, this.settingsService.dateFormat)} so ${daysAccrued} accrual day(s) ` +
+      `at ${perDiem}/day reconcile to ${accrued} outstanding interest on ` +
+      `${this.dateUtils.formatDate(anchorDate, this.settingsService.dateFormat)}`;
+
+    if (accrualStart.getTime() < sourceLoanDate.getTime()) {
+      return { correctedDate: accrualStart, daysAccrued, note: describe('moved back', accrualStart) };
+    }
+
+    // Forward moves only when no repayment history pins the origination date.
+    if (historicalRepaymentSummary?.count) {
+      return null;
+    }
+    // Fineract rejects loans submitted after the tenant business date ("cannot be in
+    // the future"), so cap the forward move there. Loans with near-zero accrued
+    // interest compute an accrual start at the export date, which can pass it.
+    const correctedDate = this.clampIvyTekDateToBusinessDate(accrualStart);
+    if (correctedDate.getTime() <= sourceLoanDate.getTime()) {
+      return null;
+    }
+    return { correctedDate, daysAccrued, note: describe('moved forward', correctedDate) };
+  }
+
+  /**
+   * Fetches the authoritative tenant business date from Fineract before the loan
+   * stage runs. Loan submission dates after it are rejected with "cannot be in the
+   * future", and the locally cached copy is not reliable when the instance's
+   * business date lags behind the wall clock.
+   */
+  private async refreshIvyTekFineractBusinessDate(): Promise<void> {
+    try {
+      const response: any = await firstValueFrom(this.systemService.getBusinessDate(SettingsService.businessDateType));
+      this.ivyTekFineractBusinessDate = this.parseIvyTekDateValue(response?.date);
+    } catch {
+      // Business date feature disabled or endpoint unavailable — fall back to today.
+      this.ivyTekFineractBusinessDate = null;
+    }
+  }
+
+  /**
+   * Clamps a date to the latest date Fineract accepts for loan submission — the
+   * tenant business date when available, otherwise today.
+   * @param {Date} date Candidate date.
+   */
+  private clampIvyTekDateToBusinessDate(date: Date): Date {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let maxDate = today;
+    const businessDate = this.ivyTekFineractBusinessDate || this.settingsService.businessDate;
+    if (businessDate instanceof Date && !isNaN(businessDate.getTime())) {
+      const normalized = new Date(businessDate);
+      normalized.setHours(0, 0, 0, 0);
+      if (normalized.getTime() < maxDate.getTime()) {
+        maxDate = normalized;
+      }
+    }
+    return date.getTime() > maxDate.getTime() ? maxDate : date;
   }
 
   /**
@@ -8336,7 +9143,75 @@ export class ViewBulkImportComponent implements OnInit {
     shouldCloseAfterDisbursement: boolean,
     historicalRepaymentSummary: any = null
   ): string {
-    return '';
+    // Full-SQL mode: the loan-state-sync step rebuilds the schedule from source
+    // truth, so no interest start date is sent at creation.
+    if (this.ivyTekFullSqlLoanImport) {
+      return '';
+    }
+    // Sent in static snapshot mode too: the loan is created at 0% but the source rate
+    // is restored via REST while the loan is still pending, so the schedule Fineract
+    // generates at disbursement uses the real rate AND this charged-from date.
+    //
+    // Same math as the interest-start correction in scripts/sql-import-server.js:
+    // days_accrued = AccruedInterestAll / Per_Diem_Interest_Rate; start = reconciliation date - days_accrued.
+    // AccruedInterestAll is a snapshot as of the IvyTek export (reconciliation) date, so the accrual
+    // window is anchored there — NOT at CurrentDueDate (stale for delinquent loans) and NOT clamped
+    // back to the earliest transaction (which made Fineract accrue phantom interest across the whole
+    // pre-February-2021 history gap). Run at loan-creation time so Fineract never generates a schedule
+    // that accrues interest for every day since the true (decades-old) origination date.
+    const perDiem = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__Per_Diem_Interest_Rate__c'));
+    const accrued = this.parseIvyTekDecimal(this.getCsvValue(row, 'IvytekTestPkg__AccruedInterestAll__c'));
+    const anchorDate =
+      this.getIvyTekReconciliationDate() ||
+      this.parseIvyTekDate(this.getCsvValue(row, 'IvytekTestPkg__CurrentDueDate__c'));
+    // The loan is created with the corrected origination date, so floor against that.
+    const correction = this.getIvyTekOriginationDateCorrection(row, historicalRepaymentSummary);
+    const loanDate = correction?.correctedDate ?? this.parseIvyTekDate(this.getIvyTekSourceLoanDate(row));
+
+    if (!perDiem || perDiem <= 0 || accrued === null || accrued < 0 || !anchorDate || !loanDate) {
+      return '';
+    }
+
+    const daysAccrued = Math.round(accrued / perDiem);
+    let interestStartDate = new Date(anchorDate);
+    interestStartDate.setDate(interestStartDate.getDate() - daysAccrued);
+    // Window Y2K artifacts (source data computed from century-less origination dates).
+    interestStartDate = this.applyIvyTekCenturyWindow(interestStartDate);
+    if (isNaN(interestStartDate.getTime()) || interestStartDate.getFullYear() < 1900) {
+      return '';
+    }
+    // Fineract rejects dates after the tenant business date.
+    interestStartDate = this.clampIvyTekDateToBusinessDate(interestStartDate);
+
+    // The schedule cannot generate interest past maturity; for loans that matured
+    // before the accrual start, placing the start at maturity yields (near) zero
+    // schedule interest instead of a full term of phantom interest.
+    const maturityDate = this.parseIvyTekDate(this.getIvyTekSourceMaturityDate(row));
+    if (maturityDate && interestStartDate.getTime() > maturityDate.getTime()) {
+      interestStartDate = maturityDate;
+    }
+
+    // interestChargedFromDate cannot precede the loan's disbursement date; an empty value
+    // means Fineract charges interest from disbursement, which is the earliest allowed start.
+    if (interestStartDate.getTime() <= loanDate.getTime()) {
+      return '';
+    }
+
+    return this.dateUtils.formatDate(interestStartDate, this.settingsService.dateFormat);
+  }
+
+  /**
+   * Gets the IvyTek export date — the date source balances are reconciled to.
+   */
+  private getIvyTekReconciliationDate(): Date | null {
+    return this.parseIvyTekDate(this.getIvyTekReconciliationDateString());
+  }
+
+  /**
+   * Gets the IvyTek export date as the raw YYYY-MM-DD form value for server requests.
+   */
+  private getIvyTekReconciliationDateString(): string {
+    return (this.ivyTekImportForm.get('ivyTekExportDate')?.value || '').toString().trim();
   }
 
   /**
@@ -8350,11 +9225,27 @@ export class ViewBulkImportComponent implements OnInit {
 
   /**
    * Gets the migration transaction date used for balance-setting adjustments.
+   * Floored at the fallback (disbursement) date — a corrected origination date can land
+   * after the IvyTek snapshot date, and Fineract rejects repayments before disbursement.
    * @param {any} row IvyTek loan row.
-   * @param {string} fallbackDate Fallback transaction date.
+   * @param {string} fallbackDate Fallback transaction date (the loan's payload date).
    */
   private getIvyTekMigrationTransactionDate(row: any, fallbackDate: string = ''): string {
-    return this.getIvyTekLoanInterestSnapshotStartDateText(row) || fallbackDate;
+    const snapshotText = this.getIvyTekLoanInterestSnapshotStartDateText(row);
+    if (!snapshotText) {
+      return fallbackDate;
+    }
+    let snapshotDate = this.getIvyTekLoanInterestSnapshotStartDate(row);
+    const loanDate = this.parseIvyTekDate(fallbackDate);
+    if (snapshotDate && loanDate && snapshotDate.getTime() < loanDate.getTime()) {
+      return fallbackDate;
+    }
+    // Transactions after the tenant business date are rejected as future-dated.
+    if (snapshotDate) {
+      snapshotDate = this.clampIvyTekDateToBusinessDate(snapshotDate);
+      return this.dateUtils.formatDate(snapshotDate, this.settingsService.dateFormat);
+    }
+    return snapshotText;
   }
 
   /**
@@ -8678,7 +9569,12 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {number | null} principal Original principal amount.
    * @param {number | null} balanceNow IvyTek current balance.
    */
-  private getIvyTekLoanMappedValueReviewMessage(row: any, principal: number | null, balanceNow: number | null) {
+  private getIvyTekLoanMappedValueReviewMessage(
+    row: any,
+    principal: number | null,
+    balanceNow: number | null,
+    repayments: number | null = null
+  ) {
     if (balanceNow === null) {
       return 'Missing IvyTek current balance. Check IvytekTestPkg__BalanceNow__c.';
     }
@@ -8689,6 +9585,64 @@ export class ViewBulkImportComponent implements OnInit {
 
     if (!principal || principal <= 0) {
       return this.getIvyTekPrincipalReviewMessage(row);
+    }
+
+    const repaymentCountReviewMessage = this.getIvyTekRepaymentCountReviewMessage(row, repayments);
+    if (repaymentCountReviewMessage) {
+      return repaymentCountReviewMessage;
+    }
+
+    return '';
+  }
+
+  /**
+   * Flags an implausible repayment count by cross-checking it against the
+   * IvyTek-reported maturity date. Number_of_Payments__c/Term__c for old
+   * legacy loans is unreliable (e.g. 730 read as 730 monthly installments,
+   * producing a 61-year schedule) — when a maturity date disagrees sharply
+   * with the source count, send the loan to review instead of importing
+   * a schedule that runs decades past the loan's actual term.
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} repayments Repayment count resolved from the source row.
+   */
+  private getIvyTekRepaymentCountReviewMessage(row: any, repayments: number | null): string {
+    if (!repayments || repayments <= 0) {
+      return '';
+    }
+
+    const loanDate = this.parseIvyTekDate(this.getIvyTekSourceLoanDate(row));
+    const maturityDate = this.parseIvyTekDate(this.getIvyTekSourceMaturityDate(row));
+    if (!loanDate || !maturityDate || maturityDate.getTime() <= loanDate.getTime()) {
+      // No maturity date to cross-check against — fall back to an absolute sanity cap
+      // (600 periods covers a 50-year monthly loan, far beyond any real product here).
+      if (repayments > 600) {
+        return (
+          `Implausible repayment count (${repayments}) with no maturity date to verify it against. ` +
+          `Checked IvytekTestPkg__MatDate__c/MaturityDate__c.`
+        );
+      }
+      return '';
+    }
+
+    const frequency = this.getIvyTekRepaymentFrequency(row);
+    const totalDays = Math.round((maturityDate.getTime() - loanDate.getTime()) / (24 * 60 * 60 * 1000));
+
+    // "Semi Monthly" (twice a month) is not recognized by getIvyTekRepaymentFrequency() — it falls
+    // through to monthly — so the derived count would be half the real value and every semi-monthly
+    // loan would be falsely flagged. Detect it directly from the source field and use 15.2 days/period.
+    const rawPaymentFrequency = (this.getCsvValue(row, 'IvytekTestPkg__Payment_Frequency__c') || '').toLowerCase();
+    const isSemiMonthly = rawPaymentFrequency.includes('semi');
+    const frequencyLabel = isSemiMonthly ? 'semi-monthly' : frequency.label.toLowerCase();
+    const periodDays = isSemiMonthly ? 15.2 : frequency.type === 1 ? frequency.every * 7 : frequency.every * 30.4;
+
+    const maturityDerivedRepayments = Math.max(1, Math.round(totalDays / periodDays));
+
+    if (repayments > maturityDerivedRepayments * 2 && repayments - maturityDerivedRepayments > 6) {
+      return (
+        `Repayment count (${repayments}) is far larger than the ${maturityDerivedRepayments} ${frequencyLabel} ` +
+        `installments implied by the loan date (${this.getIvyTekSourceLoanDate(row)}) and maturity date ` +
+        `(${this.getIvyTekSourceMaturityDate(row)}). Verify IvytekTestPkg__Number_of_Payments__c/Term__c before importing.`
+      );
     }
 
     return '';
@@ -10545,7 +11499,17 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private getIvyTekFirstRepaymentDate(row: any, loanDateText: string): string {
     const firstDueDate = this.parseIvyTekDate(this.getCsvValue(row, 'IvytekTestPkg__FirstDueDate__c'));
-    return firstDueDate ? this.dateUtils.formatDate(firstDueDate, this.settingsService.dateFormat) : '';
+    if (!firstDueDate) {
+      return '';
+    }
+    // A corrected origination date can land after the source first due date; Fineract
+    // rejects repayments starting on/before disbursement, so omit the field and let
+    // the schedule start from the disbursement date instead.
+    const loanDate = this.parseIvyTekDate(loanDateText);
+    if (loanDate && firstDueDate.getTime() <= loanDate.getTime()) {
+      return '';
+    }
+    return this.dateUtils.formatDate(firstDueDate, this.settingsService.dateFormat);
   }
 
   /**
@@ -10677,11 +11641,33 @@ export class ViewBulkImportComponent implements OnInit {
         month,
         day
       ] = dateOnlyMatch;
-      return new Date(Number(year), Number(month) - 1, Number(day));
+      let yearNumber = Number(year);
+      if (yearNumber < 100) {
+        yearNumber += yearNumber >= 50 ? 1900 : 2000;
+      }
+      const parsedDate = new Date(yearNumber, Number(month) - 1, Number(day));
+      parsedDate.setFullYear(yearNumber);
+      return parsedDate;
     }
     const normalized = trimmedValue.endsWith('Z') ? `${trimmedValue.slice(0, -1)}+00:00` : trimmedValue;
     const parsed = new Date(normalized);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return Number.isNaN(parsed.getTime()) ? null : this.applyIvyTekCenturyWindow(parsed);
+  }
+
+  /**
+   * Applies the two-digit-year (Y2K) window to parsed dates. IvyTek exports carry
+   * dates without century digits, and some parse paths keep them as literal
+   * first-century years (e.g. 0094) — window them to 19xx/20xx.
+   * @param {Date} date Parsed date.
+   */
+  private applyIvyTekCenturyWindow(date: Date): Date {
+    const year = date.getFullYear();
+    if (year >= 0 && year < 100) {
+      const windowed = new Date(date);
+      windowed.setFullYear(year + (year >= 50 ? 1900 : 2000));
+      return windowed;
+    }
+    return date;
   }
 
   /**

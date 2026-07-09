@@ -119,6 +119,10 @@ mat-card {
   }
 }
 
+.delete-left {
+  cursor: pointer;
+}
+
 /* Responsive adjustments */
 @media (width <= 768px) {
   .container {

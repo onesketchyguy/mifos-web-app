@@ -38,6 +38,31 @@
               </mat-list-item>
             </div>
           }
+
+          <!-- Bulk Delete — admin only, follows the same pattern as every other list item -->
+          <div *mifosxHasPermission="'DELETE_CLIENT'">
+            <mat-list-item>
+              <div class="menu-list-item-content">
+                <div class="menu-left-section delete-left" (click)="openBulkDeleteDialog()">
+                  <mat-icon matListIcon>
+                    <fa-icon [icon]="'trash'" size="sm"></fa-icon>
+                  </mat-icon>
+                  <div class="menu-text-content">
+                    <div class="menu-title">Bulk Delete Data</div>
+                    @if (arrowBooleans[19]) {
+                      <p class="menu-explanation">
+                        Permanently truncate all clients, loans, transactions, and attachments via a direct SQL
+                        connection. This cannot be undone.
+                      </p>
+                    }
+                  </div>
+                </div>
+                <button class="menu-right-section" (click)="$event.stopPropagation(); arrowBooleansToggle(19)">
+                  <fa-icon [icon]="'arrow-down'" [class.rotated]="arrowBooleans[19]" size="md"></fa-icon>
+                </button>
+              </div>
+            </mat-list-item>
+          </div>
         </mat-nav-list>
       </div>
 

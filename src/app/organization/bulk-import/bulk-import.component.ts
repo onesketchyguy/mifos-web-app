@@ -7,12 +7,14 @@
  */
 
 /** Angular Imports */
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { MatNavList, MatListItem } from '@angular/material/list';
 import { MatIcon } from '@angular/material/icon';
+import { MatDialog } from '@angular/material/dialog';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { AccountFeature, isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
+import { BulkDeleteDialogComponent } from './bulk-delete-dialog/bulk-delete-dialog.component';
 
 /**
  * Bulk Import component.
@@ -30,6 +32,8 @@ import { AccountFeature, isAccountFeatureEnabled } from 'app/shared/account-feat
   ]
 })
 export class BulkImportComponent {
+  private dialog = inject(MatDialog);
+
   // Initialize an array of boolean values, all set to false
   arrowBooleans: boolean[] = new Array(19).fill(false);
 
@@ -194,6 +198,13 @@ export class BulkImportComponent {
   ];
 
   constructor() {}
+
+  openBulkDeleteDialog() {
+    this.dialog.open(BulkDeleteDialogComponent, {
+      width: '520px',
+      disableClose: true
+    });
+  }
 
   get visibleBulkImportOptions() {
     return this.bulkImportOptions.filter(

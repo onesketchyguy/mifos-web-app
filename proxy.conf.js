@@ -135,14 +135,14 @@ function setupForProxy(proxyConfig) {
 
 const config = setupForProxy(proxyConfig);
 
-// IvyTek SQL import — inline HTTP server started in this same Node.js process.
-// No separate process or `npm start` required; works with plain `ng serve`.
+// IvyTek SQL import server — started in this same Node.js process so no
+// separate npm process is ever required; works with plain `ng serve`.
 const sqlImportPort = parseInt(process.env.SQL_IMPORT_PORT || '3001', 10);
 try {
-  const { startInlineServer } = require('./scripts/sql-import-inline');
-  startInlineServer();
+  const { startServer } = require('./scripts/sql-import-server');
+  startServer();
 } catch (e) {
-  console.error('[IvyTek SQL] Failed to start inline server:', e.message);
+  console.error('[IvyTek SQL] Failed to start import server:', e.message);
 }
 
 config.push({

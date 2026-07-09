@@ -40,7 +40,7 @@
     "e2e:docker:logs": "docker compose -f docker-compose.e2e.yml logs -f",
     "headers:check": "node scripts/check-file-headers.js",
     "headers:add": "node scripts/add-file-headers.js",
-    "sql-server": "fuser -k 3001/tcp 2>/dev/null; ts-node --project scripts/tsconfig.server.json scripts/sql-import-server.ts"
+    "sql-server": "fuser -k 3001/tcp 2>/dev/null; node scripts/sql-import-server.js"
   },
   "dependencies": {
     "@angular/animations": "20.3.17",

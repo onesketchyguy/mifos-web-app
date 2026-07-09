@@ -8,6 +8,64 @@
 
 @use '../../../../assets/styles/colours' as *;
 
+// Semantic feedback palette shared by every status surface on this page
+// (banners, file-status rows, reconciliation tables, result rows).
+:host {
+  --feedback-success: #2e7d32;
+  --feedback-success-bg: rgb(46 125 50 / 8%);
+  --feedback-warning: #9a6400;
+  --feedback-warning-bg: rgb(240 173 78 / 16%);
+  --feedback-error: var(--md-sys-color-error, #ba1a1a);
+  --feedback-error-bg: rgb(186 26 26 / 8%);
+  --feedback-info: var(--md-sys-color-on-surface-variant, #666);
+  --feedback-info-bg: var(--md-sys-color-surface-container-low, #f7f7f7);
+}
+
+:host-context(.dark-theme) {
+  --feedback-success: #81c995;
+  --feedback-success-bg: rgb(129 201 149 / 12%);
+  --feedback-warning: #fdd663;
+  --feedback-warning-bg: rgb(253 214 99 / 12%);
+  --feedback-error-bg: rgb(242 184 181 / 12%);
+  --feedback-info-bg: rgb(255 255 255 / 6%);
+
+  .container {
+    .gap-2percent {
+      mat-card {
+        h3 {
+          color: $white;
+        }
+
+        h4 {
+          color: $white;
+        }
+      }
+    }
+
+    mat-card:last-child {
+      .documents {
+        color: $white;
+      }
+    }
+  }
+
+  .ivytek-import-card,
+  .ivytek-detail-card {
+    h3,
+    h4 {
+      color: $white;
+    }
+  }
+}
+
+// Grouped-status container: bordered, tinted, softly rounded
+%ivytek-panel {
+  padding: 16px;
+  border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+  border-radius: 8px;
+  background-color: var(--md-sys-color-surface-container-low, #f7f7f7);
+}
+
 .container {
   padding: 24px;
   max-width: 100%;
@@ -113,9 +171,23 @@
   }
 }
 
-.ivytek-import-card {
+.ivytek-import-card,
+.ivytek-detail-card {
   margin-bottom: 24px;
   padding: 24px;
+  border-radius: 20px;
+
+  h3 {
+    margin: 0 0 20px;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface, #333);
+  }
+
+  h4 {
+    margin: 24px 0 12px;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface, #333);
+  }
 
   mat-card-content {
     padding: 0;
@@ -126,16 +198,83 @@
     margin: 16px 0;
   }
 
-  mat-progress-bar {
-    margin: 16px 0 8px;
-  }
-
   .flex-13 {
     margin-top: 16px;
 
     button {
       padding: 8px 24px;
     }
+  }
+}
+
+// Unified message banner: same anatomy for errors, warnings,
+// successful results and informational notes.
+.ivytek-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-left: 4px solid var(--feedback-info);
+  border-radius: 8px;
+  background-color: var(--feedback-info-bg);
+
+  > i.fa {
+    flex-shrink: 0;
+    margin-top: 3px;
+    color: var(--feedback-info);
+  }
+
+  .ivytek-banner-body {
+    min-width: 0;
+
+    strong {
+      display: block;
+    }
+
+    p {
+      margin: 4px 0 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &.error {
+    border-left-color: var(--feedback-error);
+    background-color: var(--feedback-error-bg);
+
+    > i.fa {
+      color: var(--feedback-error);
+    }
+  }
+
+  &.warning {
+    border-left-color: var(--feedback-warning);
+    background-color: var(--feedback-warning-bg);
+
+    > i.fa {
+      color: var(--feedback-warning);
+    }
+  }
+
+  &.success {
+    border-left-color: var(--feedback-success);
+    background-color: var(--feedback-success-bg);
+
+    > i.fa {
+      color: var(--feedback-success);
+    }
+  }
+}
+
+// Unified progress block: label above a full-width bar
+.ivytek-progress {
+  margin: 16px 0;
+
+  .ivytek-progress-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.875rem;
+    color: var(--md-sys-color-on-surface-variant, #666);
   }
 }
 
@@ -195,16 +334,16 @@
 
   &.found {
     i.fa {
-      color: #2e7d32;
+      color: var(--feedback-success);
     }
   }
 
   &.missing {
     i.fa {
-      color: var(--md-sys-color-error, #ba1a1a);
+      color: var(--feedback-error);
     }
 
-    background-color: rgb(186 26 26 / 4%);
+    background-color: var(--feedback-error-bg);
   }
 
   &.optional {
@@ -266,14 +405,12 @@
 }
 
 .ivytek-reconciliation-result {
+  @extend %ivytek-panel;
+
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
   margin-top: 24px;
-  padding: 16px;
-  border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
-  border-radius: 8px;
-  background-color: var(--md-sys-color-surface-container-low, #f7f7f7);
   overflow-wrap: anywhere;
 
   span {
@@ -282,11 +419,9 @@
 }
 
 .ivytek-run-summary {
+  @extend %ivytek-panel;
+
   margin-bottom: 24px;
-  padding: 16px;
-  border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
-  border-radius: 8px;
-  background-color: var(--md-sys-color-surface-container-low, #f7f7f7);
 
   .ivytek-run-summary-header {
     display: flex;
@@ -316,25 +451,26 @@
   }
 }
 
+// Section header shared by every result block: title left, action right
+.ivytek-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+
+  h4 {
+    margin: 0;
+  }
+
+  @media (width <= 600px) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .ivytek-results {
   margin-top: 24px;
-
-  .ivytek-results-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 8px;
-
-    h4 {
-      margin: 0;
-    }
-
-    @media (width <= 600px) {
-      align-items: stretch;
-      flex-direction: column;
-    }
-  }
 
   mat-accordion {
     display: block;
@@ -390,7 +526,7 @@
 
     .result-message {
       flex: 1 0 100%;
-      color: var(--md-sys-color-error, #ba1a1a);
+      color: var(--feedback-error);
       font-size: 0.875rem;
     }
 
@@ -408,10 +544,8 @@
 
 .ivytek-detail-card {
   margin-top: 24px;
-  padding: 24px;
 
   mat-card-content {
-    padding: 0;
     flex-wrap: wrap;
 
     mat-form-field {
@@ -419,20 +553,8 @@
     }
   }
 
-  button {
+  > button {
     margin-top: 16px;
-  }
-}
-
-.ivytek-error-message {
-  margin-bottom: 16px;
-  padding: 16px;
-  border-left: 4px solid var(--md-sys-color-error, #ba1a1a);
-  background-color: rgb(186 26 26 / 8%);
-
-  p {
-    margin: 8px 0 0;
-    overflow-wrap: anywhere;
   }
 }
 
@@ -463,13 +585,13 @@ mat-paginator {
   margin-top: 16px;
 }
 
-.ivytek-sql-import-card {
-  margin-bottom: 24px;
-  padding: 24px;
+.ivytek-sql-db-section {
+  @extend %ivytek-panel;
+
+  margin: 16px 0;
 
   h4 {
-    margin: 0 0 12px;
-    font-size: 1.1rem;
+    margin: 0 0 8px;
   }
 }
 
@@ -477,19 +599,12 @@ mat-paginator {
   display: flex;
   flex-wrap: wrap;
   gap: 0 16px;
-  margin: 16px 0;
+  margin: 16px 0 0;
 
   mat-form-field {
     flex: 1 1 160px;
     min-width: 120px;
   }
-}
-
-.ivytek-sql-csv-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
 }
 
 .ivytek-sql-import-actions {
@@ -498,50 +613,59 @@ mat-paginator {
   margin-bottom: 16px;
 }
 
-.ivytek-staged-import-details {
-  margin-bottom: 16px;
-
-  summary {
-    cursor: pointer;
-    user-select: none;
-    margin-bottom: 8px;
-  }
+// Raw result tables share the mat-table look: bordered scroll container,
+// 500-weight headers, row dividers, semantic status colors.
+.ivytek-table-scroll {
+  overflow-x: auto;
+  margin-top: 16px;
+  border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+  border-radius: 8px;
 }
 
 .ivytek-reconciliation-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 16px;
   font-size: 0.875rem;
 
   th {
     text-align: left;
-    padding: 8px 12px;
-    border-bottom: 2px solid var(--md-sys-color-outline-variant, #cac4d0);
+    padding: 12px;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
     font-weight: 500;
   }
 
   td {
-    padding: 6px 12px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
   }
 
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
   tr.reconciliation-matched td:last-child {
-    color: var(--md-sys-color-primary, #1077b9);
+    color: var(--feedback-success);
     font-weight: 500;
   }
 
   tr.reconciliation-review {
-    background-color: rgb(186 26 26 / 6%);
+    background-color: var(--feedback-error-bg);
 
     td:last-child {
-      color: var(--md-sys-color-error, #ba1a1a);
+      color: var(--feedback-error);
       font-weight: 500;
     }
   }
 
   tr.reconciliation-info td:last-child {
     color: var(--md-sys-color-on-surface-variant, #666);
+  }
+
+  td.ivytek-actions-cell {
+    min-width: 320px;
+    max-width: 640px;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -555,35 +679,34 @@ mat-paginator {
   gap: 12px;
 }
 
-.ivytek-results-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+// Nested result cards (reconciliation, schedule/rate fixes) render as
+// outlined panels so they read as sections of the import card, not new pages.
+.ivytek-nested-card {
+  @extend %ivytek-panel;
 
-  h3 {
-    margin: 0;
+  margin-top: 24px;
+  box-shadow: none;
+
+  mat-card-header {
+    padding: 0;
   }
-}
 
-:host-context(.dark-theme) {
-  .container {
-    .gap-2percent {
-      mat-card {
-        h3 {
-          color: $white;
-        }
+  mat-card-title {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
 
-        h4 {
-          color: $white;
-        }
-      }
-    }
+  mat-card-subtitle {
+    margin-bottom: 12px;
+  }
 
-    mat-card:last-child {
-      .documents {
-        color: $white;
-      }
-    }
+  mat-card-content {
+    padding: 0;
+  }
+
+  .imports-table {
+    box-shadow: none;
+    border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
   }
 }

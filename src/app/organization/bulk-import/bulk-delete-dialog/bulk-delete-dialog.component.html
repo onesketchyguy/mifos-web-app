@@ -1,0 +1,88 @@
+<!--
+  Copyright since 2025 Mifos Initiative
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+
+<h1 mat-dialog-title>Bulk Delete Data</h1>
+
+<div mat-dialog-content>
+  <div class="warning-banner">
+    <span class="warning-icon">&#9888;</span>
+    <div>
+      <strong>This action cannot be undone.</strong>
+      @if (keepClients) {
+        <p>
+          This permanently truncates ALL loans, loan transactions, journal entries, and loan documents/notes across the
+          entire database — not just one office. Clients, groups, offices, users, and product/chart-of-accounts
+          configuration are left intact.
+        </p>
+      } @else {
+        <p>
+          This permanently truncates ALL clients, groups, loans, loan transactions, journal entries, and attached
+          documents across the entire database — not just one office. Offices, users, and product/chart-of-accounts
+          configuration are left intact.
+        </p>
+      }
+    </div>
+  </div>
+
+  @if (running) {
+    <div class="running-area">
+      <mat-progress-bar mode="indeterminate" color="warn"></mat-progress-bar>
+      <p>{{ statusMessage }}</p>
+    </div>
+  } @else if (form) {
+    <form [formGroup]="form">
+      <h4>SQL Database Connection</h4>
+      <div class="db-form-row">
+        <mat-form-field>
+          <mat-label>Host</mat-label>
+          <input matInput formControlName="host" required />
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Port</mat-label>
+          <input matInput type="number" formControlName="port" required />
+        </mat-form-field>
+      </div>
+      <mat-form-field class="full-width">
+        <mat-label>Database</mat-label>
+        <input matInput formControlName="dbname" required />
+      </mat-form-field>
+      <div class="db-form-row">
+        <mat-form-field>
+          <mat-label>User</mat-label>
+          <input matInput formControlName="user" required />
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Password</mat-label>
+          <input matInput type="password" formControlName="password" required />
+        </mat-form-field>
+      </div>
+
+      <div class="checkbox-row">
+        <mat-checkbox formControlName="keepClients">
+          Keep existing clients &amp; groups
+          <span class="sub-label">&nbsp;(only loans, transactions, and journal entries are cleared)</span>
+        </mat-checkbox>
+      </div>
+
+      <div class="confirm-area">
+        <p class="confirm-prompt">To confirm, type <code>DELETE</code> below:</p>
+        <mat-form-field class="full-width">
+          <mat-label>Type DELETE to confirm</mat-label>
+          <input matInput formControlName="confirmText" autocomplete="off" />
+        </mat-form-field>
+      </div>
+    </form>
+  }
+</div>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close [disabled]="running">Cancel</button>
+  <button mat-raised-button color="warn" [disabled]="!isValid || running" (click)="confirm()">
+    Delete Permanently
+  </button>
+</mat-dialog-actions>

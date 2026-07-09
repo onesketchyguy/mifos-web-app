@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(SQL_IMPORT_PORT=3099 node -e ' *)",
+      "Bash(lsof -i :3001 -sTCP:LISTEN -t)",
+      "Bash(xargs -r ps -o pid,cmd -p)",
+      "Bash(node -e \"require\\('./scripts/sql-import-inline.js'\\)\")",
+      "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U root -d fineract_default -c \"\\\\d m_loan\")",
+      "Bash(timeout 5 bash -c \"cat < /dev/tcp/localhost/5432\")",
+      "Bash(which docker *)",
+      "Read(//etc/**)",
+      "Bash(ps -o etimes= -p 27310)",
+      "Bash(curl -s -X POST http://127.0.0.1:3001/api/ivytek/interest-rate-fix -H \"Content-Type: application/json\" -d '{\"db\":{},\"loans\":[]}')",
+      "Bash(curl -s http://127.0.0.1:3001/api/ivytek/health)",
+      "Bash(lsof -i :4200 -sTCP:LISTEN -t)",
+      "Bash(git stash *)",
+      "Bash(node /tmp/claude-1000/-home-forrest-Documents-mifos-web-app/f22bc751-9d69-4877-a2f6-8a6290267b4c/scratchpad/test-interest-reconcile.js)",
+      "Bash(sed -i \"s/2018-04-14/2018-04-13/g\" test-interest-reconcile.js)",
+      "Bash(node test-interest-reconcile.js)",
+      "Bash(npx htmlhint *)",
+      "Bash(sed -i \"s/check\\('never-paid: interest charged from accrual start', up5?.interestChargedFromDate, '2010-12-25'\\);/check\\('never-paid: interest charged from accrual start', up5?.interestChargedFromDate, '2010-12-28'\\);/\" /tmp/claude-1000/-home-forrest-Documents-mifos-web-app/f22bc751-9d69-4877-a2f6-8a6290267b4c/scratchpad/test-interest-reconcile.js)",
+      "Bash(curl -sI --max-time 5 \"http://192.168.1.125:8080/fineract-provider/actuator/health\")",
+      "Bash(curl -s --max-time 8 -u mifos:password -H \"Fineract-Platform-TenantId: default\" \"http://192.168.1.125:8080/fineract-provider/api/v1/businessdate\")",
+      "Bash(curl -s --max-time 8 -u mifos:password -H \"Fineract-Platform-TenantId: default\" \"http://192.168.1.125:8080/fineract-provider/api/v1/businessdate/BUSINESS_DATE\")",
+      "Bash(nc -z -w2 192.168.1.125 5432)",
+      "Bash(nc -z -w2 192.168.1.125 3306)",
+      "Bash(node /tmp/claude-1000/-home-forrest-Documents-mifos-web-app/f22bc751-9d69-4877-a2f6-8a6290267b4c/scratchpad/test-loan-state-sync.js)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(node --check scripts/sql-import-server.js)",
+      "Bash(lsof -i :4200 -sTCP:LISTEN)",
+      "Bash(lsof -i :3001 -sTCP:LISTEN)"
+    ]
+  }
+}
