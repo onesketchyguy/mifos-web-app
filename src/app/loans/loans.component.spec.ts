@@ -8,7 +8,7 @@
 
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { LoansComponent } from './loans.component';
@@ -38,7 +38,9 @@ describe('LoansComponent search filtering', () => {
           totalFilteredRecords: 1
         })
       ),
-      getLoanAccountAssociationDetails: jest.fn(() => of(rawLoan))
+      getLoanAccountAssociationDetails: jest.fn(() => of(rawLoan)),
+      // Report not registered: components exercise the legacy fallback path.
+      getLoanListReport: jest.fn(() => throwError(() => new Error('report not registered')))
     } as any;
     searchService = {
       getSearchResults: jest.fn(() => of([]))
@@ -111,5 +113,25 @@ describe('LoansComponent search filtering', () => {
 
     expect(component.loans).toEqual([]);
     expect(component.totalRecords).toBe(0);
+  });
+
+  it('uses the loan list report for all pages and skips per-loan enrichment when available', () => {
+    const reportLoans = [
+      { ...rawLoan, balanceNow: 100 },
+      {
+        id: 43,
+        accountNo: 'LN-43',
+        status: { value: 'Active' },
+        balanceNow: 200
+      }
+    ];
+    loansService.getLoanListReport.mockReturnValueOnce(of(reportLoans));
+    loansService.getLoanAccountAssociationDetails.mockClear();
+
+    component.ngOnInit();
+
+    expect(component.totalRecords).toBe(2);
+    expect(component.loans).toEqual(reportLoans);
+    expect(loansService.getLoanAccountAssociationDetails).not.toHaveBeenCalled();
   });
 });

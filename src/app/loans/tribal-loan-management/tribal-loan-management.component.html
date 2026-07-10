@@ -52,7 +52,11 @@
         @if (isLoading) {
           <mat-progress-bar mode="indeterminate"></mat-progress-bar>
           <div class="loading-message">
-            {{ 'labels.text.Loading tribal loan data Please wait' | translate }}
+            @if (hasUnverifiedRows) {
+              {{ 'labels.text.Showing cached data while verifying' | translate }}
+            } @else {
+              {{ 'labels.text.Loading tribal loan data Please wait' | translate }}
+            }
           </div>
         }
 
@@ -63,8 +67,14 @@
             <p class="no-data">{{ 'labels.text.No loans found for the selected source' | translate }}</p>
           }
 
-          <!-- Table — appears as soon as first matching loan streams in -->
+          <!-- Table — collapsible so the posting card below stays reachable on large loads -->
           @if (currentLoans.length > 0) {
+            <div class="table-collapse-header" (click)="toggleTable()">
+              <span>{{ 'labels.heading.Loans' | translate }} ({{ currentLoans.length }})</span>
+              <mat-icon aria-hidden="true">{{ isTableCollapsed ? 'expand_more' : 'expand_less' }}</mat-icon>
+            </div>
+          }
+          @if (currentLoans.length > 0 && !isTableCollapsed) {
             <div class="table-container">
               <table mat-table matSort [dataSource]="dataSource">
                 <ng-container matColumnDef="loanId">
@@ -120,7 +130,7 @@
                 </ng-container>
 
                 <tr mat-header-row *matHeaderRowDef="displayColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: displayColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayColumns" [class.unverified-row]="row.fromCache"></tr>
               </table>
             </div>
           }
@@ -150,6 +160,194 @@
       </mat-card-actions>
     </mat-card>
   </form>
+
+  <!-- Post Payments — appears once data is loaded -->
+  @if (dataLoaded) {
+    <form [formGroup]="paymentForm">
+      <mat-card class="section-card">
+        <mat-card-header>
+          <mat-card-title>{{ 'labels.heading.Post Payments' | translate }}</mat-card-title>
+        </mat-card-header>
+
+        <mat-card-content>
+          <div class="controls-row">
+            <mat-form-field (click)="transactionDatePicker.open()">
+              <mat-label>{{ 'labels.inputs.Transaction Date' | translate }}</mat-label>
+              <input
+                matInput
+                [min]="minDate"
+                [max]="maxDate"
+                [matDatepicker]="transactionDatePicker"
+                formControlName="transactionDate"
+                required
+              />
+              <mat-datepicker-toggle matSuffix [for]="transactionDatePicker"></mat-datepicker-toggle>
+              <mat-datepicker #transactionDatePicker></mat-datepicker>
+            </mat-form-field>
+
+            <mat-form-field>
+              <mat-label>{{ 'labels.inputs.Payment Type' | translate }}</mat-label>
+              <mat-select formControlName="paymentTypeId">
+                <mat-option value="">{{ 'labels.accounting.NONE' | translate }}</mat-option>
+                @for (paymentType of paymentTypes; track paymentType.id) {
+                  <mat-option [value]="paymentType.id">{{ paymentType.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field class="notes-field">
+              <mat-label>{{ 'labels.inputs.Note' | translate }}</mat-label>
+              <textarea matInput formControlName="note" cdkTextareaAutosize cdkAutosizeMinRows="1"></textarea>
+            </mat-form-field>
+          </div>
+
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="summary-label">{{ 'labels.inputs.Transactions' | translate }}</span>
+              <span class="summary-value">{{ postableLoans.length }}</span>
+            </div>
+            <div class="summary-item total-item">
+              <span class="summary-label">{{ 'labels.inputs.Transaction Total' | translate }}</span>
+              <span class="summary-value">{{ postableTotal | formatNumber }}</span>
+            </div>
+          </div>
+
+          @if (!isLoading && postableLoans.length === 0) {
+            <div class="alert">
+              <div class="message">
+                <i class="fa fa-exclamation-circle alert-check"></i>
+                {{ 'labels.text.No Tribal Loan payments were generated.' | translate }}
+              </div>
+            </div>
+          }
+
+          @if (submitError) {
+            <div class="alert m-t-16">
+              <div class="message">
+                <i class="fa fa-exclamation-circle alert-check"></i>
+                {{ submitError }}
+              </div>
+            </div>
+          }
+
+          @if (postableLoans.length > 0) {
+            <div class="validation-row">
+              <mat-checkbox formControlName="validated">
+                {{ 'labels.inputs.Validated Tribal payment data' | translate }}
+              </mat-checkbox>
+              <p class="posting-hint">{{ 'labels.text.Only active loans with amounts are posted' | translate }}</p>
+            </div>
+          }
+
+          @if (isSubmittingPayments) {
+            <div class="loading-panel">
+              <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+              <div class="loading-message">
+                {{ 'labels.text.Submitting payments Please wait' | translate }}
+              </div>
+            </div>
+          }
+        </mat-card-content>
+
+        <mat-card-actions class="actions-row">
+          <button
+            type="button"
+            mat-raised-button
+            color="primary"
+            [disabled]="!canPostPayments"
+            (click)="postPayments()"
+            *mifosxHasPermission="'REPAYMENT_LOAN'"
+          >
+            <mat-icon aria-hidden="true">send</mat-icon>
+            {{ 'labels.buttons.Post Payments' | translate }}
+          </button>
+        </mat-card-actions>
+      </mat-card>
+    </form>
+  }
+
+  <!-- Submission report — appears after payments are posted -->
+  @if (submissionResults.length) {
+    <mat-card class="section-card">
+      <mat-card-header>
+        <mat-card-title>{{ 'labels.heading.Submission Report' | translate }}</mat-card-title>
+      </mat-card-header>
+
+      <mat-card-content>
+        <div class="summary-grid compact">
+          <div class="summary-item">
+            <span class="summary-label">{{ 'labels.inputs.Success Count' | translate }}</span>
+            <span class="summary-value">{{ successfulSubmissionResults.length }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">{{ 'labels.inputs.Failure Count' | translate }}</span>
+            <span class="summary-value">{{ failedSubmissionResults.length }}</span>
+          </div>
+          <div class="summary-item total-item">
+            <span class="summary-label">{{ 'labels.inputs.Transaction Total' | translate }}</span>
+            <span class="summary-value">{{ submittedPaymentTotal | formatNumber }}</span>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table mat-table [dataSource]="submissionResults">
+            <ng-container matColumnDef="loanId">
+              <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Loan Id' | translate }}</th>
+              <td mat-cell *matCellDef="let result">{{ getResultIdentifier(result) }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="borrowerName">
+              <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Borrower Name' | translate }}</th>
+              <td mat-cell *matCellDef="let result">{{ result.payment.borrowerName }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="transactionAmount">
+              <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Amount' | translate }}</th>
+              <td mat-cell *matCellDef="let result" class="amount-cell">
+                {{ result.payment.transactionAmount | formatNumber }}
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="result">
+              <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Status' | translate }}</th>
+              <td mat-cell *matCellDef="let result">
+                @if (result.success) {
+                  {{ 'labels.inputs.Successful' | translate }}
+                } @else {
+                  {{ 'labels.inputs.Failed' | translate }}
+                }
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="transactionId">
+              <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Transaction Id' | translate }}</th>
+              <td mat-cell *matCellDef="let result">{{ result.transactionId }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="errorMessage">
+              <th mat-header-cell *matHeaderCellDef>{{ 'labels.inputs.Error' | translate }}</th>
+              <td mat-cell *matCellDef="let result">{{ result.errorMessage }}</td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="submissionDisplayColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: submissionDisplayColumns"></tr>
+          </table>
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions class="actions-row">
+        <button
+          type="button"
+          mat-stroked-button
+          [disabled]="isExportingSubmissionReport"
+          (click)="exportSubmissionReport()"
+        >
+          <mat-icon aria-hidden="true">file_download</mat-icon>
+          {{ 'labels.buttons.Export' | translate }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+  }
 </div>
 
 <!-- Floating panel — Add Loan above, summary below; both anchored bottom-right -->

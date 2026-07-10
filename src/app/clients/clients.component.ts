@@ -8,10 +8,7 @@
 
 /** Angular Imports. */
 import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
-import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { MatCheckbox } from '@angular/material/checkbox';
-import { MatSnackBar } from '@angular/material/snack-bar';
-import { TranslateService } from '@ngx-translate/core';
 import { MatPaginator, PageEvent } from '@angular/material/paginator';
 import { MatSort, Sort, MatSortHeader } from '@angular/material/sort';
 import {
@@ -48,8 +45,7 @@ import {
 import { environment } from '../../environments/environment';
 import { ClientsService } from './clients.service';
 import { ClientListCacheService } from './services/client-list-cache.service';
-import { Dates } from 'app/core/utils/dates';
-import { SettingsService } from 'app/settings/settings.service';
+import { ClientListSummary, ClientSummaryReportService } from './services/client-summary-report.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { MatProgressBar } from '@angular/material/progress-bar';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
@@ -86,13 +82,9 @@ export const DEBOUNCE_MS = 500;
 })
 export class ClientsComponent implements OnInit, OnDestroy {
   private clientService = inject(ClientsService);
-  private formBuilder = inject(UntypedFormBuilder);
   private searchService = inject(SearchService);
-  private dateUtils = inject(Dates);
-  private settingsService = inject(SettingsService);
-  private snackBar = inject(MatSnackBar);
-  private translateService = inject(TranslateService);
   private clientCache = inject(ClientListCacheService);
+  private clientSummaryReport = inject(ClientSummaryReportService);
 
   private destroy$ = new Subject<void>();
   private searchInput$ = new Subject<string>();
@@ -135,13 +127,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     'activeLoansCount'
   ];
   dataSource: MatTableDataSource<any> = new MatTableDataSource();
-  duplicateClientGroups: Array<{ name: string; clients: any[]; primaryClient: any }> = [];
-  showAdvancedOptions = false;
-  duplicateMergeForm: UntypedFormGroup;
-  duplicateMergeClosureReasons: any[] = [];
-  duplicateMergeTemplateLoading = false;
-  duplicateMergeTemplateLoaded = false;
-  mergingClientIds: number[] = [];
 
   existsClientsToFilter = false;
   notExistsClientsToFilter = false;
@@ -162,7 +147,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
   @ViewChild(MatSort) sort: MatSort;
 
   ngOnInit() {
-    this.createDuplicateMergeForm();
     this.searchInput$
       .pipe(debounceTime(DEBOUNCE_MS), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe((value) => {
@@ -174,19 +158,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     if (environment.preloadClients) {
       this.getClients();
     }
-  }
-
-  createDuplicateMergeForm(): void {
-    this.duplicateMergeForm = this.formBuilder.group({
-      closureReasonId: [
-        '',
-        Validators.required
-      ],
-      confirmDestructiveMerge: [
-        false,
-        Validators.requiredTrue
-      ]
-    });
   }
 
   ngOnDestroy() {
@@ -236,7 +207,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.totalRows = cached.totalRows;
       this.existsClientsToFilter = cached.clients.length > 0;
       this.notExistsClientsToFilter = !this.existsClientsToFilter;
-      this.refreshDuplicateClientGroups();
       if (!this.clientCache.isStale(cached)) {
         return;
       }
@@ -275,7 +245,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
       .subscribe(
         ({ data, clients }: { data: any; clients: any[] }) => {
           this.dataSource.data = clients;
-          this.refreshDuplicateClientGroups();
 
           this.totalRows = data.totalElements;
 
@@ -388,7 +357,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
             this.clientCache.set(cacheKey, enrichedClients, this.totalRows);
           }
           this.loadingClientIds.clear();
-          this.refreshDuplicateClientGroups();
           if (sortEvent) {
             this.applyLocalSort(sortEvent);
             this.localSort = true;
@@ -403,113 +371,35 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.dataSource.data = [...this.dataSource.data].sort(this.makeSortComparator(event));
   }
 
-  toggleAdvancedOptions(): void {
-    this.showAdvancedOptions = !this.showAdvancedOptions;
-    if (this.showAdvancedOptions) {
-      this.loadDuplicateMergeTemplate();
-    }
-  }
-
-  private loadDuplicateMergeTemplate(): void {
-    if (this.duplicateMergeTemplateLoaded || this.duplicateMergeTemplateLoading) {
-      return;
-    }
-    this.duplicateMergeTemplateLoading = true;
-    this.clientService.getClientCommandTemplate('close').subscribe({
-      next: (templateData: any) => {
-        this.duplicateMergeClosureReasons = templateData?.narrations || [];
-        this.duplicateMergeTemplateLoaded = true;
-        this.duplicateMergeTemplateLoading = false;
-      },
-      error: () => {
-        this.duplicateMergeTemplateLoading = false;
-      }
-    });
-  }
-
-  private refreshDuplicateClientGroups(): void {
-    const groups = new Map<string, any[]>();
-    this.dataSource.data.forEach((client: any) => {
-      const normalizedName = this.normalizeClientName(client.displayName);
-      if (!normalizedName) {
-        return;
-      }
-      const group = groups.get(normalizedName) || [];
-      group.push(client);
-      groups.set(normalizedName, group);
-    });
-
-    this.duplicateClientGroups = Array.from(groups.values())
-      .filter((clients: any[]) => clients.length > 1)
-      .map((clients: any[]) => ({
-        name: clients[0].displayName,
-        clients,
-        primaryClient: this.getPrimaryDuplicateClientCandidate(clients)
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  private normalizeClientName(name: string): string {
-    return (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-  }
-
-  private getPrimaryDuplicateClientCandidate(clients: any[]): any {
-    return [...clients].sort((a: any, b: any) => {
-      const aHasEntityId = a.entityIdNumber ? 1 : 0;
-      const bHasEntityId = b.entityIdNumber ? 1 : 0;
-      if (aHasEntityId !== bHasEntityId) {
-        return bHasEntityId - aHasEntityId;
-      }
-      return (a.id || 0) - (b.id || 0);
-    })[0];
-  }
-
-  isPrimaryDuplicateClient(group: any, client: any): boolean {
-    return group.primaryClient?.id === client.id;
-  }
-
-  isMergingDuplicateClient(client: any): boolean {
-    return this.mergingClientIds.includes(client.id);
-  }
-
-  mergeDuplicateClient(group: any, client: any): void {
-    if (
-      this.isPrimaryDuplicateClient(group, client) ||
-      this.duplicateMergeForm.invalid ||
-      this.isMergingDuplicateClient(client)
-    ) {
-      return;
-    }
-
-    const dateFormat = this.settingsService.dateFormat;
-    const data = {
-      closureDate: this.dateUtils.formatDate(this.settingsService.businessDate, dateFormat),
-      closureReasonId: this.duplicateMergeForm.get('closureReasonId').value,
-      dateFormat,
-      locale: this.settingsService.language.code
-    };
-
-    this.mergingClientIds = [
-      ...this.mergingClientIds,
-      client.id
-    ];
-    this.clientService.executeClientCommand(client.id.toString(), 'close', data).subscribe({
-      next: () => {
-        this.mergingClientIds = this.mergingClientIds.filter((clientId: number) => clientId !== client.id);
-        this.snackBar.open(
-          this.translateService.instant('labels.text.Duplicate client merged into primary candidate.'),
-          this.translateService.instant('labels.buttons.Close'),
-          { duration: 3000 }
-        );
-        this.getClients();
-      },
-      error: () => {
-        this.mergingClientIds = this.mergingClientIds.filter((clientId: number) => clientId !== client.id);
-      }
-    });
-  }
-
   private getClientRowDetails(client: any): Observable<{
+    entityIdNumber: string | number | null;
+    loanOfficer: string;
+    activeBalance: number | null;
+    overdueBalance: number | null;
+    daysInArrears: number | null;
+    activeLoansCount: number | null;
+  }> {
+    return this.clientSummaryReport.getSummaries().pipe(
+      switchMap((summaries: Map<number, ClientListSummary> | null) => {
+        const summary = summaries?.get(Number(client?.id));
+        if (!summary) {
+          // Report unavailable (or client added since it was cached):
+          // fall back to the legacy per-client requests.
+          return this.getClientRowDetailsLegacy(client);
+        }
+        return of({
+          entityIdNumber: summary.entityIdNumber,
+          loanOfficer: this.getLoanOfficerValue(client) || summary.loanOfficer,
+          activeBalance: summary.activeBalance,
+          overdueBalance: summary.overdueBalance,
+          daysInArrears: summary.daysInArrears,
+          activeLoansCount: summary.activeLoansCount
+        });
+      })
+    );
+  }
+
+  private getClientRowDetailsLegacy(client: any): Observable<{
     entityIdNumber: string | number | null;
     loanOfficer: string;
     activeBalance: number | null;
@@ -685,7 +575,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   sortChanged(event: Sort) {
+    // displayName is sorted locally too: the /v2/clients/search sort
+    // property is not honoured by the server, so alphabetize across all
+    // pages from the local index like the computed columns.
     const clientSideColumns = [
+      'displayName',
       'activeBalance',
       'overdueBalance',
       'entityIdNumber',

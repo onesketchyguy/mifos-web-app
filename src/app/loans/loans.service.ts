@@ -47,6 +47,62 @@ export class LoansService {
   }
 
   /**
+   * Gets every loan with the computed list-page columns from the
+   * LoanListSummary report (registered by scripts/register-list-reports.sql)
+   * in a single query. Errors if the report is not registered; callers fall
+   * back to per-loan enrichment.
+   * @returns {Observable<any[]>}
+   */
+  getLoanListReport(): Observable<any[]> {
+    const httpParams = new HttpParams().set('genericResultSet', 'false');
+    return this.http
+      .get('/runreports/LoanListSummary', {
+        params: httpParams,
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+      })
+      .pipe(map((rows: any) => (Array.isArray(rows) ? rows : []).map((row: any) => this.mapLoanReportRow(row))));
+  }
+
+  /** Shapes a LoanListSummary report row like the loan objects the list page reads. */
+  private mapLoanReportRow(row: any): any {
+    return {
+      ...row,
+      status: row.status ? { value: row.status, active: row.status === 'Active' } : row.status,
+      balanceNow: this.toReportNumber(row.balanceNow),
+      amountNowDue: this.toReportNumber(row.amountNowDue),
+      projectedAccruedInterest: this.toReportNumber(row.projectedAccruedInterest),
+      interestRate: this.toReportNumber(row.interestRate),
+      amountLast: this.toReportNumber(row.amountLast),
+      daysLate: this.toReportNumber(row.daysLate)
+    };
+  }
+
+  private toReportNumber(value: any): number | undefined {
+    if (value === null || value === undefined || value === '') {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return isNaN(parsed) ? undefined : parsed;
+  }
+
+  /**
+   * Gets every loan with its Tribal Loan Data datatable row from the
+   * TribalLoanData report (registered by scripts/register-list-reports.sql)
+   * in a single query. Errors if the report is not registered; callers fall
+   * back to per-loan datatable reads.
+   * @returns {Observable<any[]>}
+   */
+  getTribalLoanDataReport(): Observable<any[]> {
+    const httpParams = new HttpParams().set('genericResultSet', 'false');
+    return this.http
+      .get('/runreports/TribalLoanData', {
+        params: httpParams,
+        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+      })
+      .pipe(map((rows: any) => (Array.isArray(rows) ? rows : [])));
+  }
+
+  /**
    * @param {string} loanId loanId of the loan.
    * @returns {Observable<any>}
    */

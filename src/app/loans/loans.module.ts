@@ -90,7 +90,6 @@ import { LoanReamortizeComponent } from './loans-view/loan-account-actions/loan-
 import { LoanTermVariationsTabComponent } from './loans-view/loan-term-variations-tab/loan-term-variations-tab.component';
 import { AddInterestPauseComponent } from './loans-view/loan-account-actions/add-interest-pause/add-interest-pause.component';
 import { LoansActiveClientMembersComponent } from './loans-account-stepper/loans-active-client-members/loans-active-client-members.component';
-import { TribalLoanPaymentsComponent } from './tribal-loan-payments/tribal-loan-payments.component';
 import { TribalLoanManagementComponent } from './tribal-loan-management/tribal-loan-management.component';
 import { SelectLoanDialogComponent } from './select-loan-dialog/select-loan-dialog.component';
 
@@ -177,7 +176,6 @@ import { SelectLoanDialogComponent } from './select-loan-dialog/select-loan-dial
     LoanTermVariationsTabComponent,
     AddInterestPauseComponent,
     LoansActiveClientMembersComponent,
-    TribalLoanPaymentsComponent,
     TribalLoanManagementComponent,
     SelectLoanDialogComponent
   ],

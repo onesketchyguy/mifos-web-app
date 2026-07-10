@@ -10,7 +10,7 @@
 import { Injectable, inject } from '@angular/core';
 
 /** rxjs Imports */
-import { forkJoin, from, Observable, of } from 'rxjs';
+import { concat, forkJoin, from, Observable, of } from 'rxjs';
 import { catchError, map, mergeMap, switchMap, tap, toArray } from 'rxjs/operators';
 
 /** Custom Services */
@@ -19,8 +19,6 @@ import { SettingsService } from 'app/settings/settings.service';
 import { LoansService } from '../loans.service';
 
 export type TribalPaymentSource = 'percap' | 'pension' | 'payroll';
-
-export type TribalLoanPaymentSkipReason = 'inactiveLoan' | 'missingTribalData' | 'missingPaymentAmount';
 
 export interface TribalLoanData {
   loan: any;
@@ -36,7 +34,8 @@ export interface TribalLoanData {
   percap: number | null;
   pension: number | null;
   payroll: number | null;
-  skipReason?: TribalLoanPaymentSkipReason;
+  /** True while this row comes from the local cache and has not been re-verified against the server. */
+  fromCache?: boolean;
 }
 
 export interface TribalLoanPayment {
@@ -52,17 +51,6 @@ export interface TribalLoanPayment {
   pension: number | null;
   payroll: number | null;
   dataFields: Record<string, any>;
-}
-
-export interface TribalLoanPaymentPreview {
-  paymentSource: TribalPaymentSource;
-  loansScanned: number;
-  loansWithTribalData: number;
-  transactionCount: number;
-  transactionTotal: number;
-  sourceTotals: Record<TribalPaymentSource, number>;
-  payments: TribalLoanPayment[];
-  skippedLoans: TribalLoanData[];
 }
 
 export interface TribalLoanPaymentSubmitOptions {
@@ -91,48 +79,193 @@ export class TribalLoanPaymentsService {
   private readonly loanDatatableConcurrency = 20;
   private readonly paymentSubmissionConcurrency = 4;
   private readonly tribalLoanDatatableName = 'Tribal Loan Data';
+  private readonly tribalLoanCacheKey = 'mifosXTribalLoanDataCache';
+  private readonly tribalLoanCacheVersion = 1;
 
   private loansService = inject(LoansService);
   private settingsService = inject(SettingsService);
   private dateUtils = inject(Dates);
 
   /**
-   * Fetches every loan, reads its Tribal Loan Data datatable row, and builds a payment preview.
-   * @param {TribalPaymentSource} paymentSource Selected Tribal payment field.
-   * @returns {Observable<TribalLoanPaymentPreview>} Tribal payment preview.
-   */
-  getTribalLoanPaymentPreview(paymentSource: TribalPaymentSource): Observable<TribalLoanPaymentPreview> {
-    return this.getAllTribalLoanData().pipe(
-      map((tribalLoanData: TribalLoanData[]) => this.createPaymentPreview(tribalLoanData, paymentSource))
-    );
-  }
-
-  /**
-   * Fetches all loans and their Tribal Loan Data datatable fields.
-   * @returns {Observable<TribalLoanData[]>} Tribal loan data list (buffered after all complete).
-   */
-  getAllTribalLoanData(): Observable<TribalLoanData[]> {
-    return this.getAllLoans().pipe(
-      switchMap((loans: any[]) =>
-        from(loans).pipe(
-          mergeMap((loan: any) => this.getTribalLoanData(loan), this.loanDatatableConcurrency),
-          toArray()
-        )
-      )
-    );
-  }
-
-  /**
-   * Same as getAllTribalLoanData but emits each loan as soon as its datatable row is resolved,
-   * rather than buffering until all loans are complete. Use for streaming / progressive UI.
+   * Fetches all loans and their Tribal Loan Data datatable fields, emitting each
+   * loan as soon as it is resolved.
+   *
+   * Rows cached from the previous load are emitted first (flagged `fromCache`)
+   * so the screen has an instant basis to render, then live data re-emits every
+   * loan: cached rows get verified/replaced and remaining loans are scanned for
+   * additions. Consumers must upsert by loanId and drop rows still flagged
+   * `fromCache` when the stream completes (their loans no longer exist).
+   *
+   * Live data loads in a single query via the TribalLoanData report (registered
+   * by scripts/register-list-reports.sql) and falls back to per-loan datatable
+   * reads — cached loans verified first — when the report is not registered.
    * @returns {Observable<TribalLoanData>} Stream of individual tribal loan data items.
    */
   streamTribalLoanData(): Observable<TribalLoanData> {
-    return this.getAllLoans().pipe(
-      switchMap((loans: any[]) =>
-        from(loans).pipe(mergeMap((loan: any) => this.getTribalLoanData(loan), this.loanDatatableConcurrency))
-      )
+    const cachedLoans = this.readTribalLoanCache();
+    const verifiedLoans: TribalLoanData[] = [];
+    const liveLoans$ = this.loansService.getTribalLoanDataReport().pipe(
+      switchMap((reportRows: any[]) => from(reportRows.map((reportRow: any) => this.mapTribalReportRow(reportRow)))),
+      catchError(() => {
+        this.warnReportFallback();
+        return this.streamTribalLoanDataPerLoan(cachedLoans);
+      }),
+      tap({
+        next: (loanData: TribalLoanData) => verifiedLoans.push(loanData),
+        complete: () => this.writeTribalLoanCache(verifiedLoans)
+      })
     );
+    return concat(from(cachedLoans), liveLoans$);
+  }
+
+  private warnReportFallback(): void {
+    console.warn(
+      '[IvyTek] TribalLoanData report unavailable; falling back to one datatable request per loan. ' +
+        'Register it with scripts/register-list-reports.sql to load this screen in a single query.'
+    );
+  }
+
+  /**
+   * Per-loan fallback for streamTribalLoanData (one datatable request per loan).
+   * Loans that were cached are verified first so the rows already on screen are
+   * accurate before the scan for additional tribal data reaches the rest.
+   */
+  private streamTribalLoanDataPerLoan(cachedLoans: TribalLoanData[]): Observable<TribalLoanData> {
+    const cachedLoanIds = new Set(cachedLoans.map((loanData: TribalLoanData) => loanData.loanId));
+    return this.getAllLoans().pipe(
+      switchMap((loans: any[]) => {
+        const cachedFirst = [
+          ...loans.filter((loan: any) => cachedLoanIds.has(`${loan.id}`)),
+          ...loans.filter((loan: any) => !cachedLoanIds.has(`${loan.id}`))
+        ];
+        return from(cachedFirst).pipe(
+          mergeMap((loan: any) => this.getTribalLoanData(loan), this.loanDatatableConcurrency)
+        );
+      })
+    );
+  }
+
+  /** Reads the cached tribal loan rows saved by the previous completed load. */
+  private readTribalLoanCache(): TribalLoanData[] {
+    try {
+      const cache = JSON.parse(localStorage.getItem(this.tribalLoanCacheKey) || 'null');
+      if (
+        cache?.version !== this.tribalLoanCacheVersion ||
+        cache?.server !== this.getTribalLoanCacheScope() ||
+        !Array.isArray(cache.loans)
+      ) {
+        return [];
+      }
+      return cache.loans.map(
+        (cachedLoan: any): TribalLoanData => ({
+          ...cachedLoan,
+          loan: {
+            id: cachedLoan.loanId,
+            accountNo: cachedLoan.accountNo,
+            externalId: cachedLoan.externalId,
+            clientName: cachedLoan.borrowerName,
+            status: { value: cachedLoan.status, active: cachedLoan.isActive },
+            balanceNow: cachedLoan.balanceNow
+          },
+          fromCache: true
+        })
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  /** Saves the loans with tribal data from a completed load as the next load's basis. */
+  private writeTribalLoanCache(loans: TribalLoanData[]): void {
+    try {
+      localStorage.setItem(
+        this.tribalLoanCacheKey,
+        JSON.stringify({
+          version: this.tribalLoanCacheVersion,
+          server: this.getTribalLoanCacheScope(),
+          savedAt: new Date().toISOString(),
+          loans: loans
+            .filter((loanData: TribalLoanData) => loanData.hasTribalData)
+            .map((loanData: TribalLoanData) => this.getTribalLoanCacheEntry(loanData))
+        })
+      );
+    } catch {
+      // Cache writes (private browsing, quota) must never break the screen.
+    }
+  }
+
+  /** Updates a single loan's cache entry after an edit, so it survives navigation. */
+  private patchTribalLoanCache(loanData: TribalLoanData): void {
+    try {
+      const cache = JSON.parse(localStorage.getItem(this.tribalLoanCacheKey) || 'null');
+      if (
+        cache?.version !== this.tribalLoanCacheVersion ||
+        cache?.server !== this.getTribalLoanCacheScope() ||
+        !Array.isArray(cache.loans)
+      ) {
+        return;
+      }
+      const cacheEntry = this.getTribalLoanCacheEntry(loanData);
+      const entryIndex = cache.loans.findIndex((cachedLoan: any) => cachedLoan.loanId === loanData.loanId);
+      if (entryIndex >= 0) {
+        cache.loans[entryIndex] = cacheEntry;
+      } else {
+        cache.loans.push(cacheEntry);
+      }
+      localStorage.setItem(this.tribalLoanCacheKey, JSON.stringify(cache));
+    } catch {
+      // Cache writes (private browsing, quota) must never break the screen.
+    }
+  }
+
+  /** Strips the transient fields from a loan before persisting it. */
+  private getTribalLoanCacheEntry(loanData: TribalLoanData): any {
+    const { loan, fromCache, ...cacheEntry } = loanData;
+    return cacheEntry;
+  }
+
+  /** Cache entries are only valid for the server + tenant they were loaded from. */
+  private getTribalLoanCacheScope(): string {
+    return `${this.settingsService.serverUrl}|${this.settingsService.tenantIdentifier}`;
+  }
+
+  /**
+   * Maps a TribalLoanData report row (one loan plus its datatable row as JSON)
+   * to the same shape the per-loan path produces.
+   */
+  private mapTribalReportRow(reportRow: any): TribalLoanData {
+    const loan = {
+      id: reportRow.id,
+      accountNo: reportRow.accountNo,
+      externalId: reportRow.externalId,
+      clientName: reportRow.borrowerName,
+      status: { value: reportRow.status, active: `${reportRow.active}` === 'true' },
+      balanceNow: reportRow.balanceNow
+    };
+    return this.mapTribalLoanData(loan, this.parseReportTribalData(reportRow.tribalData));
+  }
+
+  /** Parses the JSON datatable row returned by the report into a datatable-like shape. */
+  private parseReportTribalData(tribalData: any): any {
+    let fields = tribalData;
+    if (typeof tribalData === 'string') {
+      try {
+        fields = JSON.parse(tribalData);
+      } catch {
+        return null;
+      }
+    }
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+      return null;
+    }
+
+    const row = Object.keys(fields).reduce((dataFields: Record<string, any>, fieldName: string) => {
+      if (!this.isSystemDatatableColumn(fieldName)) {
+        dataFields[fieldName] = fields[fieldName];
+      }
+      return dataFields;
+    }, {});
+    return { row };
   }
 
   /**
@@ -151,6 +284,7 @@ export class TribalLoanPaymentsService {
       locale: this.settingsService.language.code,
       dateFormat: this.settingsService.dateFormat
     };
+    const appliedFields: Record<string, any> = {};
 
     for (const [
       source,
@@ -159,16 +293,25 @@ export class TribalLoanPaymentsService {
       const fieldName = this.findDataFieldName(tribalLoanData.dataFields, source);
       if (fieldName) {
         payload[fieldName] = value ?? 0;
+        appliedFields[fieldName] = value ?? 0;
       }
     }
 
+    const persistSavedFields = tap(() => {
+      Object.assign(tribalLoanData.dataFields, appliedFields);
+      this.patchTribalLoanCache(tribalLoanData);
+    });
+
     if (tribalLoanData.hasTribalData) {
-      return this.loansService.editLoanDatatableEntry(tribalLoanData.loanId, this.tribalLoanDatatableName, payload);
+      return this.loansService
+        .editLoanDatatableEntry(tribalLoanData.loanId, this.tribalLoanDatatableName, payload)
+        .pipe(persistSavedFields);
     }
     return this.loansService.addLoanDatatableEntry(tribalLoanData.loanId, this.tribalLoanDatatableName, payload).pipe(
       tap(() => {
         tribalLoanData.hasTribalData = true;
-      })
+      }),
+      persistSavedFields
     );
   }
 
@@ -312,38 +455,20 @@ export class TribalLoanPaymentsService {
       ])
     };
 
-    if (!tribalLoanData.isActive) {
-      tribalLoanData.skipReason = 'inactiveLoan';
-    } else if (!tribalLoanData.hasTribalData) {
-      tribalLoanData.skipReason = 'missingTribalData';
-    }
-
     return tribalLoanData;
   }
 
-  private createPaymentPreview(
-    tribalLoanData: TribalLoanData[],
-    paymentSource: TribalPaymentSource
-  ): TribalLoanPaymentPreview {
-    const sourceTotals = this.getSourceTotals(tribalLoanData);
-    const payments: TribalLoanPayment[] = [];
-    const skippedLoans: TribalLoanData[] = [];
-
-    tribalLoanData.forEach((loanData: TribalLoanData) => {
-      const transactionAmount = loanData[paymentSource];
-      if (loanData.skipReason) {
-        skippedLoans.push(loanData);
-        return;
-      }
-      if (!transactionAmount || transactionAmount <= 0) {
-        skippedLoans.push({
-          ...loanData,
-          skipReason: 'missingPaymentAmount'
-        });
-        return;
-      }
-
-      payments.push({
+  /**
+   * Builds the repayment transactions to post: one per active loan with a
+   * positive amount for the selected payment source.
+   * @param {TribalLoanData[]} tribalLoanData Loaded tribal loan data.
+   * @param {TribalPaymentSource} paymentSource Selected Tribal payment field.
+   * @returns {TribalLoanPayment[]} Payments ready for submitPayments.
+   */
+  createPayments(tribalLoanData: TribalLoanData[], paymentSource: TribalPaymentSource): TribalLoanPayment[] {
+    return tribalLoanData
+      .filter((loanData: TribalLoanData) => loanData.isActive && (loanData[paymentSource] ?? 0) > 0)
+      .map((loanData: TribalLoanData) => ({
         loanId: loanData.loanId,
         accountNo: loanData.accountNo,
         externalId: loanData.externalId,
@@ -351,24 +476,12 @@ export class TribalLoanPaymentsService {
         status: loanData.status,
         balanceNow: loanData.balanceNow,
         paymentSource,
-        transactionAmount,
+        transactionAmount: loanData[paymentSource] as number,
         percap: loanData.percap,
         pension: loanData.pension,
         payroll: loanData.payroll,
         dataFields: loanData.dataFields
-      });
-    });
-
-    return {
-      paymentSource,
-      loansScanned: tribalLoanData.length,
-      loansWithTribalData: tribalLoanData.filter((loanData: TribalLoanData) => loanData.hasTribalData).length,
-      transactionCount: payments.length,
-      transactionTotal: this.sumPayments(payments),
-      sourceTotals,
-      payments,
-      skippedLoans
-    };
+      }));
   }
 
   private getDatatableFields(datatable: any): Record<string, any> {
@@ -406,25 +519,6 @@ export class TribalLoanPaymentsService {
       normalizedCandidateNames.includes(this.normalizeKey(fieldName))
     );
     return dataFieldName ? this.parseDecimal(dataFields[dataFieldName]) : null;
-  }
-
-  private getSourceTotals(tribalLoanData: TribalLoanData[]): Record<TribalPaymentSource, number> {
-    return {
-      percap: this.sumSource(tribalLoanData, 'percap'),
-      pension: this.sumSource(tribalLoanData, 'pension'),
-      payroll: this.sumSource(tribalLoanData, 'payroll')
-    };
-  }
-
-  private sumSource(tribalLoanData: TribalLoanData[], paymentSource: TribalPaymentSource): number {
-    return tribalLoanData.reduce((total: number, loanData: TribalLoanData) => {
-      const amount = loanData.isActive ? loanData[paymentSource] : 0;
-      return total + (amount && amount > 0 ? amount : 0);
-    }, 0);
-  }
-
-  private sumPayments(payments: TribalLoanPayment[]): number {
-    return payments.reduce((total: number, payment: TribalLoanPayment) => total + payment.transactionAmount, 0);
   }
 
   private submitPayment(

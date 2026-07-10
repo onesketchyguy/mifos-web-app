@@ -7,6 +7,69 @@
  */
 
 .tribal-loan-management {
+  .section-card {
+    margin-top: 16px;
+  }
+
+  .notes-field {
+    flex: 1;
+    min-width: 240px;
+  }
+
+  .summary-grid {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .summary-item {
+    flex: 1 1 160px;
+    border: 1px solid rgb(0 0 0 / 12%);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .summary-grid.compact .summary-item {
+    flex-basis: 192px;
+  }
+
+  .summary-label,
+  .summary-value {
+    display: block;
+  }
+
+  .summary-label {
+    font-size: 12px;
+  }
+
+  .summary-value {
+    margin-top: 8px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .total-item {
+    border-width: 2px;
+  }
+
+  .validation-row {
+    margin-top: 16px;
+  }
+
+  .posting-hint {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: rgb(0 0 0 / 54%);
+  }
+
+  .loading-panel {
+    margin-top: 16px;
+    border: 1px solid rgb(0 0 0 / 12%);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
   .header-actions {
     display: flex;
     justify-content: flex-end;
@@ -18,6 +81,21 @@
     display: inline-flex;
     gap: 8px;
     align-items: center;
+  }
+
+  .table-collapse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 12px 0 8px;
+    font-size: 15px;
+    font-weight: 500;
+    user-select: none;
+
+    &:hover {
+      opacity: 0.8;
+    }
   }
 
   .table-container {
@@ -32,6 +110,11 @@
   .amount-cell {
     text-align: right;
     white-space: nowrap;
+  }
+
+  /* Cached rows not yet re-verified against the server this load. */
+  .unverified-row {
+    opacity: 0.55;
   }
 
   .amount-input {

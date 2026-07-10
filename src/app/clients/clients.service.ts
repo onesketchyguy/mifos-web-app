@@ -8,7 +8,8 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams, HttpBackend, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams, HttpBackend, HttpHeaders } from '@angular/common/http';
+import { SKIP_ERROR_HANDLER } from 'app/core/http/error-handler.interceptor';
 
 /** rxjs Imports */
 import { Observable, of, throwError } from 'rxjs';
@@ -266,6 +267,21 @@ export class ClientsService {
 
   getClientIdentifiers(clientId: string) {
     return this.http.get(`/clients/${clientId}/identifiers`);
+  }
+
+  /**
+   * Gets per-client list metrics (entity id, loan officer, balances, arrears,
+   * loan counts) for every client from the ClientListSummary report
+   * (registered by scripts/register-list-reports.sql) in a single query.
+   * Errors if the report is not registered; callers fall back to per-client
+   * requests.
+   */
+  getClientListReport(): Observable<any> {
+    const httpParams = new HttpParams().set('genericResultSet', 'false');
+    return this.http.get('/runreports/ClientListSummary', {
+      params: httpParams,
+      context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+    });
   }
 
   getClientIdentifierTemplate(clientId: string) {

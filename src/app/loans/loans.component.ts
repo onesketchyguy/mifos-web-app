@@ -10,7 +10,7 @@
 import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatPaginator, PageEvent } from '@angular/material/paginator';
-import { MatSort, MatSortHeader } from '@angular/material/sort';
+import { MatSort, MatSortHeader, Sort } from '@angular/material/sort';
 import { MatIcon } from '@angular/material/icon';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { MatDialog } from '@angular/material/dialog';
@@ -137,6 +137,10 @@ export class LoansComponent implements OnInit {
   filterRequest = 0;
   /** Whether full loan index is loaded for filters. */
   allLoansLoaded = false;
+  /** State of the LoanListSummary report load: while pending, per-loan enrichment is held back. */
+  reportState: 'pending' | 'loaded' | 'failed' = 'pending';
+  /** Active sort applied across all pages when the full loan index is loaded. */
+  private sortEvent: Sort | null = null;
   /** Track which loan IDs are currently being enriched. */
   loadingLoanIds = new Set<string>();
   /** Raw text query used for API-backed search fallbacks. */
@@ -176,6 +180,7 @@ export class LoansComponent implements OnInit {
    */
   ngOnInit(): void {
     this.loadOfficeOptions();
+    this.loadLoanListReport();
     this.dataSource.sortingDataAccessor = (loan: any, column: string) => {
       return this.getSortValue(loan, column);
     };
@@ -234,9 +239,47 @@ export class LoansComponent implements OnInit {
    * Retrieves loans for the current page.
    */
   getLoans() {
+    if (this.reportState === 'loaded') {
+      this.applyFilteredLoans();
+      return;
+    }
     this.loansService.getLoans(this.currentPage * this.pageSize, this.pageSize).subscribe((loansData: any) => {
       this.setLoans(loansData);
     });
+  }
+
+  /**
+   * Loads the full loan index from the LoanListSummary report in one query.
+   * On failure (report not registered), falls back to the legacy per-loan
+   * enrichment for the current page.
+   */
+  private loadLoanListReport(): void {
+    this.loansService.getLoanListReport().subscribe({
+      next: (loans: any[]) => {
+        this.reportState = 'loaded';
+        this.allLoans = loans;
+        this.allLoansLoaded = true;
+        this.loadingLoanIds.clear();
+        this.updateFilterOptions(this.allLoans);
+        this.applyFilteredLoans();
+      },
+      error: () => {
+        this.reportState = 'failed';
+        this.enrichLoans(++this.enrichmentRequest);
+      }
+    });
+  }
+
+  /**
+   * Handles sort changes. When the full loan index is loaded, sorting is
+   * applied across all pages instead of just the visible one.
+   * @param {Sort} event Sort event.
+   */
+  sortChanged(event: Sort) {
+    this.sortEvent = event.direction ? event : null;
+    if (this.allLoansLoaded) {
+      this.applyFilteredLoans();
+    }
   }
 
   /**
@@ -510,6 +553,10 @@ export class LoansComponent implements OnInit {
 
   private setLoans(loansData: any) {
     const enrichmentRequest = ++this.enrichmentRequest;
+    if (this.reportState === 'loaded') {
+      // The report already supplies the full, enriched loan index.
+      return;
+    }
     this.loans = loansData?.pageItems || [];
     this.totalRecords = loansData?.totalFilteredRecords || this.loans.length;
     this.dataSource.data = this.loans;
@@ -517,11 +564,17 @@ export class LoansComponent implements OnInit {
       this.dataSource.sort = this.sort;
     }
     this.updateFilterOptions();
+    if (this.reportState === 'pending') {
+      // Hold back the per-loan request storm while the report loads;
+      // show row spinners meanwhile. On report failure this is retried.
+      this.loadingLoanIds = new Set(this.loans.map((loan: any) => loan.id.toString()));
+      return;
+    }
     this.enrichLoans(enrichmentRequest);
   }
 
   private enrichLoans(enrichmentRequest: number) {
-    if (!this.loans.length) {
+    if (!this.loans.length || this.reportState === 'loaded') {
       return;
     }
 
@@ -687,13 +740,16 @@ export class LoansComponent implements OnInit {
   }
 
   private applyFilteredLoans() {
-    const filteredLoans = this.allLoans.filter((loan: any) =>
+    let filteredLoans = this.allLoans.filter((loan: any) =>
       this.matchesLoanFilters(loan, {
         search: this.textFilter,
         status: this.statusFilter,
         company: this.companyFilter
       })
     );
+    if (this.sortEvent) {
+      filteredLoans = [...filteredLoans].sort(this.makeSortComparator(this.sortEvent));
+    }
     this.totalRecords = filteredLoans.length;
     this.loans = filteredLoans.slice(this.currentPage * this.pageSize, (this.currentPage + 1) * this.pageSize);
     this.dataSource.data = this.loans;
@@ -701,6 +757,19 @@ export class LoansComponent implements OnInit {
       this.dataSource.sort = this.sort;
     }
     this.enrichLoans(++this.enrichmentRequest);
+  }
+
+  private makeSortComparator(event: Sort): (a: any, b: any) => number {
+    const direction = event.direction === 'asc' ? 1 : -1;
+    return (a: any, b: any) => {
+      const aValue = this.getSortValue(a, event.active);
+      const bValue = this.getSortValue(b, event.active);
+      const comparison =
+        typeof aValue === 'number' && typeof bValue === 'number'
+          ? aValue - bValue
+          : String(aValue).localeCompare(String(bValue));
+      return comparison * direction;
+    };
   }
 
   private hasActiveFilters(): boolean {

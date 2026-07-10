@@ -34,7 +34,8 @@ describe('ClientsComponent — debounce search', () => {
     clientsService = {
       searchByText: jest.fn(() => of(emptyPage)),
       getClientData: jest.fn((clientId: string) => of({ id: Number(clientId), displayName: `Client ${clientId}` })),
-      getClientDatatables: jest.fn(() => of([]))
+      getClientDatatables: jest.fn(() => of([])),
+      getClientListReport: jest.fn(() => of([]))
     } as any;
     searchService = {
       getSearchResults: jest.fn(() => of([]))
@@ -214,5 +215,23 @@ describe('ClientsComponent — debounce search', () => {
     component.ngOnDestroy();
     jest.advanceTimersByTime(DEBOUNCE_MS);
     expect(clientsService.searchByText).not.toHaveBeenCalled();
+  });
+
+  it('should alphabetize by name locally across all pages instead of using the server sort', () => {
+    component.dataSource.data = [
+      { id: 2, displayName: 'Zeinab Diallo' },
+      { id: 1, displayName: 'Amara Toure' }
+    ];
+    component.totalRows = 2;
+
+    component.sortChanged({ active: 'displayName', direction: 'asc' });
+
+    expect(component.dataSource.data.map((client: any) => client.displayName)).toEqual([
+      'Amara Toure',
+      'Zeinab Diallo'
+    ]);
+    expect(component.localSort).toBe(true);
+    // Must not fall through to the server-side sort, which ignores displayName.
+    expect(clientsService.searchByText).not.toHaveBeenCalledWith('', 0, expect.any(Number), 'displayName', 'asc');
   });
 });
