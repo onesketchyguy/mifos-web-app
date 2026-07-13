@@ -168,7 +168,6 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
         multiDisburseLoan: this.loanProductsTemplate.multiDisburseLoan,
         maxTrancheCount: this.loanProductsTemplate.maxTrancheCount,
         outstandingLoanBalance: this.loanProductsTemplate.outstandingLoanBalance,
-        //allowFullTermForTranche: this.loanProductsTemplate.allowFullTermForTranche,
         enableDownPayment: this.loanProductsTemplate.enableDownPayment,
         enableInstallmentLevelDelinquency: this.loanProductsTemplate.enableInstallmentLevelDelinquency,
         loanScheduleType: this.loanProductsTemplate.loanScheduleType.code,
@@ -404,7 +403,6 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
         isInterestRecalculationEnabled: [false],
         holdGuaranteeFunds: [false],
         multiDisburseLoan: [false],
-        // allowFullTermForTranche: [false],
         allowAttributeConfiguration: [true],
         allowPartialPeriodInterestCalculation: [false],
         allowAttributeOverrides: this.formBuilder.group({
@@ -745,8 +743,7 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
           this.loanProductSettingsForm.removeControl('maxTrancheCount');
           this.loanProductSettingsForm.removeControl('outstandingLoanBalance');
           this.loanProductSettingsForm.patchValue({
-            disallowExpectedDisbursements: false,
-            allowFullTermForTranche: false
+            disallowExpectedDisbursements: false
           });
         }
       });
@@ -816,7 +813,6 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
           this.advancedTransactionProcessingStrategyDisabled = false;
           this.isAdvancedTransactionProcessingStrategy = false;
           this.loanProductSettingsForm.removeControl('chargeOffBehaviour');
-          // this.loanProductSettingsForm.patchValue({ allowFullTermForTranche: false });
         } else {
           // Only Advanced Payment Allocation Strategy
           this.transactionProcessingStrategyDataBase.some((cn: CodeName) => {

@@ -326,16 +326,6 @@
           <mat-checkbox class="flex-48 margin-v" labelPosition="before" formControlName="disallowExpectedDisbursements">
             {{ 'labels.inputs.Disallow Expected Disbursements' | translate }}
           </mat-checkbox>
-          @if (loanProductSettingsForm.value.loanScheduleType === 'PROGRESSIVE') {
-            <mat-checkbox
-              class="flex-48 margin-v"
-              labelPosition="before"
-              formControlName="allowFullTermForTranche"
-              matTooltip="{{ 'tooltips.Allow full term length for each tranche disbursement' | translate }}"
-            >
-              {{ 'labels.inputs.Allow full term for each tranche' | translate }}
-            </mat-checkbox>
-          }
         </div>
       }
 
