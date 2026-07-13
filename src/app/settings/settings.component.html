@@ -63,6 +63,49 @@
     <mat-expansion-panel>
       <mat-expansion-panel-header>
         <mat-panel-title>
+          {{ 'labels.menus.Main Items' | translate }}
+        </mat-panel-title>
+      </mat-expansion-panel-header>
+
+      <div class="layout-column">
+        <mat-slide-toggle [formControl]="customizeMainItems">
+          {{ 'labels.inputs.Customize main menu items' | translate }}
+        </mat-slide-toggle>
+
+        @if (customizeMainItems.value) {
+          <p class="text-muted shortcut-hint">{{ 'labels.text.Main menu items hint' | translate }}</p>
+
+          <div class="shortcut-list" cdkDropList (cdkDropListDropped)="dropMenuItem($event)">
+            @for (item of selectedMainItems; track item.id; let i = $index) {
+              <div class="shortcut-item" cdkDrag>
+                <fa-icon icon="bars" class="shortcut-drag-handle" cdkDragHandle></fa-icon>
+                <fa-icon [icon]="item.icon" [fixedWidth]="true"></fa-icon>
+                <span class="shortcut-label">{{ item.label | translate }}</span>
+                <button mat-icon-button matTooltip="{{ 'tooltips.Delete' | translate }}" (click)="removeMenuItem(i)">
+                  <fa-icon icon="times"></fa-icon>
+                </button>
+              </div>
+            }
+          </div>
+
+          <mat-form-field>
+            <mat-label>{{ 'labels.inputs.Add Menu Item' | translate }}</mat-label>
+            <mat-select [formControl]="addMenuItemControl" (selectionChange)="addMenuItem($event.value)">
+              @for (item of availableMainItems; track item.id) {
+                <mat-option [value]="item">
+                  <fa-icon [icon]="item.icon" [fixedWidth]="true"></fa-icon>
+                  {{ item.label | translate }}
+                </mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
+      </div>
+    </mat-expansion-panel>
+
+    <mat-expansion-panel>
+      <mat-expansion-panel-header>
+        <mat-panel-title>
           {{ 'labels.inputs.Images' | translate }}
         </mat-panel-title>
       </mat-expansion-panel-header>

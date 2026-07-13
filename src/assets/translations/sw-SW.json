@@ -1546,6 +1546,8 @@
       "Recipient Summary": "Muhtasari wa Mpokeaji"
     },
     "inputs": {
+      "Add Menu Item": "Ongeza kipengee cha menyu",
+      "Customize main menu items": "Badilisha vipengee vya menyu kuu",
       "Loan Account Status": "Hali ya akaunti ya mkopo",
       "Floating rate": "Kiwango cha Kuelea",
       "Differential rate": "Kiwango cha Tofauti",
@@ -3248,6 +3250,7 @@
     },
     "text": {
       "Loading data": "Inapakia data",
+      "Main menu items hint": "Chagua vipengee vinavyoonekana kwenye menyu ya upau wa kando na uburute ili kupanga upya.",
       "No repayment schedule available": "Hakuna ratiba ya malipo inayopatikana",
       "About Us": "Kuhusu Sisi",
       "A": "A",

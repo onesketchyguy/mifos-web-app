@@ -1623,6 +1623,8 @@
     "inputs": {
       "Active Balance": "Active Balance",
       "Accrued Interest": "Accrued Interest",
+      "Add Menu Item": "Add Menu Item",
+      "Customize main menu items": "Customize main menu items",
       "Overdue Balance": "Overdue Balance",
       "Arrears": "Days in Arrears",
       "Active Loans": "Active Loans",
@@ -3395,6 +3397,7 @@
     },
     "text": {
       "About Us": "About Us",
+      "Main menu items hint": "Choose which items appear in the sidebar menu and drag to reorder them.",
       "No file selected": "No file selected",
       "optional": "optional",
       "Override individual files": "Override individual files",

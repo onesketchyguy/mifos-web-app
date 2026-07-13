@@ -6,7 +6,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-export const frequentActivities: any[] = [
+export interface SidebarShortcut {
+  path: string;
+  icon: string;
+  toolTip: string;
+}
+
+export const frequentActivities: SidebarShortcut[] = [
   {
     path: '/clients',
     icon: 'user',

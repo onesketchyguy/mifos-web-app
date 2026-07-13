@@ -1549,6 +1549,8 @@
       "Recipient Summary": "Resumen del destinatario"
     },
     "inputs": {
+      "Add Menu Item": "Agregar elemento de menú",
+      "Customize main menu items": "Personalizar los elementos del menú principal",
       "Loan Account Status": "Estado de la cuenta",
       "Floating rate": "Tasa flotante",
       "Differential rate": "Tasa diferencial",
@@ -3253,6 +3255,7 @@
     },
     "text": {
       "Loading data": "Cargando datos",
+      "Main menu items hint": "Elija qué elementos aparecen en el menú de la barra lateral y arrástrelos para reordenarlos.",
       "withoutCategory": "Sin categoría",
       "No repayment schedule available": "No hay cronograma de pagos encontrado",
       "About Us": "Sobre Nosotros",

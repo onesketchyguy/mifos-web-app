@@ -15,3 +15,41 @@
   justify-content: flex-end;
   margin-top: 16px;
 }
+
+.shortcut-hint {
+  margin: 8px 0;
+}
+
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: inherit;
+
+  .shortcut-drag-handle {
+    cursor: move;
+  }
+
+  .shortcut-label {
+    flex: 1;
+  }
+}
+
+.cdk-drag-preview {
+  box-shadow:
+    0 5px 5px -3px rgb(0 0 0 / 20%),
+    0 8px 10px 1px rgb(0 0 0 / 14%),
+    0 3px 14px 2px rgb(0 0 0 / 12%);
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.4;
+}

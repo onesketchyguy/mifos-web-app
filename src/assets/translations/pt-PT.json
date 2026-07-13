@@ -1548,6 +1548,8 @@
       "Recipient Summary": "Resumo do destinatário"
     },
     "inputs": {
+      "Add Menu Item": "Adicionar item de menu",
+      "Customize main menu items": "Personalizar os itens do menu principal",
       "Loan Account Status": "Estado da conta do empréstimo",
       "Floating rate": "Taxa flutuante",
       "Differential rate": "Taxa diferencial",
@@ -3251,6 +3253,7 @@
     },
     "text": {
       "Loading data": "Carregando dados",
+      "Main menu items hint": "Escolha quais itens aparecem no menu da barra lateral e arraste para reordená-los.",
       "No repayment schedule available": "Nenhum cronograma de reembolso encontrada",
       "About Us": "Sobre Nós",
       "A": "A",

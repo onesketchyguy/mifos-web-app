@@ -8,6 +8,7 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
+import { Subject } from 'rxjs';
 import { AlertService } from 'app/core/alert/alert.service';
 import { Dates } from 'app/core/utils/dates';
 
@@ -298,6 +299,47 @@ export class SettingsService {
 
   get themeDarkEnabled(): boolean {
     return JSON.parse(localStorage.getItem('mifosXThemeDarkEnabled'));
+  }
+
+  /** Emits whenever the sidebar Main Items customization is saved. */
+  sidebarMainItemsChanged$ = new Subject<void>();
+
+  /**
+   * Storage key for the sidebar Main Items, scoped to the signed-in user
+   * (tenant + username) so the customization is per-user, not per-browser.
+   */
+  private get sidebarMainItemsKey(): string {
+    let username = '';
+    try {
+      const credentials = sessionStorage.getItem('mifosXCredentials') || localStorage.getItem('mifosXCredentials');
+      username = credentials ? JSON.parse(credentials).username || '' : '';
+    } catch {
+      username = '';
+    }
+    return `mifosXSidebarMainItems:${this.tenantIdentifier || 'default'}:${username}`;
+  }
+
+  /**
+   * Sets the user's custom sidebar Main Items (ordered list of item ids).
+   * Pass null to clear the customization and fall back to the default menu.
+   * @param {string[] | null} ids Ordered main nav item ids.
+   */
+  setSidebarMainItems(ids: string[] | null) {
+    if (ids === null) {
+      localStorage.removeItem(this.sidebarMainItemsKey);
+    } else {
+      localStorage.setItem(this.sidebarMainItemsKey, JSON.stringify(ids));
+    }
+    this.sidebarMainItemsChanged$.next();
+  }
+
+  /**
+   * Returns the signed-in user's custom sidebar Main Items, or null if not
+   * customized.
+   */
+  get sidebarMainItems(): string[] | null {
+    const stored = localStorage.getItem(this.sidebarMainItemsKey);
+    return stored === null ? null : JSON.parse(stored);
   }
 
   setShowConfigWizard(enabled: boolean) {

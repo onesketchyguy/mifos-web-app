@@ -1549,6 +1549,8 @@
       "Recipient Summary": "Riepilogo destinatario"
     },
     "inputs": {
+      "Add Menu Item": "Aggiungi voce di menu",
+      "Customize main menu items": "Personalizza le voci del menu principale",
       "Loan Account Status": "Stato del conto di prestito",
       "Floating rate": "Tasso variabile",
       "Differential rate": "Tasso differenziale",
@@ -3251,6 +3253,7 @@
     },
     "text": {
       "Loading data": "Caricamento dati",
+      "Main menu items hint": "Scegli quali voci appaiono nel menu della barra laterale e trascinale per riordinarle.",
       "No repayment schedule available": "Nessun piano di rimborso trovato",
       "About Us": "Chi Siamo",
       "A": "UN",
@@ -3390,7 +3393,7 @@
       "Create Journal Entry": "Crea voce di diario",
       "Create Loan Product": "Crea prodotto di prestito",
       "Create Loan Originator": "Crea originatore di prestiti",
-      "View Loan Originator": "Visualizza originatore di prestiti",
+      "View Loan Originator": "Visualizza Originatore Prestito",
       "Edit Loan Originator": "Modifica originatore di prestiti",
       "Create Loans Account": "Crea un conto prestiti",
       "Create Near Breach": "Crea Quasi Violazione",
@@ -3903,7 +3906,6 @@
       "View Group": "Visualizza gruppo",
       "View Holidays": "Visualizza festività",
       "View Hook": "Visualizza gancio",
-      "View Loan Originator": "Visualizza Originatore Prestito",
       "View Loan Product": "Visualizza il prodotto di prestito",
       "View Near Breach": "Visualizza Quasi Violazione",
       "View Notification Configuration": "Visualizza la configurazione delle notifiche",

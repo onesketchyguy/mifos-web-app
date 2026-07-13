@@ -1552,6 +1552,8 @@
       "Recipient Summary": "Récapitulatif du destinataire"
     },
     "inputs": {
+      "Add Menu Item": "Ajouter un élément de menu",
+      "Customize main menu items": "Personnaliser les éléments du menu principal",
       "Loan Account Status": "Statut du compte de prêt",
       "Floating rate": "Taux flottant",
       "Differential rate": "Taux différentiel",
@@ -3255,6 +3257,7 @@
     },
     "text": {
       "Loading data": "Chargement des données",
+      "Main menu items hint": "Choisissez les éléments affichés dans le menu de la barre latérale et faites-les glisser pour les réorganiser.",
       "No repayment schedule available": "Aucun calendrier de remboursement trouvé",
       "About Us": "À Propos de Nous",
       "A": "UN",

@@ -1548,6 +1548,8 @@
       "Recipient Summary": "प्राप्तकर्ता सारांश"
     },
     "inputs": {
+      "Add Menu Item": "मेनु वस्तु थप्नुहोस्",
+      "Customize main menu items": "मुख्य मेनु वस्तुहरू अनुकूलन गर्नुहोस्",
       "Loan Account Status": "ऋण खाता स्थिति",
       "Floating rate": "चल दर",
       "Differential rate": "अन्तर दर",
@@ -3251,6 +3253,7 @@
     },
     "text": {
       "Loading data": "डाटा लोड गर्दै",
+      "Main menu items hint": "साइडबार मेनुमा कुन वस्तुहरू देखिन्छन् भनेर छान्नुहोस् र क्रम मिलाउन तान्नुहोस्।",
       "No repayment schedule available": "कुनै पुनर्भुक्तानी तालिका उपलब्ध छैन",
       "About Us": "हाम्रो बारेमा",
       "Account Transfers": "खाता स्थानान्तरण",

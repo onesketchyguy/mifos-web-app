@@ -1549,6 +1549,8 @@
       "Recipient Summary": "Přehled příjemce"
     },
     "inputs": {
+      "Add Menu Item": "Přidat položku nabídky",
+      "Customize main menu items": "Přizpůsobit položky hlavní nabídky",
       "Loan Account Status": "Stav úvěrového účtu",
       "Floating rate": "Plovoucí sazba",
       "Differential rate": "Diferenční sazba",
@@ -3252,6 +3254,7 @@
     },
     "text": {
       "Loading data": "Načítání dat",
+      "Main menu items hint": "Vyberte, které položky se zobrazí v nabídce bočního panelu, a přetažením změňte jejich pořadí.",
       "withoutCategory": "Bez kategorie",
       "No repayment schedule available": "Není nalezeny žádný splátkový kalendář",
       "About Us": "O Nás",

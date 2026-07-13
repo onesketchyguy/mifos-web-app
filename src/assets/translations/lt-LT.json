@@ -1548,6 +1548,8 @@
       "Recipient Summary": "Gavėjo suvestinė"
     },
     "inputs": {
+      "Add Menu Item": "Pridėti meniu elementą",
+      "Customize main menu items": "Tinkinti pagrindinio meniu elementus",
       "Loan Account Status": "Paskolos sąskaitos būsena",
       "Floating rate": "Slankioji norma",
       "Differential rate": "Diferencinis tarifas",
@@ -3251,6 +3253,7 @@
     },
     "text": {
       "Loading data": "Duomenų įkėlimas",
+      "Main menu items hint": "Pasirinkite, kurie elementai rodomi šoninės juostos meniu, ir vilkite, kad pakeistumėte jų tvarką.",
       "No repayment schedule available": "Nėra galimo grąžinimo grafiko",
       "About Us": "Apie Mus",
       "A": "A",
@@ -3390,7 +3393,7 @@
       "Create Journal Entry": "Sukurti žurnalo įrašą",
       "Create Loan Product": "Sukurti paskolos produktą",
       "Create Loan Originator": "Sukurti paskolos teikėją",
-      "View Loan Originator": "Peržiūrėti paskolos teikėją",
+      "View Loan Originator": "Peržiūrėti Paskolos Teikėją",
       "Edit Loan Originator": "Redaguoti paskolos teikėją",
       "Create Loans Account": "Sukurti paskolų sąskaitą",
       "Create Near Breach": "Sukurti Beveik Pažeidimą",
@@ -3903,7 +3906,6 @@
       "View Group": "Peržiūrėti grupę",
       "View Holidays": "Žiūrėti šventes",
       "View Hook": "Žiūrėti kabliuką",
-      "View Loan Originator": "Peržiūrėti Paskolos Teikėją",
       "View Loan Product": "Peržiūrėkite paskolos produktą",
       "View Near Breach": "Peržiūrėti Beveik Pažeidimą",
       "View Notification Configuration": "Peržiūrėkite pranešimų konfigūraciją",

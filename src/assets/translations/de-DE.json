@@ -1551,6 +1551,8 @@
       "Recipient Summary": "Empfängerübersicht"
     },
     "inputs": {
+      "Add Menu Item": "Menüpunkt hinzufügen",
+      "Customize main menu items": "Hauptmenüpunkte anpassen",
       "Loan Account Status": "Kreditkontostatus",
       "Floating rate": "Variabler Zinssatz",
       "Differential rate": "Differenzzinssatz",
@@ -3254,6 +3256,7 @@
     },
     "text": {
       "Loading data": "Daten werden geladen",
+      "Main menu items hint": "Wählen Sie, welche Einträge im Seitenleistenmenü angezeigt werden, und ändern Sie die Reihenfolge per Drag-and-drop.",
       "withoutCategory": "Ohne Kategorie",
       "No repayment schedule available": "Kein Rückzahlungsplan gefunden",
       "About Us": "Über Uns",

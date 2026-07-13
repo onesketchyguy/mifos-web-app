@@ -8,6 +8,7 @@
 
 /** Angular Imports */
 import { Component, OnInit, Input, TemplateRef, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
@@ -21,7 +22,8 @@ import { ConfigurationWizardService } from '../../../configuration-wizard/config
 import { DocumentationLinksService } from 'app/shared/services/documentation-links.service';
 
 /** Custom Imports */
-import { frequentActivities } from './frequent-activities';
+import { frequentActivities, SidebarShortcut } from './frequent-activities';
+import { mainNavItems, defaultMainNavItemIds, MainNavItem } from './main-nav-items';
 import { SettingsService } from 'app/settings/settings.service';
 import { NgClass } from '@angular/common';
 import { MatIconButton, MatButton } from '@angular/material/button';
@@ -59,6 +61,7 @@ import { catchError, finalize, of, take } from 'rxjs';
 })
 export class SidenavComponent implements OnInit, AfterViewInit {
   private router = inject(Router);
+  private elementRef = inject(ElementRef);
   dialog = inject(MatDialog);
   private authenticationService = inject(AuthenticationService);
   private settingsService = inject(SettingsService);
@@ -75,9 +78,11 @@ export class SidenavComponent implements OnInit, AfterViewInit {
   /** Array of all user activities */
   userActivity: string[];
   /** Mapped Activites */
-  mappedActivities: any[] = [];
+  mappedActivities: SidebarShortcut[] = [];
   /** Collection of possible frequent activities */
-  frequentActivities: any[] = frequentActivities;
+  frequentActivities: SidebarShortcut[] = frequentActivities;
+  /** Main Items to render, honouring the user's customization from settings */
+  navItems: MainNavItem[] = [];
   /** Whether remittance feature is enabled */
   mifosRemittanceEnabled = remittanceConfig.isRemittanceEnabled;
 
@@ -85,10 +90,16 @@ export class SidenavComponent implements OnInit, AfterViewInit {
   @ViewChild('logo') logo: ElementRef<any>;
   /* Template for popover on logo */
   @ViewChild('templateLogo') templateLogo: TemplateRef<any>;
-  /* Refernce of chart of accounts */
-  @ViewChild('chartOfAccounts') chartOfAccounts: ElementRef<any>;
   /* Template for popover on chart of accounts */
   @ViewChild('templateChartOfAccounts') templateChartOfAccounts: TemplateRef<any>;
+
+  /**
+   * Returns the rendered element of a Main Items entry, if present.
+   * @param {string} id Nav item id.
+   */
+  navEl(id: string): HTMLElement | null {
+    return this.elementRef.nativeElement.querySelector(`[data-nav-id="${id}"]`);
+  }
 
   /**
    * @param {Router} router Router for navigation.
@@ -100,6 +111,7 @@ export class SidenavComponent implements OnInit, AfterViewInit {
    */
   constructor() {
     this.userActivity = JSON.parse(localStorage.getItem('mifosXLocation'));
+    this.settingsService.sidebarMainItemsChanged$.pipe(takeUntilDestroyed()).subscribe(() => this.setNavItems());
   }
 
   /**
@@ -109,6 +121,31 @@ export class SidenavComponent implements OnInit, AfterViewInit {
     const credentials = this.authenticationService.getCredentials();
     this.username = credentials.username;
     this.setMappedAcitivites();
+    this.setNavItems();
+  }
+
+  /**
+   * Resolves the Main Items to display from the user's customization,
+   * falling back to the default menu.
+   */
+  setNavItems() {
+    const itemIds = this.settingsService.sidebarMainItems ?? defaultMainNavItemIds;
+    this.navItems = itemIds
+      .map((id: string) => mainNavItems.find((item) => item.id === id))
+      .filter((item): item is MainNavItem => !!item)
+      .filter((item) => !item.requiresRemittance || this.mifosRemittanceEnabled);
+  }
+
+  /**
+   * Handles clicks on action-type nav items.
+   * @param {MainNavItem} item Clicked nav item.
+   */
+  onNavItemClick(item: MainNavItem) {
+    if (item.action === 'keyboardShortcuts') {
+      this.showKeyboardShortcuts();
+    } else if (item.action === 'help') {
+      this.help();
+    }
   }
 
   /**
@@ -237,9 +274,9 @@ export class SidenavComponent implements OnInit, AfterViewInit {
         this.showPopover(this.templateLogo, this.logo.nativeElement, 'bottom', true);
       });
     }
-    if (this.configurationWizardService.showSideNavChartofAccounts && this.chartOfAccounts) {
+    if (this.configurationWizardService.showSideNavChartofAccounts && this.navEl('chart-of-accounts')) {
       setTimeout(() => {
-        this.showPopover(this.templateChartOfAccounts, this.chartOfAccounts.nativeElement, 'top', true);
+        this.showPopover(this.templateChartOfAccounts, this.navEl('chart-of-accounts'), 'top', true);
       });
     }
   }

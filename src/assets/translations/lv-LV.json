@@ -1549,6 +1549,8 @@
       "Recipient Summary": "Saņēmēja kopsavilkums"
     },
     "inputs": {
+      "Add Menu Item": "Pievienot izvēlnes vienumu",
+      "Customize main menu items": "Pielāgot galvenās izvēlnes vienumus",
       "Loan Account Status": "Aizdevuma konta statuss",
       "Floating rate": "Mainīgā likme",
       "Differential rate": "Diferenciālā likme",
@@ -3251,6 +3253,7 @@
     },
     "text": {
       "Loading data": "Ielādē datus",
+      "Main menu items hint": "Izvēlieties, kuri vienumi tiek rādīti sānjoslas izvēlnē, un velciet, lai mainītu to secību.",
       "No repayment schedule available": "Nav pieejams atmaksas grafiks",
       "About Us": "Par Mums",
       "A": "A",
