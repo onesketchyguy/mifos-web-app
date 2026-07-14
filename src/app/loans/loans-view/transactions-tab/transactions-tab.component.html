@@ -46,7 +46,11 @@
         [ngClass]="loanTransactionColor(transaction)"
         (click)="showTransactions(transaction)"
       >
-        {{ transaction.type.value | translateKey: 'catalogs' }}
+        @if (transaction.type.repayment && transaction.paymentDetailData?.paymentType?.name) {
+          {{ transaction.paymentDetailData.paymentType.name }}
+        } @else {
+          {{ transaction.type.value | translateKey: 'catalogs' }}
+        }
       </td>
     </ng-container>
 

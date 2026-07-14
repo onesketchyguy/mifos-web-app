@@ -828,20 +828,91 @@ async function insertIvyTekNotes(client, records, batchSize) {
   return upserted;
 }
 
-async function upsertPaymentDetails(client, records) {
+// Resolved names the import may create in m_payment_type when the organisation
+// hasn't defined them yet. The plain REG PMNT default is deliberately absent:
+// unmatched regular repayments simply keep no payment detail.
+const AUTO_CREATE_PAYMENT_TYPES = new Map([
+  [
+    'PENSION',
+    'Pension'
+  ],
+  [
+    'PAYROLL',
+    'Payroll'
+  ],
+  [
+    'PERCAPITA',
+    'Percap'
+  ]
+]);
+
+async function createPaymentType(client, value) {
+  const columns = await getTableColumns(client, 'm_payment_type');
+  const posRes = await client.query('SELECT COALESCE(MAX(order_position), 0) + 1 AS pos FROM m_payment_type');
+  const desired = {
+    value,
+    description: `Created by IvyTek SQL import for ${value} transactions`,
+    is_cash_payment: false,
+    order_position: Number(posRes.rows[0].pos),
+    is_system_defined: false
+  };
+  const cols = [];
+  const params = [];
+  for (const [
+    col,
+    val
+  ] of Object.entries(desired)) {
+    if (!columns.has(col)) continue;
+    cols.push(col);
+    params.push(val);
+  }
+  const placeholders = params.map((_, i) => `$${i + 1}`).join(', ');
+  const res = await client.query(
+    `INSERT INTO m_payment_type (${cols.join(', ')}) VALUES (${placeholders}) RETURNING id`,
+    params
+  );
+  return Number(res.rows[0].id);
+}
+
+async function upsertPaymentDetails(client, records, warnings = []) {
   const processable = records.filter((r) => r.paymentType && r.externalId);
   if (!processable.length) return 0;
 
-  // 1. Resolve payment type names → IDs (one query)
+  // 1. Resolve payment type names → IDs. Names come from resolvePaymentTypeName
+  //    ('PENSION', 'PAYROLL', …) while the organisation's m_payment_type rows may
+  //    be capitalised or worded differently ('Pension', 'Per Capita'), so match on
+  //    normalized text instead of exact equality. Missing Pension/Payroll/Percap
+  //    rows are created; anything else unmatched is skipped with a warning.
   const uniqueNames = [...new Set(processable.map((r) => r.paymentType))];
-  const ptPh = uniqueNames.map((_, i) => `$${i + 1}`).join(', ');
-  const ptRes = await client.query(`SELECT id, value FROM m_payment_type WHERE value IN (${ptPh})`, uniqueNames);
-  const paymentTypeIdMap = new Map(
-    ptRes.rows.map((r) => [
-      r.value,
-      Number(r.id)
-    ])
-  );
+  const ptRes = await client.query('SELECT id, value FROM m_payment_type');
+  const dbTypes = ptRes.rows.map((r) => ({
+    id: Number(r.id),
+    value: String(r.value),
+    norm: normalizeText(r.value)
+  }));
+  const paymentTypeIdMap = new Map();
+  for (const name of uniqueNames) {
+    const norm = normalizeText(name);
+    if (!norm) continue;
+    const match =
+      dbTypes.find((t) => t.norm === norm) ||
+      dbTypes.find((t) => t.norm.length >= 3 && (t.norm.includes(norm) || norm.includes(t.norm)));
+    if (match) {
+      paymentTypeIdMap.set(name, match.id);
+      if (match.norm !== norm) warnings.push(`Payment types: "${name}" mapped to existing type "${match.value}".`);
+    } else if (AUTO_CREATE_PAYMENT_TYPES.has(name)) {
+      const value = AUTO_CREATE_PAYMENT_TYPES.get(name);
+      const id = await createPaymentType(client, value);
+      dbTypes.push({ id, value, norm: normalizeText(value) });
+      paymentTypeIdMap.set(name, id);
+      warnings.push(`Payment types: created "${value}" in m_payment_type (none matched "${name}").`);
+    } else {
+      const count = processable.filter((r) => r.paymentType === name).length;
+      warnings.push(
+        `Payment types: no m_payment_type row matches "${name}" — ${count} transaction(s) keep no payment type.`
+      );
+    }
+  }
   if (!paymentTypeIdMap.size) return 0;
 
   const withType = processable.filter((r) => paymentTypeIdMap.has(r.paymentType));
@@ -1256,8 +1327,8 @@ async function runImport({ db, transactions, createdBy = 4, apply = false, recon
       // failure so it logs a warning without aborting the whole transaction.
       await client.query('SAVEPOINT sp_payment_details');
       try {
-        const pdCount = await upsertPaymentDetails(client, records);
-        if (pdCount > 0) warnings.push(`Payment details: ${pdCount} transaction(s) linked.`);
+        const pdCount = await upsertPaymentDetails(client, records, warnings);
+        if (pdCount > 0) warnings.push(`Payment details: ${pdCount} transaction(s) linked to a payment type.`);
         await client.query('RELEASE SAVEPOINT sp_payment_details');
       } catch (e) {
         await client.query('ROLLBACK TO SAVEPOINT sp_payment_details');
@@ -3590,6 +3661,7 @@ async function handleBulkDelete(req, res) {
   const preserved = [];
   const warnings = [];
   let notesPreserved = 0;
+  let calendarInstancesRemoved = 0;
 
   try {
     await client.connect();
@@ -3638,6 +3710,28 @@ async function handleBulkDelete(req, res) {
       missing.push('m_document');
     }
 
+    // m_calendar_instance is also polymorphic (entity_id/entity_type_enum can point
+    // to a client, group, loan, or savings account), so it has no real FK to m_loan
+    // and is never touched by the CASCADE above either. Left behind, stale rows for
+    // a reused loan id (m_loan is TRUNCATE ... RESTART IDENTITY, so ids get reused
+    // across runs) accumulate across resets. Fineract looks up a loan's recalculation
+    // calendar expecting exactly one row, so leftover duplicates make every later
+    // disbursement on that loan id fail with a data-integrity/non-unique-result error.
+    // Entity types 3/6/7 are the loan-only ones (loan, recalculation rest detail,
+    // recalculation compounding detail) — client/group/center/savings types are untouched.
+    if (await tableExists(client, 'm_calendar_instance')) {
+      const removedRes = await client.query(
+        'DELETE FROM m_calendar_instance WHERE entity_type_enum IN (3, 6, 7) RETURNING id'
+      );
+      calendarInstancesRemoved = removedRes.rowCount ?? 0;
+      truncated.push(`m_calendar_instance (${calendarInstancesRemoved} loan-related row(s) removed)`);
+      if (await tableExists(client, 'm_calendar')) {
+        await client.query('DELETE FROM m_calendar WHERE id NOT IN (SELECT calendar_id FROM m_calendar_instance)');
+      }
+    } else {
+      missing.push('m_calendar_instance');
+    }
+
     if (keepClients) {
       preserved.push(...BULK_DELETE_CLIENT_TABLES);
     } else {
@@ -3659,12 +3753,14 @@ async function handleBulkDelete(req, res) {
       success: true,
       message:
         `Truncated ${truncated.length} table(s).` +
+        ` Removed ${calendarInstancesRemoved} stale loan calendar instance(s).` +
         (keepClients ? ` Kept clients/groups and ${notesPreserved} client/group note(s).` : '') +
         (missing.length ? ` ${missing.length} table(s) not present in this database.` : ''),
       truncated,
       preserved,
       missing,
       notesPreserved,
+      calendarInstancesRemoved,
       warnings
     });
   } catch (e) {

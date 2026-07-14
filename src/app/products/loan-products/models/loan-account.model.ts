@@ -32,4 +32,12 @@ export interface LoanTransaction {
   loanChargePaidByList: any[];
   numberOfRepayments: number;
   transactionRelations: any[];
+  paymentDetailData?: {
+    paymentType: { id: number; name: string };
+    accountNumber: string;
+    checkNumber: string;
+    routingCode: string;
+    receiptNumber: string;
+    bankNumber: string;
+  };
 }

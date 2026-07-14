@@ -788,7 +788,9 @@ export class ViewBulkImportComponent implements OnInit {
           !n.includes('contact') &&
           !n.includes('app') &&
           !n.includes('assistant') &&
-          !n.includes('sum'))
+          !n.includes('sum') &&
+          !n.includes('item') &&
+          !n.includes('nav'))
       );
     });
     const contentVersionCsvFile = csvFiles.find((f) => norm(f.name).includes('contentversion'));
