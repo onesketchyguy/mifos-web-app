@@ -157,6 +157,7 @@ export interface BuyDownFeeAmortizationDetails {
 
 export interface EditablePeriod extends RepaymentSchedulePeriod {
   changed?: boolean;
+  modifiedDueDate?: Date;
 }
 
 export interface EditableRepaymentSchedule extends RepaymentSchedule {
@@ -170,7 +171,15 @@ export interface RepaymentScheduleEditCache {
 
 export interface ScheduleChangeRecord {
   dueDate: string;
+  // Fineract rejects any installmentAmount entry for the final installment, even when unchanged.
+  installmentAmount?: number;
+  modifiedDueDate?: string;
+}
+
+export interface RepaymentScheduleEditEvent {
+  period: number;
   installmentAmount: number;
+  modifiedDueDate?: string;
 }
 
 export interface LoanOriginator {

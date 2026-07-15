@@ -75,6 +75,13 @@ export class Dates {
     return moment(value, momentFormat).toDate();
   }
 
+  public daysInMonth(year: number, month: number): number {
+    return moment([
+      year,
+      month - 1
+    ]).daysInMonth();
+  }
+
   get language() {
     if (!localStorage.getItem('mifosXLanguage')) {
       return 'en';

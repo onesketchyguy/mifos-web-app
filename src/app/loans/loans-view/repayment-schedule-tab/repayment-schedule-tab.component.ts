@@ -24,7 +24,10 @@ import { Dates } from 'app/core/utils/dates';
 import {
   RepaymentSchedule,
   RepaymentSchedulePeriod,
-  RepaymentScheduleEditCache
+  RepaymentScheduleEditCache,
+  EditablePeriod,
+  EditableRepaymentSchedule,
+  RepaymentScheduleEditEvent
 } from 'app/loans/models/loan-account.model';
 import { SettingsService } from 'app/settings/settings.service';
 import { FormDialogComponent } from 'app/shared/form-dialog/form-dialog.component';
@@ -98,7 +101,7 @@ export class RepaymentScheduleTabComponent implements OnInit, OnChanges {
   /** Loan Repayment Schedule to be Edited */
   @Input() forEditing = false;
   /** Loan Repayment Schedule Details Data */
-  @Input() repaymentScheduleDetails: RepaymentSchedule | null = null;
+  @Input() repaymentScheduleDetails: EditableRepaymentSchedule | null = null;
   loanDetailsDataRepaymentSchedule: RepaymentSchedule | null = null;
 
   editCache: { [key: string]: RepaymentScheduleEditCache } = {};
@@ -142,7 +145,7 @@ export class RepaymentScheduleTabComponent implements OnInit, OnChanges {
   ];
 
   /** Form functions event */
-  @Output() editPeriod = new EventEmitter();
+  @Output() editPeriod = new EventEmitter<RepaymentScheduleEditEvent>();
 
   businessDate: Date = new Date();
 
@@ -285,23 +288,22 @@ export class RepaymentScheduleTabComponent implements OnInit, OnChanges {
     pdf.save(fileName);
   }
 
-  editInstallment(period: RepaymentSchedulePeriod): void {
+  editInstallment(period: EditablePeriod): void {
     if (!period.period) {
       return;
     }
-    this.editCache[period.period].edit = true;
     const formfields: FormfieldBase[] = [
       new DatepickerBase({
         controlName: 'dueDate',
         label: 'Due Date',
-        value: this.dateUtils.parseDate(period.dueDate),
+        value: this.dateUtils.parseDate(period.modifiedDueDate ?? period.dueDate),
         type: 'date',
         required: true
       }),
       new InputBase({
-        controlName: 'principalDue',
+        controlName: 'totalDueForPeriod',
         label: 'Amount',
-        value: period.principalDue,
+        value: period.totalDueForPeriod,
         type: 'number',
         required: true
       })
@@ -312,10 +314,34 @@ export class RepaymentScheduleTabComponent implements OnInit, OnChanges {
       formfields: formfields
     };
     const addDialogRef = this.dialog.open(FormDialogComponent, { data, width: '50rem' });
-    addDialogRef.afterClosed().subscribe((response: { data?: { value?: Record<string, unknown> } }) => {
-      if (response.data) {
-      }
-    });
+    addDialogRef
+      .afterClosed()
+      .subscribe((response: { data?: { value?: { dueDate: Date; totalDueForPeriod: number } } }) => {
+        const value = response?.data?.value;
+        if (!value || !period.period) {
+          return;
+        }
+        const dateFormat = this.settingsService.dateFormat;
+        const newDueDate = this.dateUtils.formatDate(value.dueDate, dateFormat);
+        const currentDueDate = this.dateUtils.formatDate(period.modifiedDueDate ?? period.dueDate, dateFormat);
+        const dateChanged = newDueDate !== currentDueDate;
+        const amountChanged = period.totalDueForPeriod !== value.totalDueForPeriod;
+        if (!dateChanged && !amountChanged) {
+          return;
+        }
+        if (dateChanged) {
+          period.modifiedDueDate = value.dueDate;
+        }
+        if (amountChanged) {
+          period.totalDueForPeriod = value.totalDueForPeriod;
+          period.changed = true;
+        }
+        this.editPeriod.emit({
+          period: period.period,
+          installmentAmount: value.totalDueForPeriod,
+          ...(dateChanged ? { modifiedDueDate: newDueDate } : {})
+        });
+      });
   }
 
   cancelEdit(id: string): void {
@@ -336,7 +362,10 @@ export class RepaymentScheduleTabComponent implements OnInit, OnChanges {
     }
     Object.assign(this.listOfData[index], this.editCache[period].data);
     this.editCache[period].edit = false;
-    this.editPeriod.emit(period);
+    this.editPeriod.emit({
+      period: Number(period),
+      installmentAmount: this.listOfData[index].totalDueForPeriod
+    });
   }
 
   updateEditCache(): void {

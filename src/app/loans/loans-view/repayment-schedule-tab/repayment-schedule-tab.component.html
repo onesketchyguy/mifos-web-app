@@ -234,9 +234,16 @@
       <ng-container matColumnDef="date">
         <th mat-header-cell class="center mat-header-cell" *matHeaderCellDef>{{ 'labels.inputs.Date' | translate }}</th>
         <td mat-cell class="m-r-10" *matCellDef="let item">
-          <ng-container>
-            {{ item.dueDate | dateFormat }}
-          </ng-container>
+          @if (!item.modifiedDueDate) {
+            <span>
+              {{ item.dueDate | dateFormat }}
+            </span>
+          }
+          @if (item.modifiedDueDate) {
+            <span class="date-changed">
+              <b>{{ item.modifiedDueDate | dateFormat }}</b>
+            </span>
+          }
         </td>
       </ng-container>
       <ng-container matColumnDef="balanceOfLoan">
@@ -301,16 +308,6 @@
                   (click)="editInstallment(item)"
                 >
                   <fa-icon icon="edit" size="lg"></fa-icon>
-                </button>
-                <button
-                  type="button"
-                  color="warn"
-                  mat-icon-button
-                  matTooltip="{{ 'tooltips.Delete' | translate }}"
-                  matTooltipPosition="above"
-                  (click)="startEdit(item.period)"
-                >
-                  <fa-icon icon="trash" size="lg"></fa-icon>
                 </button>
               </ng-container>
             </span>

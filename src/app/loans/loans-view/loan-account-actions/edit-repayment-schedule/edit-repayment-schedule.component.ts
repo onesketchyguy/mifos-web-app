@@ -10,7 +10,12 @@ import { Component, OnInit, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslateService } from '@ngx-translate/core';
 import { Dates } from 'app/core/utils/dates';
-import { EditableRepaymentSchedule, EditablePeriod, ScheduleChangeRecord } from 'app/loans/models/loan-account.model';
+import {
+  EditableRepaymentSchedule,
+  EditablePeriod,
+  ScheduleChangeRecord,
+  RepaymentScheduleEditEvent
+} from 'app/loans/models/loan-account.model';
 import { ConfirmationDialogComponent } from 'app/shared/confirmation-dialog/confirmation-dialog.component';
 import { FormDialogComponent } from 'app/shared/form-dialog/form-dialog.component';
 import { FormfieldBase } from 'app/shared/form-dialog/formfield/model/formfield-base';
@@ -42,6 +47,8 @@ export class EditRepaymentScheduleComponent extends LoanAccountActionsBaseCompon
   repaymentScheduleDetails: EditableRepaymentSchedule | null = null;
   /** Stores the Installments changed */
   repaymentScheduleChanges: Record<string, ScheduleChangeRecord> = {};
+  /** Stores each installment's due date as it was when the schedule was first loaded, keyed by period number */
+  private originalDueDates: Record<number, string> = {};
 
   constructor() {
     super();
@@ -56,6 +63,15 @@ export class EditRepaymentScheduleComponent extends LoanAccountActionsBaseCompon
     this.loanService.getLoanAccountResource(this.loanId, 'repaymentSchedule').subscribe({
       next: (response: { repaymentSchedule: EditableRepaymentSchedule }) => {
         this.repaymentScheduleDetails = response.repaymentSchedule;
+        this.originalDueDates = {};
+        this.repaymentScheduleDetails.periods.forEach((period: EditablePeriod) => {
+          if (period.period) {
+            this.originalDueDates[period.period] = this.dateUtils.formatDate(
+              period.dueDate,
+              this.settingsService.dateFormat
+            );
+          }
+        });
       },
       error: (err) => {
         console.error('Failed to load repayment schedule:', err);
@@ -63,13 +79,10 @@ export class EditRepaymentScheduleComponent extends LoanAccountActionsBaseCompon
     });
   }
 
-  applyPattern(): void {
-    if (!this.repaymentScheduleDetails) {
-      return;
-    }
-
+  /** Builds the from/to period select options shared by the amount and date pattern dialogs. */
+  private buildPeriodOptions(): Array<{ idx: number; dueDate: string }> {
     const periods: Array<{ idx: number; dueDate: string }> = [];
-    this.repaymentScheduleDetails.periods.forEach((period: EditablePeriod) => {
+    this.repaymentScheduleDetails?.periods.forEach((period: EditablePeriod) => {
       if (period.period) {
         periods.push({
           idx: period.period,
@@ -77,6 +90,148 @@ export class EditRepaymentScheduleComponent extends LoanAccountActionsBaseCompon
         });
       }
     });
+    return periods;
+  }
+
+  /** Fineract rejects any installmentAmount entry — even an unchanged one — for the final installment. */
+  private isLastPeriod(period: EditablePeriod): boolean {
+    return !!period.period && period.period + 1 >= (this.repaymentScheduleDetails?.periods.length ?? 0);
+  }
+
+  /** Handles a single-installment edit (date and/or amount) emitted by the schedule table. */
+  onEditPeriod(event: RepaymentScheduleEditEvent): void {
+    const key = this.originalDueDates[event.period];
+    if (!key) {
+      return;
+    }
+    const isLastPeriod = event.period + 1 >= (this.repaymentScheduleDetails?.periods.length ?? 0);
+    this.repaymentScheduleChanges[key] = {
+      ...this.repaymentScheduleChanges[key],
+      dueDate: key,
+      ...(isLastPeriod ? {} : { installmentAmount: event.installmentAmount }),
+      ...(event.modifiedDueDate ? { modifiedDueDate: event.modifiedDueDate } : {})
+    };
+    this.wasChanged = true;
+  }
+
+  /**
+   * Bulk-assigns a semi-monthly (or any two-day-of-month) date pattern across a range of
+   * installments, alternating between two day-of-month values and clamping to the last real
+   * day of each installment's own month (e.g. day 31 in April becomes April 30).
+   */
+  applyDatePattern(): void {
+    if (!this.repaymentScheduleDetails) {
+      return;
+    }
+
+    const periods = this.buildPeriodOptions();
+    const formfields: FormfieldBase[] = [
+      new SelectBase({
+        controlName: 'fromPeriod',
+        label: 'From Date',
+        value: '',
+        options: { label: 'dueDate', value: 'idx', data: periods },
+        required: true
+      }),
+      new SelectBase({
+        controlName: 'toPeriod',
+        label: 'To Date',
+        value: '',
+        options: { label: 'dueDate', value: 'idx', data: periods },
+        required: true
+      }),
+      new InputBase({
+        controlName: 'firstDay',
+        label: 'First Due Day of Month',
+        value: '',
+        type: 'number',
+        min: 1,
+        max: 31,
+        required: true
+      }),
+      new InputBase({
+        controlName: 'secondDay',
+        label: 'Second Due Day of Month',
+        value: '',
+        type: 'number',
+        min: 1,
+        max: 31,
+        required: true
+      })
+    ];
+    const data = {
+      title: 'Date Pattern',
+      formfields: formfields
+    };
+    const addDialogRef = this.dialog.open(FormDialogComponent, { data, width: '50rem' });
+    addDialogRef
+      .afterClosed()
+      .subscribe(
+        (response: {
+          data?: { value?: { fromPeriod: number; toPeriod: number; firstDay: number; secondDay: number } };
+        }) => {
+          const value = response?.data?.value;
+          if (!value || !this.repaymentScheduleDetails) {
+            return;
+          }
+          const { fromPeriod, toPeriod, firstDay, secondDay } = value;
+          const dateFormat = this.settingsService.dateFormat;
+          // Consecutive in-range installments are paired into the same month (firstDay, then
+          // secondDay) and the month only advances after each completed pair — anchoring every
+          // installment to its own pre-existing month independently would preserve the base
+          // schedule's original spacing instead of producing a true twice-a-month cadence.
+          let useFirstDay = true;
+          let cursorYear: number = null;
+          let cursorMonth: number = null;
+
+          this.repaymentScheduleDetails.periods.forEach((period: EditablePeriod) => {
+            if (!period.period || period.period < fromPeriod || period.period > toPeriod) {
+              return;
+            }
+            if (cursorYear === null || cursorMonth === null) {
+              const anchor = this.dateUtils.parseDate(period.modifiedDueDate ?? period.dueDate);
+              cursorYear = anchor.getFullYear();
+              cursorMonth = anchor.getMonth() + 1;
+            }
+
+            const desiredDay = useFirstDay ? firstDay : secondDay;
+            const clampedDay = Math.min(desiredDay, this.dateUtils.daysInMonth(cursorYear, cursorMonth));
+            const newDate = new Date(cursorYear, cursorMonth - 1, clampedDay);
+
+            if (!useFirstDay) {
+              cursorMonth += 1;
+              if (cursorMonth > 12) {
+                cursorMonth = 1;
+                cursorYear += 1;
+              }
+            }
+            useFirstDay = !useFirstDay;
+
+            const existing = this.dateUtils.parseDate(period.modifiedDueDate ?? period.dueDate);
+            if (this.dateUtils.formatDate(newDate, dateFormat) === this.dateUtils.formatDate(existing, dateFormat)) {
+              return;
+            }
+
+            period.modifiedDueDate = newDate;
+            const key = this.originalDueDates[period.period];
+            this.repaymentScheduleChanges[key] = {
+              ...this.repaymentScheduleChanges[key],
+              dueDate: key,
+              modifiedDueDate: this.dateUtils.formatDate(newDate, dateFormat),
+              ...(this.isLastPeriod(period) ? {} : { installmentAmount: period.totalDueForPeriod })
+            };
+            this.wasChanged = true;
+          });
+        }
+      );
+  }
+
+  applyPattern(): void {
+    if (!this.repaymentScheduleDetails) {
+      return;
+    }
+
+    const periods = this.buildPeriodOptions();
     const formfields: FormfieldBase[] = [
       new SelectBase({
         controlName: 'fromPeriod',
@@ -114,11 +269,20 @@ export class EditRepaymentScheduleComponent extends LoanAccountActionsBaseCompon
           const amount = response.data.value.amount;
           const periodsVariation: EditablePeriod[] = [];
           this.repaymentScheduleDetails.periods.forEach((period: EditablePeriod) => {
-            const dueDate = this.dateUtils.formatDate(period.dueDate, this.settingsService.dateFormat);
-            if (period.period && fromPeriod <= period.period && toPeriod >= period.period) {
+            if (
+              period.period &&
+              fromPeriod <= period.period &&
+              toPeriod >= period.period &&
+              !this.isLastPeriod(period)
+            ) {
               if (period.totalDueForPeriod !== amount) {
                 period.totalDueForPeriod = amount;
-                this.repaymentScheduleChanges[dueDate] = { dueDate: dueDate, installmentAmount: amount };
+                const dueDate = this.originalDueDates[period.period];
+                this.repaymentScheduleChanges[dueDate] = {
+                  ...this.repaymentScheduleChanges[dueDate],
+                  dueDate: dueDate,
+                  installmentAmount: amount
+                };
                 this.wasChanged = true;
                 period.changed = true;
               }
@@ -144,6 +308,7 @@ export class EditRepaymentScheduleComponent extends LoanAccountActionsBaseCompon
         this.loanService.applyCommandLoanScheduleVariations(this.loanId, 'deleteVariations', {}).subscribe({
           next: () => {
             this.getRepaymentSchedule();
+            this.repaymentScheduleChanges = {};
             this.wasChanged = false;
             this.wasValidated = false;
           },

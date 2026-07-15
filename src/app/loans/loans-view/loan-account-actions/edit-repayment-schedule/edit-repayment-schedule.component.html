@@ -15,6 +15,7 @@
             class="flex-100"
             [repaymentScheduleDetails]="repaymentScheduleDetails"
             [forEditing]="true"
+            (editPeriod)="onEditPeriod($event)"
           >
           </mifosx-repayment-schedule-tab>
         }
@@ -27,6 +28,9 @@
         <button type="button" mat-raised-button (click)="reset()">{{ 'labels.buttons.Reset' | translate }}</button>
         <button type="button" color="primary" mat-raised-button (click)="applyPattern()">
           {{ 'labels.buttons.Pattern' | translate }}
+        </button>
+        <button type="button" color="primary" mat-raised-button (click)="applyDatePattern()">
+          {{ 'labels.buttons.Date Pattern' | translate }}
         </button>
         <button type="button" color="primary" mat-raised-button [disabled]="!wasChanged" (click)="validate()">
           {{ 'labels.buttons.Validate' | translate }}
