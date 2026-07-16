@@ -264,11 +264,7 @@ export class CreateReportComponent implements OnInit {
    * if successful redirects to view created report.
    */
   submit() {
-    this.reportForm.value.reportParameters = this.reportParametersData.map(function (reportParameter: any) {
-      reportParameter.parameterName = undefined;
-      return reportParameter;
-    });
-    this.systemService.createReport(this.reportForm.value).subscribe((response: any) => {
+    this.systemService.createReport(this.buildReportPayload()).subscribe((response: any) => {
       // TODO: Implement Maker Checker Component.
       this.router.navigate(
         [
@@ -278,5 +274,35 @@ export class CreateReportComponent implements OnInit {
         { relativeTo: this.route }
       );
     });
+  }
+
+  /**
+   * Saves the report and redirects to the Run Report screen so it can be
+   * previewed there. Fineract can only execute a report's saved SQL, so a
+   * genuine save is required before it can be run.
+   */
+  preview() {
+    const payload = this.buildReportPayload();
+    this.systemService.createReport(payload).subscribe((response: any) => {
+      this.router.navigate(
+        [
+          '/reports',
+          'run',
+          payload.reportName
+        ],
+        {
+          queryParams: { type: payload.reportType, id: response.resourceId }
+        }
+      );
+    });
+  }
+
+  private buildReportPayload(): any {
+    const payload = this.reportForm.getRawValue();
+    payload.reportParameters = this.reportParametersData.map(function (reportParameter: any) {
+      reportParameter.parameterName = undefined;
+      return reportParameter;
+    });
+    return payload;
   }
 }

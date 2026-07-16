@@ -288,17 +288,43 @@ export class EditReportComponent implements OnInit {
    * if successful redirects to view updated report.
    */
   submit() {
+    this.systemService.updateReport(this.reportData.id, this.buildReportPayload()).subscribe(() => {
+      this.router.navigate(['../'], { relativeTo: this.route });
+    });
+  }
+
+  /**
+   * Saves the report and redirects to the Run Report screen so it can be
+   * previewed there. Fineract can only execute a report's saved SQL, so a
+   * genuine save is required before it can be run.
+   */
+  preview() {
+    const payload = this.buildReportPayload();
+    this.systemService.updateReport(this.reportData.id, payload).subscribe(() => {
+      this.router.navigate(
+        [
+          '/reports',
+          'run',
+          payload.reportName
+        ],
+        {
+          queryParams: { type: payload.reportType, id: this.reportData.id }
+        }
+      );
+    });
+  }
+
+  private buildReportPayload(): any {
+    const payload = this.reportForm.getRawValue();
     if (this.reportData.coreReport) {
-      this.reportForm.value.reportParameters = undefined;
+      payload.reportParameters = undefined;
     } else {
-      this.reportForm.value.reportParameters = this.reportParametersData;
-      this.reportForm.value.reportParameters.map(function (reportParameter: any) {
+      payload.reportParameters = this.reportParametersData;
+      payload.reportParameters.map(function (reportParameter: any) {
         reportParameter.parameterName = undefined;
         return reportParameter;
       });
     }
-    this.systemService.updateReport(this.reportData.id, this.reportForm.value).subscribe(() => {
-      this.router.navigate(['../'], { relativeTo: this.route });
-    });
+    return payload;
   }
 }

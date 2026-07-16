@@ -157,6 +157,16 @@
         </button>
         <button
           mat-raised-button
+          type="button"
+          [disabled]="!reportForm.valid"
+          *mifosxHasPermission="'UPDATE_REPORT'"
+          (click)="preview()"
+        >
+          <fa-icon icon="eye" class="m-r-10"></fa-icon>
+          {{ 'labels.buttons.Preview' | translate }}
+        </button>
+        <button
+          mat-raised-button
           color="primary"
           [disabled]="(!reportForm.valid || reportForm.pristine) && !isReportParametersChanged"
           *mifosxHasPermission="'UPDATE_REPORT'"
