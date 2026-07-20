@@ -7,7 +7,8 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, OnDestroy, ViewChild, inject, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
@@ -24,7 +25,7 @@ import {
   MatRowDef,
   MatRow
 } from '@angular/material/table';
-import { UntypedFormGroup, UntypedFormBuilder, Validators } from '@angular/forms';
+import { FormGroup, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
@@ -72,10 +73,11 @@ import { accountFeatures } from 'app/shared/account-features/account-features.co
     MatRowDef,
     MatRow,
     MatPaginator
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
-  private formBuilder = inject(UntypedFormBuilder);
+  private formBuilder = inject(FormBuilder);
   private collectionsService = inject(CollectionsService);
   private organizationService = inject(OrganizationService);
   private route = inject(ActivatedRoute);
@@ -84,6 +86,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private settingsService = inject(SettingsService);
   private dataReloadService = inject(DataReloadService);
+  private destroyRef = inject(DestroyRef);
 
   officesData: any;
   loanOfficerData: any = [];
@@ -92,12 +95,11 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
   accountFeatures = accountFeatures;
   minDate = new Date(2000, 0, 1);
   maxDate = new Date();
-  collectionSheetForm: UntypedFormGroup;
+  collectionSheetForm: FormGroup;
   isCollapsed = false;
   collectionSheetData: any;
 
   private reloadContext = 'individual-collection-sheet';
-  private destroy$ = new Subject<void>();
   private buildDependencies$ = new Subject<void>();
   /** checks and stores the local storage values */
   Success: boolean;
@@ -153,14 +155,14 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
    * @param {SettingsService} settingsService Settings Service
    */
   ngOnInit(): void {
-    this.route.data.pipe(takeUntil(this.destroy$)).subscribe((data: { officesData: any }) => {
+    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data: { officesData: any }) => {
       this.officesData = data.officesData;
     });
 
     // Subscribe to reload events
     this.dataReloadService
       .getReloadObservable(this.reloadContext)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.refreshData();
       });
@@ -178,8 +180,6 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
     this.buildDependencies$.next();
     this.buildDependencies$.complete();
     if (this.reloadContext) {
@@ -215,7 +215,7 @@ export class IndividualCollectionSheetComponent implements OnInit, OnDestroy {
       .get('officeId')
       .valueChanges.pipe(
         takeUntil(this.buildDependencies$),
-        takeUntil(this.destroy$),
+        takeUntilDestroyed(this.destroyRef),
         switchMap((value: any) => this.organizationService.getStaffs(value))
       )
       .subscribe((response: any) => {

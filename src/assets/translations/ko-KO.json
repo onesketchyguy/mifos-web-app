@@ -1,4 +1,4 @@
-﻿{
+{
   "APP_NAME": "Mifos® X WebApp",
   "Logged in as": "다음 계정으로 로그인됨",
   "Remember me": "날 기억해",
@@ -374,7 +374,8 @@
     "report": {
       "type": "보고서 생성",
       "generated": "보고서: {{reportName}} 데이터 생성됨",
-      "generatedNoData": "보고서: {{reportName}} 데이터 없이 생성됨"
+      "generatedNoData": "보고서: {{reportName}} 데이터 없이 생성됨",
+      "loadFailed": "보고서 데이터를 불러오지 못했습니다. 다시 시도해 주세요."
     },
     "clipboard": {
       "type": "클립보드",
@@ -399,7 +400,11 @@
       "buyDownFeeAdjusted": "Buy Down 수수료 금액이 이미 조정되었습니다",
       "buyDownFeeLimit": "Buy Down 수수료 조정 금액은 다음 이하여야 합니다",
       "businessRule": "비즈니스 규칙",
-      "alertWithAmount": "{{label}}: {{amount}}"
+      "alertWithAmount": "{{label}}: {{amount}}",
+      "bulkWaiveCharge": {
+        "type": "수수료 면제 오류",
+        "message": "{{count}}개의 수수료를 면제할 수 없습니다."
+      }
     },
     "error.auth.type": "인증 오류",
     "error.auth.message": "세션이 만료되었거나 자격 증명이 유효하지 않습니다.",
@@ -481,7 +486,8 @@
         "liabilityTransfer": "책임 이전",
         "openingBalancesTransferContra": "기초 잔액 이체 대조",
         "payableDividends": "지급 배당금"
-      }
+      },
+      "ACC_DEF_REV_AM": "이연매출 상각액을 반영한 발생주의 회계"
     },
     "breadcrumbs": {
       "Home": "집"
@@ -756,7 +762,21 @@
       "PRINT": "인쇄",
       "DONE": "완료",
       "Submitting": "제출 중",
-      "OK": "확인"
+      "OK": "확인",
+      "Create Loan Product (Classic)": "Create Loan Product (Classic)",
+      "Create Loan Product (Convenient)": "Create Loan Product (Convenient)",
+      "Pin": "고정",
+      "Reset Filters": "필터 재설정",
+      "Pay Charge": "수수료 납부",
+      "Run": "실행",
+      "Show Closed Accounts": "마감된 계좌 보기",
+      "Undo Reset": "재설정 실행 취소",
+      "Unpin": "고정 해제",
+      "Waive Selected": "선택 항목 면제",
+      "undo_account_transfer": "계좌 이체 취소",
+      "All": "전체",
+      "Pause Breach": "위반 일시중지",
+      "Resume Breach": "중단된 작업 재개"
     },
     "catalogs": {
       "Interest payment waiver": "이자 지급 면제",
@@ -1028,7 +1048,12 @@
       "DAYS": "날",
       "MONTHS": "개월",
       "YEARS": "연령",
-      "Loan Creation": "대출 생성"
+      "Loan Creation": "대출 생성",
+      "Discount Fee": "할인 수수료",
+      "In Arrears": "연체 중",
+      "Unknown": "알 수 없음",
+      "Waive loan charges": "대출 수수료 면제",
+      "Working Capital Loan": "운전자본 대출"
     },
     "commons": {
       "50 characters long": "50자(영문 기준)",
@@ -1547,7 +1572,31 @@
       "Identification": "신원 확인",
       "Professional Information": "직업 정보",
       "Add Profile Entry": "프로필 항목 추가",
-      "Recipient Summary": "수취인 요약"
+      "Recipient Summary": "수취인 요약",
+      "Breach Actions": "위반 행위",
+      "Delinquency & Breach": "연체 및 위반",
+      "Interest": "이자",
+      "Multi-step form": "Multi-step form",
+      "Loan product creation": "Loan product creation",
+      "Near Breach Actions": "위반 임박 행위",
+      "Accounts": "계좌",
+      "Amortization Schedule": "상각 일정",
+      "Average Gap": "평균 격차",
+      "Breach Periods": "위반 기간",
+      "Near Breach History": "위반 임박 내역",
+      "Peak Outstanding": "최대 미결제 잔액",
+      "Reports Catalog": "보고서 카탈로그",
+      "Total Days in Breach": "총 위반 일수",
+      "Undo Reset": "재설정 실행 취소",
+      "User Profile": "사용자 프로필",
+      "View Transaction": "거래 보기",
+      "View Transfer": "이체 보기",
+      "Working Capital Loan Balances": "운전자본 대출 잔액",
+      "undo_account_transfer": "계좌 이체 취소",
+      "Loan Breach Actions": "대출 위반 작업",
+      "No Breach Actions": "위반 작업 없음",
+      "Pause Timeline": "일시중지 타임라인",
+      "Location Map": "위치 지도"
     },
     "inputs": {
       "Add Menu Item": "메뉴 항목 추가",
@@ -3052,7 +3101,97 @@
       "Deposited At": "입금일",
       "Passport": "여권",
       "Driver's License": "운전면허증",
-      "Mothers Maiden Name": "어머니 결혼 전 성"
+      "Mothers Maiden Name": "어머니 결혼 전 성",
+      "Annual interest rate": "Annual interest rate",
+      "Annual interest rate by loan cycle": "Annual interest rate by loan cycle",
+      "Annual interest rate frequency": "Annual interest rate frequency",
+      "Breach Actions": "위반 작업",
+      "Actual": "실제",
+      "Actual Amortization": "실제 상각",
+      "Actual Balance": "실제 잔액",
+      "Actual Discount Fee Balance": "실제 할인 수수료 잔액",
+      "Actual Payment": "실제 지급",
+      "Amortization Amount": "상각 금액",
+      "Amortization Schedule": "상각 일정",
+      "Amount Breakdown": "금액 내역",
+      "Amount Received/Returned": "수령/반품 금액",
+      "Approved Discount": "승인된 할인",
+      "Balanced": "균형",
+      "Balances": "잔액",
+      "Breach Grace Days": "위반 유예일",
+      "Breach Schedule": "위반 일정",
+      "Charge-off reason": "청구 취소 사유",
+      "Current": "현재",
+      "Disbursed": "지급됨",
+      "Discount External Id": "할인 외부 ID",
+      "Discount External Id must differ from External Id": "할인 외부 ID는 외부 ID와 달라야 합니다",
+      "Discount Fee Adjustment": "할인 수수료 조정",
+      "Discount Fee Balance": "할인 수수료 잔액",
+      "Entry Type": "입력 유형",
+      "Executed": "실행됨",
+      "Expected": "예상",
+      "Expected Amortization Amount": "예상 상각 금액",
+      "Expected Balance": "예상 잔액",
+      "Expected Discount Fee Balance": "예상 할인 수수료 잔액",
+      "Expected Payment Amount": "예상 지불 금액",
+      "External Id is too long": "외부 ID가 너무 깁니다",
+      "Filters": "필터",
+      "Financial Summary": "재정 요약",
+      "GL Account": "총계정원장 계정",
+      "Hide Projected": "예상 숨기기",
+      "Identification": "식별",
+      "In Arrears": "연체 중",
+      "In Balance": "균형",
+      "Income Modification": "소득 수정",
+      "Linked": "연결됨",
+      "Net Disbursal Amount": "순 지급 금액",
+      "New": "신규",
+      "Net Balance": "순 잔액",
+      "Overpayment Amount": "초과 지불 금액",
+      "Payment Amount": "결제 금액",
+      "Payment Date": "납부일",
+      "Payments Left": "남은 납부 횟수",
+      "Period Payment Rates": "기간별 지급률 목록",
+      "Previous": "이전",
+      "Projected": "예상됨",
+      "Proposed Discount": "제안된 할인",
+      "Realized Income": "실현 수익",
+      "Results": "결과",
+      "Schedule": "Schedule",
+      "System": "시스템",
+      "Schedule Progress": "일정 진행",
+      "Selected": "선택됨",
+      "Start new period": "새 기간 시작",
+      "Submitted Date Range": "제출 날짜 범위",
+      "Total Credits": "총 대변",
+      "Total Debits": "총 차변",
+      "Total Outstanding": "총 미상환액",
+      "Total Overdue": "총 연체액",
+      "Total Paid": "총 납부액",
+      "Total Paid Principal": "총 납입 원금",
+      "Total records": "전체 항목 수",
+      "Transaction Date Range": "거래 날짜 범위",
+      "Unrealized Income": "미실현 수익",
+      "active": "활성",
+      "entries": "항목",
+      "Active Pause": "활성 일시중지",
+      "days": "일",
+      "Duration": "기간",
+      "Expired": "만료됨",
+      "Last Action": "마지막 작업",
+      "No breach actions have been recorded for this loan": "이 대출에 대한 위반 작업이 기록되지 않았습니다",
+      "No records match the selected filter": "선택한 필터와 일치하는 기록이 없습니다",
+      "Ongoing": "진행 중",
+      "Pause Active": "일시중지 활성",
+      "Pauses": "일시중지",
+      "Scheduled": "예약됨",
+      "Today": "오늘",
+      "Total Actions": "전체 작업",
+      "Total Days Paused": "총 일시중지 일수",
+      "Credit Profile": "신용 프로필",
+      "Borrower": "차용인",
+      "Latitude": "위도",
+      "Longitude": "경도"
     },
     "links": {
       "Community": "지역 사회",
@@ -3192,7 +3331,13 @@
       "Tasks": "작업",
       "Remittances": "송금",
       "Process Remittance": "송금 처리",
-      "Undo Write-off": "상각 취소"
+      "Undo Write-off": "상각 취소",
+      "Update Breach": "위반 업데이트",
+      "Discount Fee": "할인 수수료",
+      "Select All": "모두 선택",
+      "Select Item": "항목 선택",
+      "Undo Payment Rate": "지불 비율 취소",
+      "Update Near Breach": "임박한 위반 업데이트"
     },
     "placeholders": {
       "Add new server": "새 서버 추가",
@@ -3249,7 +3394,11 @@
       "Are you sure you want to": "확실하게 원하시나요?",
       "the productmix component with id": "ID가 있는 productmix 구성요소",
       "the Reschedule Loan": "대출 재일정",
-      "the Transaction Type": "거래 유형"
+      "the Transaction Type": "거래 유형",
+      "Are you sure you want to resume the breach pause": "중단된 작업을 재개하시겠습니까?",
+      "Are you sure you want to waive charges": "정말로 {{ count }}개의 수수료를 면제하시겠습니까",
+      "Are you sure you want to undo last reset action": "마지막 재설정 작업을 취소하시겠습니까?",
+      "undo_account_transfer": "이 계좌 이체를 취소하시겠습니까?"
     },
     "text": {
       "Loading data": "데이터 로딩 중",
@@ -3984,7 +4133,63 @@
       "Loan Originators": "대출 담당자",
       "Loan Reschedules": "대출 일정 변경",
       "Settings saved successfully": "설정이 성공적으로 저장되었습니다.",
-      "Undo Write-off Description": "이 작업은 상각 거래를 취소하고 대출을 이전 활성 상태로 복원합니다. 이 작업의 이유를 설명하는 메모를 제공해 주세요."
+      "Undo Write-off Description": "이 작업은 상각 거래를 취소하고 대출을 이전 활성 상태로 복원합니다. 이 작업의 이유를 설명하는 메모를 제공해 주세요.",
+      "Max": "최대",
+      "Hidden variables and predefined values are included in the final payload automatically.": "Hidden variables and predefined values are included in the final payload automatically.",
+      "No Breach Actions": "위반 행위 없음",
+      "No Near Breach Actions": "위반 임박 행위 없음",
+      "Activated": "활성화됨",
+      "Amortization Schedule": "상환 일정",
+      "available": "사용 가능",
+      "Balances": "잔액",
+      "Breach Timeline": "위반 타임라인",
+      "Compliant": "준수",
+      "Council Approval": "의회 승인",
+      "Filter by engine": "엔진별 필터",
+      "Gap": "격차",
+      "In Breach": "위반 중",
+      "Visible Columns": "표시된 열",
+      "No columns selected": "선택된 열이 없습니다",
+      "Loan Fields": "대출 필드",
+      "Data Tables": "데이터 테이블",
+      "No data tables": "데이터 테이블이 없습니다",
+      "Failed to load": "로드에 실패했습니다",
+      "Mild": "경미",
+      "Moderate": "보통",
+      "No pending loans for Council Approval": "의회 승인을 기다리는 대출이 없습니다",
+      "No reports match your filters": "필터와 일치하는 보고서가 없습니다",
+      "Page": "페이지",
+      "Period Payment Rates": "기간별 지급률 목록",
+      "Pinned": "고정됨",
+      "Resolved": "해결됨",
+      "Rows": "행",
+      "Severe": "심각",
+      "Severity": "심각도",
+      "Showing": "표시 중",
+      "Submitted": "제출됨",
+      "Template defaults are preloaded": "Template defaults are preloaded",
+      "Select a product below": "Select a product below",
+      "Upcoming": "예정된",
+      "Complete control over every aspect of product behavior": "모라토리엄과 보조금부터 다중 트랜치 구조, 배분 규칙까지 — 상품 동작의 모든 측면을 완벽하게 제어할 수 있습니다.",
+      "Today": "오늘",
+      "of": "/",
+      "Maker-Checker principle requires every tasks": "원칙은 오류와 오용 가능성을 줄이기 위해 모든 작업을 두 사람이 완료하도록 요구합니다. 한 사람이 프로세스를 시작하고 두 번째 사람이 프로세스를 완료합니다.",
+      "Breach Actions": "위반 작업",
+      "SavingsAccountsStayedLockedBusinessEvent": "Savings Accounts Stayed Locked Business Event",
+      "WorkingCapitalLoanDisbursalTransactionBusinessEvent": "Working Capital Loan Disbursal Transaction Business Event",
+      "WorkingCapitalLoanUndoDisbursalTransactionBusinessEvent": "Working Capital Loan Undo Disbursal Transaction Business Event",
+      "WorkingCapitalLoanRepaymentTransactionBusinessEvent": "Working Capital Loan Repayment Transaction Business Event",
+      "WorkingCapitalLoanCreditBalanceRefundTransactionBusinessEvent": "Working Capital Loan Credit Balance Refund Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeTransactionBusinessEvent": "Working Capital Loan Discount Fee Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeAdjustmentTransactionBusinessEvent": "Working Capital Loan Discount Fee Adjustment Transaction Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPreBusinessEvent": "Working Capital Loan Charge Adjustment Pre Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPostBusinessEvent": "Working Capital Loan Charge Adjustment Post Business Event",
+      "SavingsAccountForceWithdrawalBusinessEvent": "Savings Account Force Withdrawal Business Event",
+      "All Loan Products": "모든 대출상품",
+      "All Offices": "모든 사무소",
+      "No loan was found": "대출을 찾을 수 없습니다",
+      "SearchByLoan": "계좌 번호, 차용인 또는 상품으로 검색",
+      "Map tiles unavailable": "지도 타일을 사용할 수 없습니다"
     },
     "permissions": {
       "actions": {
@@ -4282,7 +4487,68 @@
       "No Identities Found": "신원 정보가 없습니다",
       "validationSaved": "검증 데이터가 성공적으로 저장되었습니다.",
       "workingCapitalDiscountUpdated": "운전자금 대출 할인율이 성공적으로 업데이트되었습니다.",
-      "unableToUpdateDiscount": "할인을 업데이트할 수 없습니다."
+      "unableToUpdateDiscount": "할인을 업데이트할 수 없습니다.",
+      "No Accounts Found": "계좌를 찾을 수 없습니다."
+    },
+    "selections": {
+      "standingInstructions": {
+        "accountTransferType": {
+          "account.transfer": "저축 계좌 이체",
+          "loan.repayment": "대출금 상환"
+        },
+        "standingInstructionPriority": {
+          "urgent": "긴급",
+          "high": "높음",
+          "medium": "보통",
+          "low": "낮음"
+        },
+        "standingInstructionStatus": {
+          "active": "활성",
+          "disabled": "비활성화됨",
+          "deleted": "삭제됨"
+        },
+        "accountType": {
+          "savings": "저축 계좌",
+          "loan": "대출 계좌"
+        },
+        "standingInstructionType": {
+          "fixed": "고정 금액",
+          "dues": "청구 금액"
+        },
+        "accountTransferRecurrenceType": {
+          "periodic": "정기적",
+          "as.per.dues": "일정/납입일 기준"
+        },
+        "frequencyperiodFrequencyType": {
+          "days": "일",
+          "weeks": "주",
+          "months": "월",
+          "years": "년"
+        },
+        "own.account": "본인 계좌",
+        "other.bank": "타행"
+      }
+    },
+    "cbild": {
+      "creditProfile": {
+        "ficoScore": "FICO 점수",
+        "riskBand": "위험 등급",
+        "bureau": "신용조회기관",
+        "pulledAt": "마지막 조회",
+        "expiry": "만료일",
+        "delinquencies": "연체",
+        "firstDelinquency": "첫 연체",
+        "none": "없음",
+        "yes": "예",
+        "scoreDropAlert": "FICO 점수 하락",
+        "hasDelinquencies": "연체 기록 있음",
+        "tradelines": "신용 거래선",
+        "noTradelines": "신용 거래선 없음",
+        "balance": "잔액",
+        "latePayments": "연체 횟수",
+        "noData": "신용 프로필 없음",
+        "noDataHint": "신용조회 준비 확인 실행"
+      }
     }
   },
   "languages": {
@@ -4502,7 +4768,8 @@
     "PENDING": "보류 중",
     "INACTIVE": "비활성",
     "Process Remittance": "송금 처리",
-    "Allow full term length for each tranche disbursement": "활성화되면 각 트란셰 지급은 남은 기간에 맞추는 대신 전체 대출 기간 일정을 따릅니다. PROGRESSIVE 대출 일정 유형에만 사용 가능합니다."
+    "Allow full term length for each tranche disbursement": "활성화되면 각 트란셰 지급은 남은 기간에 맞추는 대신 전체 대출 기간 일정을 따릅니다. PROGRESSIVE 대출 일정 유형에만 사용 가능합니다.",
+    "Waive": "면제"
   },
   "countries": {
     "AF": "아프가니스탄",
@@ -4684,5 +4951,71 @@
         "message": "구현되지 않은 기능입니다!"
       }
     }
+  },
+  "copilot": {
+    "brand": "Mifos Intelligence AI",
+    "currentSession": "현재 세션",
+    "newChat": "새 채팅",
+    "close": "닫기",
+    "greeting": {
+      "morning": "좋은 아침입니다",
+      "afternoon": "좋은 오후입니다",
+      "evening": "좋은 저녁입니다"
+    },
+    "welcomeHeading": "오늘 고객을 지원하는 데 어떻게 도와드릴까요?",
+    "suggestions": {
+      "clientDetails": "고객 John Doe의 세부 정보를 보여주세요",
+      "repaymentSchedule": "대출 #107의 상환 일정은 어떻게 되나요?",
+      "savingsBalance": "고객 #52의 예금 계좌 잔액을 보여주세요",
+      "overdueLoans": "이번 주에 연체된 대출은 몇 건인가요?"
+    },
+    "input": {
+      "placeholder": "고객, 대출 또는 계좌에 대해 질문하세요...",
+      "attach": "파일 첨부",
+      "voice": "음성 입력",
+      "send": "메시지 보내기",
+      "stop": "생성 중지"
+    },
+    "disclaimer": "Mifos Intelligence AI는 인간의 의사 결정을 대체하는 것이 아니라 지원하도록 설계되었습니다.",
+    "nav": {
+      "recentChats": "최근 채팅",
+      "chat": "채팅",
+      "preferences": "환경설정",
+      "helpCenter": "도움말 센터"
+    },
+    "preferencesHeading": "환경설정",
+    "recent": {
+      "emptyTitle": "최근 대화 없음",
+      "emptySubtitle": "채팅 기록이 여기에 표시됩니다",
+      "messages": "개의 메시지",
+      "delete": "대화 삭제"
+    },
+    "help": {
+      "capabilitiesTitle": "Mifos Intelligence AI는 무엇을 할 수 있나요?",
+      "capabilities": {
+        "lookup": "고객 정보 및 프로필 조회",
+        "loans": "대출 세부 정보 및 상환 일정 보기",
+        "savings": "예금 계좌 잔액 확인",
+        "portfolio": "고객 포트폴리오에 대한 인사이트 확인",
+        "navigate": "Mifos X의 특정 페이지로 이동"
+      },
+      "examplesTitle": "예시 질문",
+      "importantTitle": "중요",
+      "important": {
+        "assist": "AI 응답은 참고용일 뿐 최종 결정이 아닙니다",
+        "verify": "조치를 취하기 전에 항상 중요한 금융 데이터를 확인하세요",
+        "noExecute": "AI는 스스로 거래를 실행하지 않습니다"
+      }
+    },
+    "cardType": {
+      "client": "고객",
+      "loan": "대출",
+      "savings": "예금",
+      "insight": "인사이트",
+      "confirmation": "확인"
+    },
+    "confirmWarning": "이 작업은 실제 자금과 관련이 있습니다. 확인해 주세요.",
+    "openAssistant": "AI 어시스턴트 열기",
+    "newChatTitle": "새 대화"
   }
 }

@@ -72,6 +72,15 @@
     </div>
   }
 
+  @if (loansAccount.originators?.length) {
+    <div class="flex-fill">
+      <span class="flex-30">{{ 'labels.inputs.Loan Originator' | translate }}:</span>
+      <span class="flex-70">
+        {{ originatorsLabel(loansAccount.originators) }}
+      </span>
+    </div>
+  }
+
   @if (loanProductService.isWorkingCapital) {
     <h3 class="mat-h3 margin-t flex-fill">{{ 'labels.heading.Terms' | translate }}</h3>
 
@@ -86,10 +95,13 @@
       </span>
     </div>
     <div class="flex-fill">
-      <span class="flex-30">{{ 'labels.inputs.Total Payment' | translate }}:</span>
+      <span class="flex-30"
+        >{{ 'labels.inputs.Total Payment' | translate }} {{ 'labels.inputs.Volume' | translate }}:</span
+      >
       <span class="flex-70">
         {{
-          loansAccount.totalPayment | currency: loansAccountProductTemplate.currency.code : 'symbol-narrow' : '1.2-2'
+          loansAccount.totalPaymentVolume
+            | currency: loansAccountProductTemplate.currency.code : 'symbol-narrow' : '1.2-2'
         }}
         <span class="m-l-5">{{ loansAccountProductTemplate.currency.code }}</span>
       </span>
@@ -115,7 +127,7 @@
     @if (loansAccount.delinquencyStartType) {
       <div class="flex-fill">
         <span class="flex-30">{{ 'labels.inputs.Delinquency Start Type' | translate }}:</span>
-        <span class="flex-60">{{ camalize(loansAccount.delinquencyStartType) | translateKey: 'catalogs' }}</span>
+        <span class="flex-60">{{ camalize(delinquencyStartTypeOption?.value) | translateKey: 'catalogs' }}</span>
       </div>
     }
 
@@ -146,7 +158,7 @@
       <span class="flex-30">{{ 'labels.inputs.Period Payment Frequency' | translate }}:</span>
       <span class="flex-60"
         >{{ loansAccount.repaymentEvery }}
-        {{ camalize(loansAccount.repaymentFrequencyType) | translateKey: 'catalogs' }}</span
+        {{ camalize(repaymentFrequencyTypeOption?.value) | translateKey: 'catalogs' }}</span
       >
     </div>
   }

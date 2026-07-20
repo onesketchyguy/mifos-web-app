@@ -23,6 +23,8 @@ export interface MainNavItem {
   permission?: string | string[];
   /** Only shown when the remittance feature is enabled. */
   requiresRemittance?: boolean;
+  /** Only shown when the CB ILD feature is enabled. */
+  requiresCbIld?: boolean;
 }
 
 /**
@@ -36,6 +38,14 @@ export const mainNavItems: MainNavItem[] = [
     tooltip: 'tooltips.Dashboard',
     icon: 'tachometer-alt',
     path: '/dashboard'
+  },
+  {
+    id: 'reporting-dashboard',
+    label: 'labels.menus.Reporting Dashboard',
+    tooltip: 'tooltips.Reporting Dashboard',
+    icon: 'file-alt',
+    path: '/reporting-dashboard',
+    requiresCbIld: true
   },
   {
     id: 'navigation',
@@ -205,6 +215,7 @@ export const mainNavItems: MainNavItem[] = [
 /** Default Main Items selection — mirrors the original hardcoded sidebar. */
 export const defaultMainNavItemIds: string[] = [
   'dashboard',
+  'reporting-dashboard',
   'navigation',
   'checker-inbox',
   'collection-sheet',

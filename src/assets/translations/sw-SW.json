@@ -1,4 +1,4 @@
-﻿{
+{
   "APP_NAME": "Mifos® X WebApp",
   "Logged in as": "Imeingia kama",
   "Remember me": "Nikumbuke",
@@ -374,7 +374,8 @@
     "report": {
       "type": "Uzalishaji wa ripoti",
       "generated": "Ripoti: data ya {{reportName}} imezalishwa",
-      "generatedNoData": "Ripoti: {{reportName}} imezalishwa bila data"
+      "generatedNoData": "Ripoti: {{reportName}} imezalishwa bila data",
+      "loadFailed": "Imeshindwa kupakia data ya ripoti. Tafadhali jaribu tena."
     },
     "clipboard": {
       "type": "Ubao wa kunakili",
@@ -399,7 +400,11 @@
       "buyDownFeeAdjusted": "Kiasi cha ada ya Buy Down tayari kimerekebishwa",
       "buyDownFeeLimit": "Kiasi cha marekebisho ya ada ya Buy Down lazima kiwe kidogo au sawa na",
       "businessRule": "Kanuni ya biashara",
-      "alertWithAmount": "{{label}}: {{amount}}"
+      "alertWithAmount": "{{label}}: {{amount}}",
+      "bulkWaiveCharge": {
+        "type": "Kosa la kusamehe ada",
+        "message": "{{count}} ada haikuweza kusamehewa."
+      }
     },
     "error.auth.type": "Hitilafu ya uthibitishaji",
     "error.auth.message": "Kipindi chako kimeisha au vithibitisho si sahihi.",
@@ -481,7 +486,8 @@
         "liabilityTransfer": "Uhamisho wa dhima",
         "openingBalancesTransferContra": "kufungua Mizani Uhamisho Contra",
         "payableDividends": "Gawio linalolipwa"
-      }
+      },
+      "ACC_DEF_REV_AM": "Ukusanyaji pamoja na upunguzaji wa mapato yaliyocheleweshwa"
     },
     "breadcrumbs": {
       "Home": "Nyumbani"
@@ -756,7 +762,21 @@
       "PRINT": "Chapisha",
       "DONE": "Imekamilika",
       "Submitting": "Inatuma",
-      "OK": "Sawa"
+      "OK": "Sawa",
+      "Create Loan Product (Classic)": "Create Loan Product (Classic)",
+      "Create Loan Product (Convenient)": "Create Loan Product (Convenient)",
+      "Pin": "Bandika",
+      "Reset Filters": "Weka Upya Vichujio",
+      "Pay Charge": "Lipa Ada",
+      "Run": "Endesha",
+      "Show Closed Accounts": "Onyesha Akaunti Zilizofungwa",
+      "Undo Reset": "Tengua uwekaji upya",
+      "Unpin": "Ondoa",
+      "Waive Selected": "Samehe zilizochaguliwa",
+      "undo_account_transfer": "Futa uhamisho wa akaunti",
+      "All": "Vyote",
+      "Pause Breach": "Sitisha Ukiukaji",
+      "Resume Breach": "Endelea Ukiukaji"
     },
     "catalogs": {
       "Interest payment waiver": "Msamaha wa Malipo ya Riba",
@@ -1026,7 +1046,12 @@
       "DAYS": "SIKU",
       "MONTHS": "MIEZI",
       "YEARS": "MIAKA",
-      "Loan Creation": "Uundaji wa Mikopo"
+      "Loan Creation": "Uundaji wa Mikopo",
+      "Discount Fee": "Ada ya Punguzo",
+      "In Arrears": "Madeni",
+      "Unknown": "Haijulikani",
+      "Waive loan charges": "Ondoa Ada za Mkopo",
+      "Working Capital Loan": "Mkopo wa Mtaji wa Kufanya Kazi"
     },
     "commons": {
       "50 characters long": "Urefu wa herufi 50",
@@ -1543,7 +1568,31 @@
       "Professional Information": "Taarifa za kitaaluma",
       "Add Profile Entry": "Ongeza ingizo la wasifu",
       "Id": "Kitambulisho",
-      "Recipient Summary": "Muhtasari wa Mpokeaji"
+      "Recipient Summary": "Muhtasari wa Mpokeaji",
+      "Breach Actions": "Ukiukaji Vitendo",
+      "Delinquency & Breach": "Uhalifu na Ukiukaji",
+      "Interest": "Riba",
+      "Multi-step form": "Multi-step form",
+      "Loan product creation": "Loan product creation",
+      "Near Breach Actions": "Ukiukaji unaokaribia Vitendo",
+      "Accounts": "Akaunti",
+      "Amortization Schedule": "Ratiba ya Malipo",
+      "Average Gap": "Tofauti ya Wastani",
+      "Breach Periods": "Vipindi vya Ukiukaji",
+      "Near Breach History": "Historia ya ukiukaji unaokaribia",
+      "Peak Outstanding": "Salio la Juu Lililobaki",
+      "Reports Catalog": "Katalogi ya ripoti",
+      "Total Days in Breach": "Jumla ya Siku za Ukiukaji",
+      "Undo Reset": "Tengua uwekaji upya",
+      "User Profile": "Wasifu wa Mtumiaji",
+      "View Transaction": "Tazama Muamala",
+      "View Transfer": "Tazama Uhamisho",
+      "Working Capital Loan Balances": "Salio za Mkopo wa Mtaji wa Kufanya Kazi",
+      "undo_account_transfer": "Futa uhamisho wa akaunti",
+      "Loan Breach Actions": "Vitendo vya Ukiukaji wa Mkopo",
+      "No Breach Actions": "Hakuna Vitendo vya Ukiukaji",
+      "Pause Timeline": "Mfuatano wa Pumziko",
+      "Location Map": "Ramani ya eneo"
     },
     "inputs": {
       "Add Menu Item": "Ongeza kipengee cha menyu",
@@ -3049,7 +3098,97 @@
       "Deposited At": "Iliwekwa",
       "Passport": "Pasipoti",
       "Driver's License": "Leseni ya Udereva",
-      "Mothers Maiden Name": "Jina la Mama Kabla ya Ndoa"
+      "Mothers Maiden Name": "Jina la Mama Kabla ya Ndoa",
+      "Annual interest rate": "Annual interest rate",
+      "Annual interest rate by loan cycle": "Annual interest rate by loan cycle",
+      "Annual interest rate frequency": "Annual interest rate frequency",
+      "Breach Actions": "Vitendo vya Ukiukaji",
+      "Actual": "Halisi",
+      "Actual Amortization": "Uondoaji halisi",
+      "Actual Balance": "Salio halisi",
+      "Actual Discount Fee Balance": "Salio halisi la ada ya punguzo",
+      "Actual Payment": "Malipo halisi",
+      "Amortization Amount": "Kiasi cha kuondoa",
+      "Amortization Schedule": "Ratiba ya Malipo",
+      "Amount Breakdown": "Muhtasari wa Kiasi",
+      "Amount Received/Returned": "Kiasi Kilichopokelewa/Kurejeshwa",
+      "Approved Discount": "Punguzo Lililoidhinishwa",
+      "Balanced": "Imesawazishwa",
+      "Balances": "Salio",
+      "Breach Grace Days": "Siku za neema za ukiukaji",
+      "Breach Schedule": "Ratiba ya ukiukaji",
+      "Charge-off reason": "Sababu ya malipo",
+      "Current": "Sasa",
+      "Disbursed": "Imetolewa",
+      "Discount External Id": "Kitambulisho cha Nje cha Punguzo",
+      "Discount External Id must differ from External Id": "Kitambulisho cha Nje cha Punguzo lazima kitofautiane na Kitambulisho cha Nje",
+      "Discount Fee Adjustment": "Marekebisho ya Ada ya Punguzo",
+      "Discount Fee Balance": "Salio la ada ya punguzo",
+      "Entry Type": "Aina ya Ingizo",
+      "Executed": "Imetekelezwa",
+      "Expected": "Inayotarajiwa",
+      "Expected Amortization Amount": "Kiasi cha Uokoaji Kinachotarajiwa",
+      "Expected Balance": "Salio linalotarajiwa",
+      "Expected Discount Fee Balance": "Salio linalotarajiwa la ada ya punguzo",
+      "Expected Payment Amount": "Kiasi cha Malipo Kinachotarajiwa",
+      "External Id is too long": "Kitambulisho cha Nje ni kirefu mno",
+      "Filters": "Vichujio",
+      "Financial Summary": "Muhtasari wa Fedha",
+      "GL Account": "Akaunti ya GL",
+      "Hide Projected": "Ficha zinazotarajiwa",
+      "Identification": "Utambulisho",
+      "In Arrears": "Madeni",
+      "In Balance": "Sawazishwa",
+      "Income Modification": "Marekebisho ya Mapato",
+      "Linked": "Imeunganishwa",
+      "Net Disbursal Amount": "Kiasi Halisi cha Utoaji",
+      "New": "Mpya",
+      "Net Balance": "Salio Halisi",
+      "Overpayment Amount": "Kiasi cha Malipo ya Ziada",
+      "Payment Amount": "Kiasi cha malipo",
+      "Payment Date": "Tarehe ya Malipo",
+      "Payments Left": "Malipo Yaliyobaki",
+      "Period Payment Rates": "Viwango vya Malipo ya Kipindi",
+      "Previous": "Awali",
+      "Projected": "Inakadiriwa",
+      "Proposed Discount": "Punguzo Lililopendekezwa",
+      "Realized Income": "Mapato Yaliyopatikana",
+      "Results": "Matokeo",
+      "Schedule": "Schedule",
+      "System": "Mfumo",
+      "Schedule Progress": "Maendeleo ya ratiba",
+      "Selected": "Imechaguliwa",
+      "Start new period": "Anza kipindi kipya",
+      "Submitted Date Range": "Anuwai ya Tarehe za Kuwasilisha",
+      "Total Credits": "Jumla ya Madai",
+      "Total Debits": "Jumla ya Madeni",
+      "Total Outstanding": "Jumla Iliyobaki",
+      "Total Overdue": "Jumla Iliyochelewa",
+      "Total Paid": "Jumla Iliyolipwa",
+      "Total Paid Principal": "Mkopo Mkuu Uliolipwa Jumla",
+      "Total records": "Jumla ya viingilio",
+      "Transaction Date Range": "Anuwai ya Tarehe za Muamala",
+      "Unrealized Income": "Mapato Yasiyopatikana",
+      "active": "tendaji",
+      "entries": "maingio",
+      "Active Pause": "Pumziko Linaloendelea",
+      "days": "siku",
+      "Duration": "Muda",
+      "Expired": "Imeisha",
+      "Last Action": "Kitendo cha Mwisho",
+      "No breach actions have been recorded for this loan": "Hakuna vitendo vya ukiukaji vilivyorekodiwa kwa mkopo huu",
+      "No records match the selected filter": "Hakuna rekodi zinazolingana na kichujio kilichochaguliwa",
+      "Ongoing": "Inaendelea",
+      "Pause Active": "Pumziko Linaendelea",
+      "Pauses": "Pumziko",
+      "Scheduled": "Iliyopangwa",
+      "Today": "Leo",
+      "Total Actions": "Jumla ya Vitendo",
+      "Total Days Paused": "Jumla ya Siku za Pumziko",
+      "Credit Profile": "Wasifu wa Mkopo",
+      "Borrower": "Mkopaji",
+      "Latitude": "Latitudo",
+      "Longitude": "Longitudo"
     },
     "links": {
       "Community": "Jumuiya",
@@ -3189,7 +3328,13 @@
       "Tasks": "Kazi",
       "Remittances": "Uhawilishaji",
       "Process Remittance": "Chakata uhawilishaji",
-      "Undo Write-off": "Futa Kuandika-mbali"
+      "Undo Write-off": "Futa Kuandika-mbali",
+      "Update Breach": "Sasisha ukiukaji",
+      "Discount Fee": "Ada ya Punguzo",
+      "Select All": "Chagua Yote",
+      "Select Item": "Chagua Kipengele",
+      "Undo Payment Rate": "Tendua Kiwango cha Malipo",
+      "Update Near Breach": "Sasisha ukiukaji unaokaribia"
     },
     "placeholders": {
       "Add new server": "Ongeza seva mpya",
@@ -3246,7 +3391,11 @@
       "Are you sure you want to": "Je, una uhakika unataka",
       "the productmix component with id": "sehemu ya mchanganyiko wa bidhaa na kitambulisho",
       "the Reschedule Loan": "kupanga upya mkopo",
-      "the Transaction Type": "Aina ya Muamala"
+      "the Transaction Type": "Aina ya Muamala",
+      "Are you sure you want to resume the breach pause": "Je, una hakika unataka kuendelea na kusitishwa kwa ukiukaji?",
+      "Are you sure you want to waive charges": "Je, una uhakika wa kutaka kusamehe malipo {{ count }}",
+      "Are you sure you want to undo last reset action": "Je, una uhakika unataka kutengua hatua ya mwisho ya uwekaji upya?",
+      "undo_account_transfer": "Una uhakika unataka kufuta uhamisho huu wa akaunti?"
     },
     "text": {
       "Loading data": "Inapakia data",
@@ -3981,7 +4130,63 @@
       "Loan Originators": "Waanzilishi wa Mikopo",
       "Loan Reschedules": "Ratiba za Mikopo",
       "Settings saved successfully": "Mipangilio imehifadhiwa.",
-      "Undo Write-off Description": "Kitendo hiki kitabatilisha muamala wa kuandika-mbali na kurejesha mkopo kwa hali yake ya awali ya kazi. Tafadhali toa maelezo yanayoelezea sababu ya kitendo hiki."
+      "Undo Write-off Description": "Kitendo hiki kitabatilisha muamala wa kuandika-mbali na kurejesha mkopo kwa hali yake ya awali ya kazi. Tafadhali toa maelezo yanayoelezea sababu ya kitendo hiki.",
+      "Max": "Upeo",
+      "Hidden variables and predefined values are included in the final payload automatically.": "Hidden variables and predefined values are included in the final payload automatically.",
+      "No Breach Actions": "Hakuna Ukiukaji Vitendo",
+      "No Near Breach Actions": "Hakuna Ukiukaji unaokaribia Vitendo",
+      "Activated": "Imewashwa",
+      "Amortization Schedule": "Ratiba ya Ulipaji",
+      "available": "zinapatikana",
+      "Balances": "Salio",
+      "Breach Timeline": "Mstari wa Wakati wa Ukiukaji",
+      "Compliant": "Inafuata",
+      "Council Approval": "Idhini ya Baraza",
+      "Filter by engine": "Chuja kwa injini",
+      "Gap": "Tofauti",
+      "In Breach": "Katika Ukiukaji",
+      "Visible Columns": "Safu Zinazoonekana",
+      "No columns selected": "Hakuna safu iliyochaguliwa",
+      "Loan Fields": "Sehemu za Mkopo",
+      "Data Tables": "Majedwali ya Data",
+      "No data tables": "Hakuna jedwali la data lililopatikana",
+      "Failed to load": "Imeshindwa kupakia",
+      "Mild": "Hafifu",
+      "Moderate": "Wastani",
+      "No pending loans for Council Approval": "Hakuna mikopo inayozubiri idhini ya Baraza",
+      "No reports match your filters": "Hakuna ripoti zinazolingana na vichungi",
+      "Page": "Ukurasa",
+      "Period Payment Rates": "Viwango vya Malipo ya Kipindi",
+      "Pinned": "Imebandikwa",
+      "Resolved": "Imetatuliwa",
+      "Rows": "Safu",
+      "Severe": "Kali",
+      "Severity": "Ukali",
+      "Showing": "Inaonyesha",
+      "Submitted": "Imewasilishwa",
+      "Template defaults are preloaded": "Template defaults are preloaded",
+      "Select a product below": "Select a product below",
+      "Upcoming": "Inayokuja",
+      "Complete control over every aspect of product behavior": "Udhibiti kamili juu ya kila kipengele cha tabia ya bidhaa — kutoka kusitishwa na ruzuku hadi miundo ya tranche nyingi, kanuni za mgawanyo, na mengine zaidi.",
+      "Today": "Leo",
+      "of": "ya",
+      "Maker-Checker principle requires every tasks": "Kanuni ya Mtengenezaji-Kikagua inahitaji kila kazi kukamilishwa na watu wawili ili kupunguza uwezekano wa makosa na matumizi mabaya. Mtu mmoja anaanzisha mchakato na wa pili anakamilisha.",
+      "Breach Actions": "Vitendo vya Ukiukaji",
+      "SavingsAccountsStayedLockedBusinessEvent": "Savings Accounts Stayed Locked Business Event",
+      "WorkingCapitalLoanDisbursalTransactionBusinessEvent": "Working Capital Loan Disbursal Transaction Business Event",
+      "WorkingCapitalLoanUndoDisbursalTransactionBusinessEvent": "Working Capital Loan Undo Disbursal Transaction Business Event",
+      "WorkingCapitalLoanRepaymentTransactionBusinessEvent": "Working Capital Loan Repayment Transaction Business Event",
+      "WorkingCapitalLoanCreditBalanceRefundTransactionBusinessEvent": "Working Capital Loan Credit Balance Refund Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeTransactionBusinessEvent": "Working Capital Loan Discount Fee Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeAdjustmentTransactionBusinessEvent": "Working Capital Loan Discount Fee Adjustment Transaction Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPreBusinessEvent": "Working Capital Loan Charge Adjustment Pre Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPostBusinessEvent": "Working Capital Loan Charge Adjustment Post Business Event",
+      "SavingsAccountForceWithdrawalBusinessEvent": "Savings Account Force Withdrawal Business Event",
+      "All Loan Products": "Bidhaa zote za mkopo",
+      "All Offices": "Ofisi zote",
+      "No loan was found": "Hakuna mkopo uliopatikana",
+      "SearchByLoan": "Tafuta kwa nambari ya akaunti, mkopaji au bidhaa",
+      "Map tiles unavailable": "Vipande vya ramani havipatikani"
     },
     "permissions": {
       "actions": {
@@ -4279,7 +4484,68 @@
       "No Identities Found": "Hakuna vitambulisho vilivyopatikana",
       "validationSaved": "Data ya uthibitishaji imehifadhiwa kwa mafanikio.",
       "workingCapitalDiscountUpdated": "Punguzo la mkopo wa mtaji wa kufanya kazi limefanikiwa kusasishwa.",
-      "unableToUpdateDiscount": "Haikuwezekana kusasisha punguzo."
+      "unableToUpdateDiscount": "Haikuwezekana kusasisha punguzo.",
+      "No Accounts Found": "Hakuna akaunti zilizopatikana."
+    },
+    "selections": {
+      "standingInstructions": {
+        "accountTransferType": {
+          "account.transfer": "Uhamisho kwenda Akaunti ya Akiba",
+          "loan.repayment": "Malipo ya Mkopo"
+        },
+        "standingInstructionPriority": {
+          "urgent": "Haraka Sana",
+          "high": "Juu",
+          "medium": "Kati",
+          "low": "Chini"
+        },
+        "standingInstructionStatus": {
+          "active": "Inafanya kazi",
+          "disabled": "Imezimwa",
+          "deleted": "Imefutwa"
+        },
+        "accountType": {
+          "savings": "Akaunti ya Akiba",
+          "loan": "Akaunti ya Mkopo"
+        },
+        "standingInstructionType": {
+          "fixed": "Kiasi Maalum",
+          "dues": "Kiasi cha Malipo yanayodaiwa"
+        },
+        "accountTransferRecurrenceType": {
+          "periodic": "Kila Baada ya Kipindi",
+          "as.per.dues": "Kulingana na Madeni"
+        },
+        "frequencyperiodFrequencyType": {
+          "days": "Siku",
+          "weeks": "Wiki",
+          "months": "Miezi",
+          "years": "Miaka"
+        },
+        "own.account": "Akaunti Yangu",
+        "other.bank": "Benki Nyingine"
+      }
+    },
+    "cbild": {
+      "creditProfile": {
+        "ficoScore": "Alama ya FICO",
+        "riskBand": "Kiwango cha Hatari",
+        "bureau": "Shirika",
+        "pulledAt": "Ilipatikana mara ya mwisho",
+        "expiry": "Tarehe ya kumalizika",
+        "delinquencies": "Madeni",
+        "firstDelinquency": "Deni la kwanza",
+        "none": "Hakuna",
+        "yes": "Ndiyo",
+        "scoreDropAlert": "Alama ya FICO imeshuka",
+        "hasDelinquencies": "Mteja ana madeni",
+        "tradelines": "Mistari ya mkopo",
+        "noTradelines": "Hakuna mistari",
+        "balance": "Salio",
+        "latePayments": "Malipo ya kuchelewa",
+        "noData": "Hakuna wasifu bado",
+        "noDataHint": "Endesha ukaguzi wa shirika"
+      }
     }
   },
   "languages": {
@@ -4499,7 +4765,8 @@
     "PENDING": "INAKARIBISHWA",
     "INACTIVE": "HAITUMIKI",
     "Process Remittance": "Chakata uhawilishaji",
-    "Allow full term length for each tranche disbursement": "Inapowezeshwa, kila usambazaji wa tranche utafuata ratiba kamili ya mkopo badala ya kulingana na muda uliobaki. Inapatikana tu kwa aina ya ratiba ya mkopo ya MAENDELEO."
+    "Allow full term length for each tranche disbursement": "Inapowezeshwa, kila usambazaji wa tranche utafuata ratiba kamili ya mkopo badala ya kulingana na muda uliobaki. Inapatikana tu kwa aina ya ratiba ya mkopo ya MAENDELEO.",
+    "Waive": "Kataa"
   },
   "countries": {
     "AF": "Afghanistani",
@@ -4681,5 +4948,71 @@
         "message": "Utendakazi ambao haujatekelezwa!"
       }
     }
+  },
+  "copilot": {
+    "brand": "Mifos Intelligence AI",
+    "currentSession": "Kipindi cha sasa",
+    "newChat": "Mazungumzo mapya",
+    "close": "Funga",
+    "greeting": {
+      "morning": "Habari za asubuhi",
+      "afternoon": "Habari za mchana",
+      "evening": "Habari za jioni"
+    },
+    "welcomeHeading": "Ninawezaje kukusaidia kuhudumia wateja wako leo?",
+    "suggestions": {
+      "clientDetails": "Nionyeshe maelezo ya mteja John Doe",
+      "repaymentSchedule": "Je, ratiba ya ulipaji wa mkopo #107 ni ipi?",
+      "savingsBalance": "Onyesha salio la akaunti ya akiba ya mteja #52",
+      "overdueLoans": "Ni mikopo mingapi imechelewa wiki hii?"
+    },
+    "input": {
+      "placeholder": "Uliza kuhusu wateja, mikopo, au akaunti...",
+      "attach": "Ambatisha faili",
+      "voice": "Ingizo la sauti",
+      "send": "Tuma ujumbe",
+      "stop": "Simamisha uzalishaji"
+    },
+    "disclaimer": "Mifos Intelligence AI imeundwa kusaidia, si kuchukua nafasi ya, maamuzi ya binadamu.",
+    "nav": {
+      "recentChats": "Mazungumzo ya hivi karibuni",
+      "chat": "Mazungumzo",
+      "preferences": "Mapendeleo",
+      "helpCenter": "Kituo cha usaidizi"
+    },
+    "preferencesHeading": "Mapendeleo",
+    "recent": {
+      "emptyTitle": "Hakuna mazungumzo ya hivi karibuni",
+      "emptySubtitle": "Historia yako ya mazungumzo itaonekana hapa",
+      "messages": "ujumbe",
+      "delete": "Futa mazungumzo"
+    },
+    "help": {
+      "capabilitiesTitle": "Mifos Intelligence AI inaweza kufanya nini?",
+      "capabilities": {
+        "lookup": "Tafuta taarifa na wasifu wa wateja",
+        "loans": "Angalia maelezo ya mikopo na ratiba za ulipaji",
+        "savings": "Angalia salio la akaunti za akiba",
+        "portfolio": "Pata maarifa kuhusu portfolio za wateja",
+        "navigate": "Nenda kwenye kurasa mahususi katika Mifos X"
+      },
+      "examplesTitle": "Mifano ya maswali",
+      "importantTitle": "Muhimu",
+      "important": {
+        "assist": "Majibu ya AI ni kwa usaidizi tu, si maamuzi ya mwisho",
+        "verify": "Daima thibitisha data muhimu za kifedha kabla ya kuchukua hatua",
+        "noExecute": "AI haifanyi miamala yenyewe"
+      }
+    },
+    "cardType": {
+      "client": "Mteja",
+      "loan": "Mkopo",
+      "savings": "Akiba",
+      "insight": "Maarifa",
+      "confirmation": "Uthibitisho"
+    },
+    "confirmWarning": "Kitendo hiki kinahusisha pesa halisi. Tafadhali thibitisha.",
+    "openAssistant": "Fungua Msaidizi wa AI",
+    "newChatTitle": "Mazungumzo mapya"
   }
 }

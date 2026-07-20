@@ -6,7 +6,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Dates } from 'app/core/utils/dates';
@@ -31,7 +32,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     TransactionPaymentDetailComponent,
     CurrencyPipe,
     DateFormatPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SavingsTransactionGeneralTabComponent {
   private savingsService = inject(SavingsService);
@@ -40,13 +42,14 @@ export class SavingsTransactionGeneralTabComponent {
   private router = inject(Router);
   dialog = inject(MatDialog);
   private settingsService = inject(SettingsService);
+  private destroyRef = inject(DestroyRef);
 
   accountId: string;
   transactionId: string;
   transactionData: any;
 
   constructor() {
-    this.route.data.subscribe((data: { savingsAccountTransaction: any }) => {
+    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data: { savingsAccountTransaction: any }) => {
       this.accountId = this.route.parent.snapshot.params['savingAccountId'];
       this.transactionData = data.savingsAccountTransaction;
     });

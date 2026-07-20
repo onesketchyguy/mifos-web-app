@@ -7,7 +7,8 @@
  */
 
 /** Angular Imports */
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 
@@ -46,9 +47,11 @@ import { LoanAccountTabBaseComponent } from '../loan-account-tab-base.component'
     NgClass,
     DateFormatPipe,
     FormatNumberPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ViewChargeComponent extends LoanAccountTabBaseComponent {
+  private readonly destroyRef = inject(DestroyRef);
   private loansService = inject(LoansService);
   private route = inject(ActivatedRoute);
   private dateUtils = inject(Dates);
@@ -74,12 +77,14 @@ export class ViewChargeComponent extends LoanAccountTabBaseComponent {
    */
   constructor() {
     super();
-    this.route.data.subscribe((data: { loansAccountCharge: any; loanDetailsData: any }) => {
-      this.chargeData = data.loansAccountCharge;
-      this.allowPayCharge = this.chargeData.chargePayable && !this.chargeData.paid;
-      this.allowWaive = !this.chargeData.chargeTimeType.waived;
-      this.loansAccountData = data.loanDetailsData;
-    });
+    this.route.data
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((data: { loansAccountCharge: any; loanDetailsData: any }) => {
+        this.chargeData = data.loansAccountCharge;
+        this.allowPayCharge = this.chargeData.chargePayable && !this.chargeData.paid;
+        this.allowWaive = !this.chargeData.chargeTimeType.waived;
+        this.loansAccountData = data.loanDetailsData;
+      });
   }
 
   /**
@@ -112,7 +117,13 @@ export class ViewChargeComponent extends LoanAccountTabBaseComponent {
           locale
         };
         this.loansService
-          .executeLoansAccountChargesCommand(this.chargeData.loanId, 'pay', dataObject, this.chargeData.id)
+          .executeLoansAccountChargesCommand(
+            this.loanProductService.loanAccountPath,
+            this.chargeData.loanId,
+            'pay',
+            dataObject,
+            this.chargeData.id
+          )
           .subscribe(() => {
             this.reload();
           });
@@ -136,7 +147,13 @@ export class ViewChargeComponent extends LoanAccountTabBaseComponent {
     waiveChargeDialogRef.afterClosed().subscribe((response: any) => {
       if (response.confirm) {
         this.loansService
-          .executeLoansAccountChargesCommand(this.chargeData.loanId, 'waive', {}, this.chargeData.id)
+          .executeLoansAccountChargesCommand(
+            this.loanProductService.loanAccountPath,
+            this.chargeData.loanId,
+            'waive',
+            {},
+            this.chargeData.id
+          )
           .subscribe(() => {
             this.reload();
           });
@@ -184,7 +201,12 @@ export class ViewChargeComponent extends LoanAccountTabBaseComponent {
           locale
         };
         this.loansService
-          .editLoansAccountCharge(this.loansAccountData.id, dataObject, this.chargeData.id)
+          .editLoansAccountCharge(
+            this.loanProductService.loanAccountPath,
+            this.loansAccountData.id,
+            dataObject,
+            this.chargeData.id
+          )
           .subscribe(() => {
             this.reload();
           });
@@ -201,9 +223,15 @@ export class ViewChargeComponent extends LoanAccountTabBaseComponent {
     });
     deleteChargeDialogRef.afterClosed().subscribe((response: any) => {
       if (response.delete) {
-        this.loansService.deleteLoansAccountCharge(this.loansAccountData.id, this.chargeData.id).subscribe(() => {
-          this.reload();
-        });
+        this.loansService
+          .deleteLoansAccountCharge(
+            this.loanProductService.loanAccountPath,
+            this.loansAccountData.id,
+            this.chargeData.id
+          )
+          .subscribe(() => {
+            this.reload();
+          });
       }
     });
   }

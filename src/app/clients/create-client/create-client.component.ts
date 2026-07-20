@@ -7,7 +7,16 @@
  */
 
 /** Angular Imports */
-import { Component, QueryList, ViewChild, ViewChildren, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  QueryList,
+  ViewChild,
+  ViewChildren,
+  inject
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormControl } from '@angular/forms';
 
@@ -59,13 +68,15 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     ClientAddressStepComponent,
     ClientDatatableStepComponent,
     ClientPreviewStepComponent
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CreateClientComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private clientsService = inject(ClientsService);
   private settingsService = inject(SettingsService);
+  private destroyRef = inject(DestroyRef);
 
   /** Client General Step */
   @ViewChild(ClientGeneralStepComponent, { static: true }) clientGeneralStep: ClientGeneralStepComponent;
@@ -93,11 +104,13 @@ export class CreateClientComponent {
    * @param {SettingsService} settingsService Setting service
    */
   constructor() {
-    this.route.data.subscribe((data: { clientTemplate: any; clientAddressFieldConfig: any }) => {
-      this.clientTemplate = data.clientTemplate;
-      this.clientAddressFieldConfig = data.clientAddressFieldConfig;
-      this.setDatatables();
-    });
+    this.route.data
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((data: { clientTemplate: any; clientAddressFieldConfig: any }) => {
+        this.clientTemplate = data.clientTemplate;
+        this.clientAddressFieldConfig = data.clientAddressFieldConfig;
+        this.setDatatables();
+      });
   }
 
   /**

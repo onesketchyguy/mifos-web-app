@@ -1,4 +1,4 @@
-﻿{
+{
   "APP_NAME": "Mifos® X WebApp",
   "Logged in as": "Conectado como",
   "Remember me": "Recordar me",
@@ -374,7 +374,8 @@
     "report": {
       "type": "Generación de reporte",
       "generated": "Reporte: datos de {{reportName}} generados",
-      "generatedNoData": "Reporte: {{reportName}} generado sin datos"
+      "generatedNoData": "Reporte: {{reportName}} generado sin datos",
+      "loadFailed": "Error al cargar los datos del reporte. Por favor, inténtelo de nuevo."
     },
     "clipboard": {
       "type": "Portapapeles",
@@ -399,7 +400,11 @@
       "buyDownFeeAdjusted": "Monto de tarifa Buy Down ya ajustado",
       "buyDownFeeLimit": "El monto de ajuste de tarifa Buy Down debe ser menor o igual a",
       "businessRule": "Regla de negocio",
-      "alertWithAmount": "{{label}}: {{amount}}"
+      "alertWithAmount": "{{label}}: {{amount}}",
+      "bulkWaiveCharge": {
+        "type": "Error al condonar cargo",
+        "message": "{{count}} cargo(s) no pudieron ser condonados."
+      }
     },
     "error.auth.type": "Error de autenticación",
     "error.auth.message": "Su sesión ha expirado o las credenciales son inválidas.",
@@ -481,7 +486,8 @@
         "liabilityTransfer": "Transferencia de Pasivo",
         "openingBalancesTransferContra": "Saldos de Apertura Transferencia Contra",
         "payableDividends": "Dividendos a pagar"
-      }
+      },
+      "ACC_DEF_REV_AM": "Provisión con amortización de ingresos diferidos"
     },
     "breadcrumbs": {
       "Home": "Inicio"
@@ -756,7 +762,21 @@
       "PRINT": "Imprimir",
       "DONE": "Hecho",
       "Submitting": "Enviando",
-      "OK": "OK"
+      "OK": "OK",
+      "Create Loan Product (Classic)": "Create Loan Product (Classic)",
+      "Create Loan Product (Convenient)": "Create Loan Product (Convenient)",
+      "Pin": "Anclar",
+      "Reset Filters": "Restablecer Filtros",
+      "Pay Charge": "Pagar Cargo",
+      "Run": "Ejecutar",
+      "Show Closed Accounts": "Mostrar Cuentas Cerradas",
+      "Undo Reset": "Deshacer reinicio",
+      "Unpin": "Desanclar",
+      "Waive Selected": "Renunciar seleccionados",
+      "undo_account_transfer": "Revertir transferencia de cuenta",
+      "All": "Todos",
+      "Pause Breach": "Pausar Incumplimiento",
+      "Resume Breach": "Reanudar Incumplimiento"
     },
     "catalogs": {
       "Interest payment waiver": "Exención de pago de intereses",
@@ -1027,7 +1047,12 @@
       "DAYS": "DÍAS",
       "MONTHS": "MESES",
       "YEARS": "AÑOS",
-      "Loan Creation": "Creación del préstamo"
+      "Loan Creation": "Creación del préstamo",
+      "Discount Fee": "Tarifa de descuento",
+      "In Arrears": "En Mora",
+      "Unknown": "Desconocido",
+      "Waive loan charges": "Condonar cargos del préstamo",
+      "Working Capital Loan": "Préstamo de Capital de Trabajo"
     },
     "commons": {
       "50 characters long": "50 caracteres de largo",
@@ -1546,7 +1571,31 @@
       "Identification": "Identificación",
       "Professional Information": "Información Profesional",
       "Add Profile Entry": "Agregar Entrada de Perfil",
-      "Recipient Summary": "Resumen del destinatario"
+      "Recipient Summary": "Resumen del destinatario",
+      "Breach Actions": "Acciones de Incumplimiento",
+      "Delinquency & Breach": "Morosidad e Incumplimiento",
+      "Interest": "Interés",
+      "Multi-step form": "Multi-step form",
+      "Loan product creation": "Loan product creation",
+      "Near Breach Actions": "Acciones de Incumplimiento inminente",
+      "Accounts": "Cuentas",
+      "Amortization Schedule": "Tabla de Amortización",
+      "Average Gap": "Brecha Promedio",
+      "Breach Periods": "Períodos de Incumplimiento",
+      "Near Breach History": "Historial de incumplimiento inminente",
+      "Peak Outstanding": "Saldo Máximo Pendiente",
+      "Reports Catalog": "Catálogo de reportes",
+      "Total Days in Breach": "Días Totales en Incumplimiento",
+      "Undo Reset": "Deshacer reinicio",
+      "User Profile": "Perfil de Usuario",
+      "View Transaction": "Ver Transacción",
+      "View Transfer": "Ver Transferencia",
+      "Working Capital Loan Balances": "Balances de Préstamo de Capital de Trabajo",
+      "undo_account_transfer": "Revertir transferencia de cuenta",
+      "Loan Breach Actions": "Acciones de Incumplimiento del Préstamo",
+      "No Breach Actions": "Sin Acciones sobre Brechas",
+      "Pause Timeline": "Línea de Tiempo de Pausas",
+      "Location Map": "Mapa de ubicación"
     },
     "inputs": {
       "Add Menu Item": "Agregar elemento de menú",
@@ -3053,7 +3102,97 @@
       "Deposited At": "Depositado el",
       "Passport": "Pasaporte",
       "Driver's License": "Licencia de conducir",
-      "Mothers Maiden Name": "Apellido de soltera de la madre"
+      "Mothers Maiden Name": "Apellido de soltera de la madre",
+      "Annual interest rate": "Annual interest rate",
+      "Annual interest rate by loan cycle": "Annual interest rate by loan cycle",
+      "Annual interest rate frequency": "Annual interest rate frequency",
+      "Breach Actions": "Acciones de Incumplimiento",
+      "Actual": "Real",
+      "Actual Amortization": "Amortización real",
+      "Actual Balance": "Saldo real",
+      "Actual Discount Fee Balance": "Saldo real de comisión de descuento",
+      "Actual Payment": "Pago real",
+      "Amortization Amount": "Monto de amortización",
+      "Amortization Schedule": "Tabla de Amortización",
+      "Amount Breakdown": "Desglose de montos",
+      "Amount Received/Returned": "Monto recibido/devuelto",
+      "Approved Discount": "Descuento Aprobado",
+      "Balanced": "Balanceado",
+      "Balances": "Saldos",
+      "Breach Grace Days": "Días de gracia por incumplimiento",
+      "Breach Schedule": "Calendario de incumplimientos",
+      "Charge-off reason": "Motivo de la cancelación",
+      "Current": "Actual",
+      "Disbursed": "Desembolsado",
+      "Discount External Id": "Id externo del descuento",
+      "Discount External Id must differ from External Id": "El Id externo del descuento debe ser distinto del Id externo",
+      "Discount Fee Adjustment": "Ajuste de la Tarifa de Descuento",
+      "Discount Fee Balance": "Saldo comisión de descuento",
+      "Entry Type": "Tipo de Entrada",
+      "Executed": "Ejecutado",
+      "Expected": "Esperado",
+      "Expected Amortization Amount": "Monto de amortización esperado",
+      "Expected Balance": "Saldo esperado",
+      "Expected Discount Fee Balance": "Saldo esperado de comisión de descuento",
+      "Expected Payment Amount": "Monto de pago esperado",
+      "External Id is too long": "El Id externo es demasiado largo",
+      "Filters": "Filtros",
+      "Financial Summary": "Resumen Financiero",
+      "GL Account": "Cuenta Mayor",
+      "Hide Projected": "Ocultar proyectadas",
+      "Identification": "Identificación",
+      "In Arrears": "En Mora",
+      "In Balance": "En Balance",
+      "Income Modification": "Modificación de ingresos",
+      "Linked": "Vinculado",
+      "Net Disbursal Amount": "Monto Neto a Desembolsar",
+      "New": "Nuevo",
+      "Net Balance": "Balance Neto",
+      "Overpayment Amount": "Monto de sobrepago",
+      "Payment Amount": "Monto del pago",
+      "Payment Date": "Fecha de pago",
+      "Payments Left": "Pagos restantes",
+      "Period Payment Rates": "Tasas de pago del período",
+      "Previous": "Anterior",
+      "Projected": "Proyectado",
+      "Proposed Discount": "Descuento Propuesto",
+      "Realized Income": "Ingreso Realizado",
+      "Results": "Resultados",
+      "Schedule": "Schedule",
+      "System": "Sistema",
+      "Schedule Progress": "Progreso del calendario",
+      "Selected": "Seleccionado(s)",
+      "Start new period": "Iniciar nuevo período",
+      "Submitted Date Range": "Rango de fechas de registro",
+      "Total Credits": "Total Créditos",
+      "Total Debits": "Total Débitos",
+      "Total Outstanding": "Total Pendiente",
+      "Total Overdue": "Total Vencido",
+      "Total Paid": "Total Pagado",
+      "Total Paid Principal": "Principal Total Pagado",
+      "Total records": "Total de registros",
+      "Transaction Date Range": "Rango de fechas de transacción",
+      "Unrealized Income": "Ingreso No Realizado",
+      "active": "activos",
+      "entries": "entradas",
+      "Active Pause": "Pausa Activa",
+      "days": "días",
+      "Duration": "Duración",
+      "Expired": "Expirada",
+      "Last Action": "Última Acción",
+      "No breach actions have been recorded for this loan": "No se han registrado acciones sobre brechas para este préstamo",
+      "No records match the selected filter": "Ningún registro coincide con el filtro seleccionado",
+      "Ongoing": "En curso",
+      "Pause Active": "Pausa Activa",
+      "Pauses": "Pausas",
+      "Scheduled": "Programada",
+      "Today": "Hoy",
+      "Total Actions": "Acciones Totales",
+      "Total Days Paused": "Total de Días en Pausa",
+      "Credit Profile": "Perfil de crédito",
+      "Borrower": "Prestatario",
+      "Latitude": "Latitud",
+      "Longitude": "Longitud"
     },
     "links": {
       "Community": "Comunidad",
@@ -3194,7 +3333,13 @@
       "Tasks": "Tareas",
       "Remittances": "Remesas",
       "Process Remittance": "Procesar Remesa",
-      "Undo Write-off": "Deshacer castigo contable"
+      "Undo Write-off": "Deshacer castigo contable",
+      "Update Breach": "Actualizar Incumplimiento",
+      "Discount Fee": "Tarifa de Descuento",
+      "Select All": "Seleccionar todo",
+      "Select Item": "Seleccionar elemento",
+      "Undo Payment Rate": "Deshacer tasa de pago",
+      "Update Near Breach": "Actualizar Incumplimiento Cercano"
     },
     "placeholders": {
       "Add new server": "Agregar nuevo servidor",
@@ -3251,7 +3396,11 @@
       "Are you sure you want to": "¿Estás seguro de que deseas",
       "the productmix component with id": "el componente productmix con id",
       "the Reschedule Loan": "la Recandelarización del Crédito",
-      "the Transaction Type": "el tipo de transacción"
+      "the Transaction Type": "el tipo de transacción",
+      "Are you sure you want to resume the breach pause": "¿Estás seguro de que quieres reanudar la pausa del incumplimiento?",
+      "Are you sure you want to waive charges": "¿Está seguro de que desea renunciar a {{ count }} comisiones",
+      "Are you sure you want to undo last reset action": "¿Está seguro de que desea deshacer la última acción de reinicio?",
+      "undo_account_transfer": "¿Está seguro de que desea revertir esta transferencia de cuenta?"
     },
     "text": {
       "Loading data": "Cargando datos",
@@ -3986,7 +4135,63 @@
       "Loan Originators": "Originadores de créditos",
       "Loan Reschedules": "Reprogramaciones de Créditos",
       "Settings saved successfully": "Configuración guardada exitosamente.",
-      "Undo Write-off Description": "Esta acción revertirá la transacción de castigo contable y restaurará el préstamo a su estado activo anterior. Por favor, proporcione una nota explicando el motivo de esta acción."
+      "Undo Write-off Description": "Esta acción revertirá la transacción de castigo contable y restaurará el préstamo a su estado activo anterior. Por favor, proporcione una nota explicando el motivo de esta acción.",
+      "Max": "Máx",
+      "Hidden variables and predefined values are included in the final payload automatically.": "Hidden variables and predefined values are included in the final payload automatically.",
+      "No Breach Actions": "Sin acciones de incumplimiento",
+      "No Near Breach Actions": "Sin acciones de incumplimiento inminente",
+      "Activated": "Activado",
+      "Amortization Schedule": "Calendario de Amortización",
+      "available": "disponibles",
+      "Balances": "Saldos",
+      "Breach Timeline": "Línea de Tiempo de Incumplimientos",
+      "Compliant": "Cumpliendo",
+      "Council Approval": "Aprobación del Consejo",
+      "Filter by engine": "Filtrar por motor",
+      "Gap": "Brecha",
+      "In Breach": "En Incumplimiento",
+      "Visible Columns": "Columnas visibles",
+      "No columns selected": "Columnas no seleccionadas",
+      "Loan Fields": "Campos del Préstamo",
+      "Data Tables": "Tablas de datos",
+      "No data tables": "Tablas de datos no encontradas",
+      "Failed to load": "Error al cargar",
+      "Mild": "Leve",
+      "Moderate": "Moderado",
+      "No pending loans for Council Approval": "No hay préstamos pendientes de aprobación del Consejo",
+      "No reports match your filters": "Ningún reporte coincide con tus filtros",
+      "Page": "Página",
+      "Period Payment Rates": "Tasas de pago del período",
+      "Pinned": "Anclados",
+      "Resolved": "Resuelto",
+      "Rows": "Filas",
+      "Severe": "Severo",
+      "Severity": "Severidad",
+      "Showing": "Mostrando",
+      "Submitted": "Enviado",
+      "Template defaults are preloaded": "Template defaults are preloaded",
+      "Select a product below": "Select a product below",
+      "Upcoming": "Próximamente",
+      "Complete control over every aspect of product behavior": "Control total sobre cada aspecto del comportamiento del producto — desde la moratoria y la subvención hasta las estructuras de múltiples tramos, las reglas de prorrateo y mucho más.",
+      "Today": "Hoy",
+      "of": "de",
+      "Maker-Checker principle requires every tasks": "El principio Maker-Checker requiere que dos personas completen cada tarea para reducir la posibilidad de errores y uso indebido. Una persona inicia el proceso y la segunda lo completa.",
+      "Breach Actions": "Acciones de Incumplimiento",
+      "SavingsAccountsStayedLockedBusinessEvent": "Savings Accounts Stayed Locked Business Event",
+      "WorkingCapitalLoanDisbursalTransactionBusinessEvent": "Working Capital Loan Disbursal Transaction Business Event",
+      "WorkingCapitalLoanUndoDisbursalTransactionBusinessEvent": "Working Capital Loan Undo Disbursal Transaction Business Event",
+      "WorkingCapitalLoanRepaymentTransactionBusinessEvent": "Working Capital Loan Repayment Transaction Business Event",
+      "WorkingCapitalLoanCreditBalanceRefundTransactionBusinessEvent": "Working Capital Loan Credit Balance Refund Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeTransactionBusinessEvent": "Working Capital Loan Discount Fee Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeAdjustmentTransactionBusinessEvent": "Working Capital Loan Discount Fee Adjustment Transaction Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPreBusinessEvent": "Working Capital Loan Charge Adjustment Pre Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPostBusinessEvent": "Working Capital Loan Charge Adjustment Post Business Event",
+      "SavingsAccountForceWithdrawalBusinessEvent": "Savings Account Force Withdrawal Business Event",
+      "All Loan Products": "Todos los productos de crédito",
+      "All Offices": "Todas las oficinas",
+      "No loan was found": "No se encontró ningún préstamo",
+      "SearchByLoan": "Buscar por número de cuenta, prestatario o producto",
+      "Map tiles unavailable": "Los mosaicos del mapa no están disponibles"
     },
     "permissions": {
       "actions": {
@@ -4284,7 +4489,68 @@
       "No Identities Found": "No se encontraron identidades",
       "validationSaved": "Datos de validación guardados exitosamente.",
       "workingCapitalDiscountUpdated": "El descuento del préstamo de capital de trabajo se actualizó correctamente.",
-      "unableToUpdateDiscount": "No se pudo actualizar el descuento."
+      "unableToUpdateDiscount": "No se pudo actualizar el descuento.",
+      "No Accounts Found": "No se encontraron cuentas."
+    },
+    "selections": {
+      "standingInstructions": {
+        "accountTransferType": {
+          "account.transfer": "Transferencia a Cuenta de Ahorro",
+          "loan.repayment": "Pago de Crédito"
+        },
+        "standingInstructionPriority": {
+          "urgent": "Urgente",
+          "high": "Alta",
+          "medium": "Media",
+          "low": "Baja"
+        },
+        "standingInstructionStatus": {
+          "active": "Activa",
+          "disabled": "Inactiva",
+          "deleted": "Eliminada"
+        },
+        "accountType": {
+          "savings": "Cuenta de Ahorro",
+          "loan": "Cuenta de Crédito"
+        },
+        "standingInstructionType": {
+          "fixed": "Monto Fijo",
+          "dues": "Monto de la Cuota"
+        },
+        "accountTransferRecurrenceType": {
+          "periodic": "Periódica",
+          "as.per.dues": "Según Vencimiento"
+        },
+        "frequencyperiodFrequencyType": {
+          "days": "Días",
+          "weeks": "Semanas",
+          "months": "Meses",
+          "years": "Años"
+        },
+        "own.account": "Cuenta Propia",
+        "other.bank": "Otros Bancos"
+      }
+    },
+    "cbild": {
+      "creditProfile": {
+        "ficoScore": "Puntuación FICO",
+        "riskBand": "Banda de riesgo",
+        "bureau": "Buró",
+        "pulledAt": "Última consulta",
+        "expiry": "Fecha de vencimiento",
+        "delinquencies": "Morosidades",
+        "firstDelinquency": "Primera morosidad",
+        "none": "Ninguna",
+        "yes": "Sí",
+        "scoreDropAlert": "Puntuación FICO ha bajado",
+        "hasDelinquencies": "Cliente tiene morosidades",
+        "tradelines": "Líneas de crédito",
+        "noTradelines": "Sin líneas de crédito",
+        "balance": "Saldo",
+        "latePayments": "Pagos tardíos",
+        "noData": "Sin perfil de crédito aún",
+        "noDataHint": "Ejecute primero la verificación del buró"
+      }
     }
   },
   "languages": {
@@ -4504,7 +4770,8 @@
     "PENDING": "PENDIENTE",
     "INACTIVE": "INACTIVO",
     "Process Remittance": "Procesar Remesa",
-    "Allow full term length for each tranche disbursement": "Cuando está habilitado, cada desembolso de tramo seguirá el cronograma completo del préstamo en lugar de ajustarse al plazo restante. Solo disponible para el tipo de cronograma PROGRESIVO."
+    "Allow full term length for each tranche disbursement": "Cuando está habilitado, cada desembolso de tramo seguirá el cronograma completo del préstamo en lugar de ajustarse al plazo restante. Solo disponible para el tipo de cronograma PROGRESIVO.",
+    "Waive": "Condonar"
   },
   "countries": {
     "AF": "Afganistán",
@@ -4686,5 +4953,71 @@
         "message": "¡Funcionalidad no implementada!"
       }
     }
+  },
+  "copilot": {
+    "brand": "Mifos Intelligence AI",
+    "currentSession": "Sesión actual",
+    "newChat": "Nuevo chat",
+    "close": "Cerrar",
+    "greeting": {
+      "morning": "Buenos días",
+      "afternoon": "Buenas tardes",
+      "evening": "Buenas noches"
+    },
+    "welcomeHeading": "¿Cómo puedo ayudarte a atender a tus clientes hoy?",
+    "suggestions": {
+      "clientDetails": "Muéstrame los detalles del cliente John Doe",
+      "repaymentSchedule": "¿Cuál es el calendario de pagos del préstamo n.º 107?",
+      "savingsBalance": "Muestra el saldo de la cuenta de ahorros del cliente n.º 52",
+      "overdueLoans": "¿Cuántos préstamos están vencidos esta semana?"
+    },
+    "input": {
+      "placeholder": "Pregunta sobre clientes, préstamos o cuentas...",
+      "attach": "Adjuntar archivo",
+      "voice": "Entrada de voz",
+      "send": "Enviar mensaje",
+      "stop": "Detener generación"
+    },
+    "disclaimer": "Mifos Intelligence AI está diseñada para ayudar, no para reemplazar, la toma de decisiones humana.",
+    "nav": {
+      "recentChats": "Chats recientes",
+      "chat": "Chat",
+      "preferences": "Preferencias",
+      "helpCenter": "Centro de ayuda"
+    },
+    "preferencesHeading": "Preferencias",
+    "recent": {
+      "emptyTitle": "No hay conversaciones recientes",
+      "emptySubtitle": "Tu historial de chat aparecerá aquí",
+      "messages": "mensajes",
+      "delete": "Eliminar conversación"
+    },
+    "help": {
+      "capabilitiesTitle": "¿Qué puede hacer Mifos Intelligence AI?",
+      "capabilities": {
+        "lookup": "Buscar información y perfiles de clientes",
+        "loans": "Ver detalles de préstamos y calendarios de pago",
+        "savings": "Consultar saldos de cuentas de ahorro",
+        "portfolio": "Obtener información sobre las carteras de clientes",
+        "navigate": "Navegar a páginas específicas en Mifos X"
+      },
+      "examplesTitle": "Ejemplos de preguntas",
+      "importantTitle": "Importante",
+      "important": {
+        "assist": "Las respuestas de la IA son solo de ayuda, no decisiones finales",
+        "verify": "Verifica siempre los datos financieros críticos antes de actuar",
+        "noExecute": "La IA no ejecuta transacciones por sí sola"
+      }
+    },
+    "cardType": {
+      "client": "Cliente",
+      "loan": "Préstamo",
+      "savings": "Ahorros",
+      "insight": "Información",
+      "confirmation": "Confirmación"
+    },
+    "confirmWarning": "Esta acción implica dinero real. Por favor, confirma.",
+    "openAssistant": "Abrir el asistente de IA",
+    "newChatTitle": "Nueva conversación"
   }
 }

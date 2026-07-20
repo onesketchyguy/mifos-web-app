@@ -19,6 +19,7 @@ import { LoansService } from '../loans.service';
 import { OrganizationService } from 'app/organization/organization.service';
 import { LoanProductService } from 'app/products/loan-products/services/loan-product.service';
 import { isAccountFeatureEnabled } from 'app/shared/account-features/account-features.config';
+import { ProductsService } from 'app/products/products.service';
 
 /**
  * Loans notes data resolver.
@@ -28,6 +29,7 @@ export class LoanActionButtonResolver {
   private loansService = inject(LoansService);
   private organizationService = inject(OrganizationService);
   private loanProductService = inject(LoanProductService);
+  private productService = inject(ProductsService);
 
   /**
    * Returns the Loans Notes Data.
@@ -39,9 +41,13 @@ export class LoanActionButtonResolver {
     if (loanActionButton === 'Assign Loan Officer' || loanActionButton === 'Change Loan Officer') {
       return this.loansService.getLoanTemplate(loanId);
     } else if (loanActionButton === 'Make Repayment') {
-      return this.loansService.getLoanActionTemplate(loanId, 'repayment');
+      return this.loanProductService.isLoanProduct
+        ? this.loansService.getLoanActionTemplate(loanId, 'repayment')
+        : this.loansService.getWorkingCapitalLoanActionTemplate(loanId, 'repayment');
     } else if (loanActionButton === 'Goodwill Credit') {
-      return this.loansService.getLoanActionTemplate(loanId, 'goodwillCredit');
+      return this.loanProductService.isLoanProduct
+        ? this.loansService.getLoanActionTemplate(loanId, 'goodwillCredit')
+        : this.loansService.getWorkingCapitalLoanActionTemplate(loanId, 'goodwillCredit');
     } else if (loanActionButton === 'Interest Payment Waiver') {
       return this.loansService.getLoanActionTemplate(loanId, 'interestPaymentWaiver');
     } else if (loanActionButton === 'Payout Refund') {
@@ -88,7 +94,7 @@ export class LoanActionButtonResolver {
         ? this.loansService.getLoanApprovalTemplate(loanId)
         : this.loansService.getWorkingCapitalLoanActionTemplate(loanId, loanActionButton.toLowerCase());
     } else if (loanActionButton === 'Add Loan Charge') {
-      return this.loansService.getLoanChargeTemplateResource(loanId);
+      return this.loansService.getLoanChargeTemplateResource(this.loanProductService.loanAccountPath, loanId);
     } else if (loanActionButton === 'Foreclosure') {
       return this.loansService.getLoanForeclosureActionTemplate(loanId);
     } else if (loanActionButton === 'Charge-Off') {
@@ -105,8 +111,12 @@ export class LoanActionButtonResolver {
       return this.loansService.getLoanActionTemplate(loanId, 'reAmortization');
     } else if (loanActionButton === 'Attach Loan Originator') {
       return this.organizationService.getLoanOriginators();
-    } else if (loanActionButton === 'Update discount') {
-      return this.loansService.getWorkingCapitalLoanDetails(loanId);
+    } else if (loanActionButton === 'Discount Fee') {
+      return this.loansService.getWorkingCapitalTransactions(loanId);
+    } else if (loanActionButton === 'Update Near Breach') {
+      return this.productService.getWorkingCapitalBreachTemplate();
+    } else if (loanActionButton === 'Update Breach') {
+      return this.productService.getWorkingCapitalBreachTemplate();
     } else {
       return undefined;
     }

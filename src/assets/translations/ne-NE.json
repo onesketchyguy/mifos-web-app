@@ -1,4 +1,4 @@
-﻿{
+{
   "APP_NAME": "Mifos® X WebApp",
   "Logged in as": "को रूपमा लग इन गरियो",
   "Remember me": "मलाई सम्झनुहोस्",
@@ -374,7 +374,8 @@
     "report": {
       "type": "प्रतिवेदन उत्पादन",
       "generated": "प्रतिवेदन: {{reportName}} डाटा उत्पन्न भयो",
-      "generatedNoData": "प्रतिवेदन: {{reportName}} डाटा बिना उत्पन्न भयो"
+      "generatedNoData": "प्रतिवेदन: {{reportName}} डाटा बिना उत्पन्न भयो",
+      "loadFailed": "रिपोर्ट डाटा लोड गर्न असफल भयो। कृपया पुनः प्रयास गर्नुहोस्।"
     },
     "clipboard": {
       "type": "क्लिपबोर्ड",
@@ -399,7 +400,11 @@
       "buyDownFeeAdjusted": "Buy Down शुल्क रकम पहिले नै समायोजित भइसकेको छ",
       "buyDownFeeLimit": "Buy Down शुल्क समायोजन रकम बराबर वा कम हुनुपर्छ",
       "businessRule": "व्यापार नियम",
-      "alertWithAmount": "{{label}}: {{amount}}"
+      "alertWithAmount": "{{label}}: {{amount}}",
+      "bulkWaiveCharge": {
+        "type": "शुल्क माफ गर्ने त्रुटि",
+        "message": "{{count}} शुल्क माफ गर्न सकिएन।"
+      }
     },
     "error.auth.type": "प्रमाणीकरण त्रुटि",
     "error.auth.message": "तपाईंको सत्र समाप्त भएको छ वा प्रमाणपत्रहरू अमान्य छन्।",
@@ -481,7 +486,8 @@
         "liabilityTransfer": "दायित्व स्थानान्तरण",
         "openingBalancesTransferContra": "ब्यालेन्स ट्रान्सफर कन्ट्रा खोल्दै",
         "payableDividends": "भुक्तानी योग्य लाभांश"
-      }
+      },
+      "ACC_DEF_REV_AM": "स्थगित राजस्व परिशोधन सहितको उपार्जन"
     },
     "breadcrumbs": {
       "Home": "घर"
@@ -756,7 +762,21 @@
       "PRINT": "छाप्नुहोस्",
       "DONE": "सम्पन्न",
       "Submitting": "पेश गर्दै",
-      "OK": "ठीक छ"
+      "OK": "ठीक छ",
+      "Create Loan Product (Classic)": "Create Loan Product (Classic)",
+      "Create Loan Product (Convenient)": "Create Loan Product (Convenient)",
+      "Pin": "पिन गर्नुहोस्",
+      "Reset Filters": "फिल्टरहरू रिसेट गर्नुहोस्",
+      "Pay Charge": "शुल्क तिर्नुहोस्",
+      "Run": "चलाउनुहोस्",
+      "Show Closed Accounts": "बन्द भएका खाताहरू देखाउनुहोस्",
+      "Undo Reset": "रिसेट पूर्ववत गर्नुहोस्",
+      "Unpin": "अनपिन गर्नुहोस्",
+      "Waive Selected": "चयन गरिएका माफ गर्नुहोस्",
+      "undo_account_transfer": "खाता स्थानान्तरण रद्द गर्नुहोस्",
+      "All": "सबै",
+      "Pause Breach": "उल्लङ्घन रोक्नुहोस्",
+      "Resume Breach": "उल्लंघन पुनः सुरु गर्नुहोस्"
     },
     "catalogs": {
       "Interest payment waiver": "ब्याज भुक्तानी माफी",
@@ -1027,7 +1047,12 @@
       "MONTHS": "महिनाहरू",
       "YEARS": "वर्षहरू",
       "Loan Creation": "ऋण सिर्जना",
-      "Account_transfer": "खाता स्थानान्तरण"
+      "Account_transfer": "खाता स्थानान्तरण",
+      "Discount Fee": "छुट शुल्क",
+      "In Arrears": "बकाया",
+      "Unknown": "अज्ञात",
+      "Waive loan charges": "ऋण शुल्क माफ गर्नुहोस्",
+      "Working Capital Loan": "कार्यशील पूँजी ऋण"
     },
     "commons": {
       "50 characters long": "५० वर्ण लामो",
@@ -1545,7 +1570,31 @@
       "Professional Information": "पेशागत जानकारी",
       "Add Profile Entry": "प्रोफाइल प्रविष्टि थप्नुहोस्",
       "Id": "आईडी",
-      "Recipient Summary": "प्राप्तकर्ता सारांश"
+      "Recipient Summary": "प्राप्तकर्ता सारांश",
+      "Breach Actions": "उल्लंघन कार्यहरू",
+      "Delinquency & Breach": "अपराध र उल्लंघन",
+      "Interest": "ब्याज",
+      "Multi-step form": "Multi-step form",
+      "Loan product creation": "Loan product creation",
+      "Near Breach Actions": "नजिकको उल्लंघन कार्यहरू",
+      "Accounts": "खाताहरू",
+      "Amortization Schedule": "परिशोधन तालिका",
+      "Average Gap": "औसत अन्तर",
+      "Breach Periods": "उल्लंघनको अवधि",
+      "Near Breach History": "नजिकको उल्लंघन इतिहास",
+      "Peak Outstanding": "अधिकतम बक्यौता",
+      "Reports Catalog": "रिपोर्ट सूची",
+      "Total Days in Breach": "उल्लंघनमा कुल दिनहरू",
+      "Undo Reset": "रिसेट पूर्ववत गर्नुहोस्",
+      "User Profile": "प्रयोगकर्ता प्रोफाइल",
+      "View Transaction": "कारोबार हेर्नुहोस्",
+      "View Transfer": "स्थानान्तरण हेर्नुहोस्",
+      "Working Capital Loan Balances": "कार्यशील पुँजी ऋण शेषहरू",
+      "undo_account_transfer": "खाता स्थानान्तरण रद्द गर्नुहोस्",
+      "Loan Breach Actions": "ऋण उल्लङ्घन कार्यहरू",
+      "No Breach Actions": "कुनै उल्लंघन कार्यहरू छैनन्",
+      "Pause Timeline": "रोकावट समयरेखा",
+      "Location Map": "स्थान नक्सा"
     },
     "inputs": {
       "Add Menu Item": "मेनु वस्तु थप्नुहोस्",
@@ -3051,7 +3100,97 @@
       "Deposited At": "जम्मा मिति",
       "Passport": "राहदानी",
       "Driver's License": "सवारी चालक अनुमतिपत्र",
-      "Mothers Maiden Name": "आमाको कुमारी नाम"
+      "Mothers Maiden Name": "आमाको कुमारी नाम",
+      "Annual interest rate": "Annual interest rate",
+      "Annual interest rate by loan cycle": "Annual interest rate by loan cycle",
+      "Annual interest rate frequency": "Annual interest rate frequency",
+      "Breach Actions": "उल्लङ्घन कार्यहरू",
+      "Actual": "वास्तविक",
+      "Actual Amortization": "वास्तविक परिशोधन",
+      "Actual Balance": "वास्तविक शेष",
+      "Actual Discount Fee Balance": "वास्तविक छुट शुल्क शेष",
+      "Actual Payment": "वास्तविक भुक्तानी",
+      "Amortization Amount": "परिशोधन रकम",
+      "Amortization Schedule": "परिशोधन तालिका",
+      "Amount Breakdown": "रकमको विवरण",
+      "Amount Received/Returned": "प्राप्त रकम / फिर्ता",
+      "Approved Discount": "स्वीकृत छूट",
+      "Balanced": "सन्तुलित",
+      "Balances": "शेषहरू",
+      "Breach Grace Days": "उल्लंघन अनुग्रह दिनहरू",
+      "Breach Schedule": "उल्लंघन तालिका",
+      "Charge-off reason": "चार्ज अफ कारण",
+      "Current": "हालको",
+      "Disbursed": "वितरित",
+      "Discount External Id": "छुटको बाह्य आईडी",
+      "Discount External Id must differ from External Id": "छुटको बाह्य आईडी बाह्य आईडी भन्दा फरक हुनुपर्छ",
+      "Discount Fee Adjustment": "छुट शुल्क समायोजन",
+      "Discount Fee Balance": "छुट शुल्क मौज्दात",
+      "Entry Type": "प्रविष्टि प्रकार",
+      "Executed": "कार्यान्वित",
+      "Expected": "अपेक्षित",
+      "Expected Amortization Amount": "अपेक्षित परिशोधन रकम",
+      "Expected Balance": "अपेक्षित शेष",
+      "Expected Discount Fee Balance": "अपेक्षित छुट शुल्क शेष",
+      "Expected Payment Amount": "अपेक्षित भुक्तानी रकम",
+      "External Id is too long": "बाह्य आईडी धेरै लामो छ",
+      "Filters": "फिल्टरहरू",
+      "Financial Summary": "वित्तीय सारांश",
+      "GL Account": "GL खाता",
+      "Hide Projected": "प्रक्षेपित लुकाउनुहोस्",
+      "Identification": "पहिचान",
+      "In Arrears": "बकाया",
+      "In Balance": "सन्तुलित",
+      "Income Modification": "आय परिमार्जन",
+      "Linked": "जोडिएको",
+      "Net Disbursal Amount": "खुद वितरण रकम",
+      "New": "नयाँ",
+      "Net Balance": "खुद मौज्दात",
+      "Overpayment Amount": "अतिरिक्त भुक्तानी रकम",
+      "Payment Amount": "भुक्तानी रकम",
+      "Payment Date": "भुक्तानी मिति",
+      "Payments Left": "बाँकी भुक्तानी",
+      "Period Payment Rates": "अवधि भुक्तानी दरहरू",
+      "Previous": "अघिल्लो",
+      "Projected": "प्रक्षेपित",
+      "Proposed Discount": "प्रस्तावित छूट",
+      "Realized Income": "प्राप्त आम्दानी",
+      "Results": "नतिजाहरू",
+      "Schedule": "Schedule",
+      "System": "प्रणाली",
+      "Schedule Progress": "तालिका प्रगति",
+      "Selected": "चयन गरिएको",
+      "Start new period": "नयाँ अवधि सुरु गर्नुहोस्",
+      "Submitted Date Range": "पेस मिति दायरा",
+      "Total Credits": "कुल जम्मा",
+      "Total Debits": "कुल नामे",
+      "Total Outstanding": "कुल बाँकी",
+      "Total Overdue": "कुल म्याद गुज्रेको",
+      "Total Paid": "कुल भुक्तान",
+      "Total Paid Principal": "कुल भुक्तान गरिएको मूलधन",
+      "Total records": "कुल अभिलेखहरू",
+      "Transaction Date Range": "लेनदेन मिति दायरा",
+      "Unrealized Income": "अप्राप्त आम्दानी",
+      "active": "सक्रिय",
+      "entries": "प्रविष्टिहरू",
+      "Active Pause": "सक्रिय रोकावट",
+      "days": "दिन",
+      "Duration": "अवधि",
+      "Expired": "समाप्त",
+      "Last Action": "अन्तिम कार्य",
+      "No breach actions have been recorded for this loan": "यो ऋणको लागि कुनै उल्लंघन कार्यहरू रेकर्ड गरिएको छैन",
+      "No records match the selected filter": "कुनै पनि रेकर्ड चयन गरिएको फिल्टरसँग मेल खाँदैन",
+      "Ongoing": "जारी",
+      "Pause Active": "रोकावट सक्रिय",
+      "Pauses": "रोकावटहरू",
+      "Scheduled": "तालिकाबद्ध",
+      "Today": "आज",
+      "Total Actions": "कुल कार्यहरू",
+      "Total Days Paused": "कुल रोकिएका दिनहरू",
+      "Credit Profile": "क्रेडिट प्रोफाइल",
+      "Borrower": "ऋणी",
+      "Latitude": "अक्षांश",
+      "Longitude": "देशान्तर"
     },
     "links": {
       "Community": "समुदाय",
@@ -3192,7 +3331,13 @@
       "Tasks": "कार्यहरू",
       "Remittances": "रेमिट्यान्स",
       "Process Remittance": "रेमिट्यान्स प्रक्रिया",
-      "Undo Write-off": "राइट-अफ पूर्ववत गर्नुहोस्"
+      "Undo Write-off": "राइट-अफ पूर्ववत गर्नुहोस्",
+      "Update Breach": "उल्लंघन अद्यावधिक गर्नुहोस्",
+      "Discount Fee": "छुट शुल्क",
+      "Select All": "सबै चुन्नुहोस्",
+      "Select Item": "वस्तु चुन्नुहोस्",
+      "Undo Payment Rate": "भुक्तानी दर पूर्ववत गर्नुहोस्",
+      "Update Near Breach": "नजिकको उल्लंघन अद्यावधिक गर्नुहोस्"
     },
     "placeholders": {
       "Add new server": "नयाँ सर्भर थप्नुहोस्",
@@ -3249,7 +3394,11 @@
       "Are you sure you want to": "के तपाईं निश्चित हुनुहुन्छ कि तपाईं",
       "the productmix component with id": "आईडीको साथ उत्पादन मिश्रण घटक",
       "the Reschedule Loan": "कर्जा पुनर्योजना",
-      "the Transaction Type": "लेनदेन प्रकार"
+      "the Transaction Type": "लेनदेन प्रकार",
+      "Are you sure you want to resume the breach pause": "के तपाईं उल्लंघन रोकी राखिएको अवस्था पुनः सुरु गर्न चाहनुहुन्छ?",
+      "Are you sure you want to waive charges": "के तपाईं {{ count }} शुल्कहरू माफ गर्न निश्चित हुनुहुन्छ",
+      "Are you sure you want to undo last reset action": "के तपाईं अन्तिम रिसेट कार्य पूर्ववत गर्न निश्चित हुनुहुन्छ?",
+      "undo_account_transfer": "के तपाईं यो खाता स्थानान्तरण रद्द गर्न निश्चित हुनुहुन्छ?"
     },
     "text": {
       "Loading data": "डाटा लोड गर्दै",
@@ -3984,7 +4133,63 @@
       "Loan Originators": "ऋण सुरुवातकर्ताहरू",
       "Loan Reschedules": "ऋण पुन: तालिका",
       "Settings saved successfully": "सेटिङहरू सफलतापूर्वक सेभ गरियो।",
-      "Undo Write-off Description": "यो कार्यले राइट-अफ ट्रान्जेक्सन फिर्ता गर्नेछ र ऋणलाई यसको अघिल्लो सक्रिय अवस्थामा पुनर्स्थापित गर्नेछ। कृपया यस कार्यको कारण बताउने नोट प्रदान गर्नुहोस्।"
+      "Undo Write-off Description": "यो कार्यले राइट-अफ ट्रान्जेक्सन फिर्ता गर्नेछ र ऋणलाई यसको अघिल्लो सक्रिय अवस्थामा पुनर्स्थापित गर्नेछ। कृपया यस कार्यको कारण बताउने नोट प्रदान गर्नुहोस्।",
+      "Max": "अधिकतम",
+      "Hidden variables and predefined values are included in the final payload automatically.": "Hidden variables and predefined values are included in the final payload automatically.",
+      "No Breach Actions": "कुनै उल्लंघन कार्यहरू छैन",
+      "No Near Breach Actions": "कुनै नजिकको उल्लंघन कार्यहरू छैन",
+      "Activated": "सक्रिय गरियो",
+      "Amortization Schedule": "ऋण चुक्ता तालिका",
+      "available": "उपलब्ध",
+      "Balances": "शेषहरू",
+      "Breach Timeline": "उल्लंघन समयरेखा",
+      "Compliant": "अनुपालन",
+      "Council Approval": "परिषद्को अनुमोदन",
+      "Filter by engine": "इन्जिनद्वारा फिल्टर गर्नुहोस्",
+      "Gap": "अन्तर",
+      "In Breach": "उल्लंघनमा",
+      "Visible Columns": "देखिने स्तम्भहरू",
+      "No columns selected": "कुनै स्तम्भ चयन गरिएको छैन",
+      "Loan Fields": "ऋण फिल्डहरू",
+      "Data Tables": "डाटा तालिकाहरू",
+      "No data tables": "कुनै डाटा तालिका फेला परेन",
+      "Failed to load": "लोड गर्न असफल भयो",
+      "Mild": "हल्का",
+      "Moderate": "मध्यम",
+      "No pending loans for Council Approval": "परिषद्को अनुमोदनको लागि कुनै ऋण बाँकी छैन",
+      "No reports match your filters": "फिल्टरसँग कुनै रिपोर्ट मेल खाँदैन",
+      "Page": "पृष्ठ",
+      "Period Payment Rates": "अवधि भुक्तानी दरहरू",
+      "Pinned": "पिन गरिएको",
+      "Resolved": "समाधान भयो",
+      "Rows": "पंक्तिहरू",
+      "Severe": "गम्भीर",
+      "Severity": "गम्भीरता",
+      "Showing": "देखाइँदै",
+      "Submitted": "पेश गरियो",
+      "Template defaults are preloaded": "Template defaults are preloaded",
+      "Select a product below": "Select a product below",
+      "Upcoming": "आगामी",
+      "Complete control over every aspect of product behavior": "उत्पादनको व्यवहारको हरेक पक्षमा पूर्ण नियन्त्रण — मोरेटोरियम र अनुदानदेखि बहु-किस्ता संरचना, बाँडफाँट नियमहरू, र त्यसभन्दा पनि बढी।",
+      "Today": "आज",
+      "of": "मध्ये",
+      "Maker-Checker principle requires every tasks": "सिद्धान्तले त्रुटि र दुरुपयोगको सम्भावना कम गर्न प्रत्येक कार्यहरू दुई व्यक्तिद्वारा पूरा गर्न आवश्यक छ। एक व्यक्तिले प्रक्रिया सुरु गर्छ र दोस्रोले यसलाई पूरा गर्दछ।",
+      "Breach Actions": "उल्लङ्घन कार्यहरू",
+      "SavingsAccountsStayedLockedBusinessEvent": "Savings Accounts Stayed Locked Business Event",
+      "WorkingCapitalLoanDisbursalTransactionBusinessEvent": "Working Capital Loan Disbursal Transaction Business Event",
+      "WorkingCapitalLoanUndoDisbursalTransactionBusinessEvent": "Working Capital Loan Undo Disbursal Transaction Business Event",
+      "WorkingCapitalLoanRepaymentTransactionBusinessEvent": "Working Capital Loan Repayment Transaction Business Event",
+      "WorkingCapitalLoanCreditBalanceRefundTransactionBusinessEvent": "Working Capital Loan Credit Balance Refund Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeTransactionBusinessEvent": "Working Capital Loan Discount Fee Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeAdjustmentTransactionBusinessEvent": "Working Capital Loan Discount Fee Adjustment Transaction Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPreBusinessEvent": "Working Capital Loan Charge Adjustment Pre Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPostBusinessEvent": "Working Capital Loan Charge Adjustment Post Business Event",
+      "SavingsAccountForceWithdrawalBusinessEvent": "Savings Account Force Withdrawal Business Event",
+      "All Loan Products": "सबै ऋण उत्पादनहरू",
+      "All Offices": "सबै कार्यालयहरू",
+      "No loan was found": "कुनै ऋण फेला परेन",
+      "SearchByLoan": "खाता नम्बर, ऋणी, वा उत्पादनद्वारा खोज्नुहोस्",
+      "Map tiles unavailable": "नक्साका टाइलहरू उपलब्ध छैनन्"
     },
     "permissions": {
       "actions": {
@@ -4282,7 +4487,68 @@
       "No Identities Found": "कुनै पहिचान भेटिएनन्",
       "validationSaved": "प्रमाणीकरण डाटा सफलतापूर्वक बचत भयो।",
       "workingCapitalDiscountUpdated": "कार्यशील पूँजी ऋणको छुट सफलतापूर्वक अपडेट गरिएको छ।",
-      "unableToUpdateDiscount": "छुट अपडेट गर्न सकिएन।"
+      "unableToUpdateDiscount": "छुट अपडेट गर्न सकिएन।",
+      "No Accounts Found": "कुनै खाता फेला परेन।"
+    },
+    "selections": {
+      "standingInstructions": {
+        "accountTransferType": {
+          "account.transfer": "बचत खाता स्थानान्तरण",
+          "loan.repayment": "कर्जा भुक्तानी"
+        },
+        "standingInstructionPriority": {
+          "urgent": "अत्यन्त जरुरी",
+          "high": "उच्च",
+          "medium": "मध्यम",
+          "low": "न्यून"
+        },
+        "standingInstructionStatus": {
+          "active": "सक्रिय",
+          "disabled": "निष्क्रिय",
+          "deleted": "हटाएको"
+        },
+        "accountType": {
+          "savings": "बचत खाता",
+          "loan": "कर्जा खाता"
+        },
+        "standingInstructionType": {
+          "fixed": "निश्चित रकम",
+          "dues": "बाँकी रकम"
+        },
+        "accountTransferRecurrenceType": {
+          "periodic": "आवधिक",
+          "as.per.dues": "भुक्तानी तालिका अनुसार"
+        },
+        "frequencyperiodFrequencyType": {
+          "days": "दिन",
+          "weeks": "हप्ता",
+          "months": "महिना",
+          "years": "वर्ष"
+        },
+        "own.account": "आफ्नै खाता",
+        "other.bank": "अन्य बैंक"
+      }
+    },
+    "cbild": {
+      "creditProfile": {
+        "ficoScore": "FICO स्कोर",
+        "riskBand": "जोखिम ब्यान्ड",
+        "bureau": "ब्यूरो",
+        "pulledAt": "अन्तिम पटक",
+        "expiry": "म्याद समाप्ति",
+        "delinquencies": "बक्यौता",
+        "firstDelinquency": "पहिलो बक्यौता",
+        "none": "छैन",
+        "yes": "छ",
+        "scoreDropAlert": "FICO स्कोर घटेको",
+        "hasDelinquencies": "बक्यौता रेकर्ड छ",
+        "tradelines": "क्रेडिट लाइन",
+        "noTradelines": "कुनै लाइन छैन",
+        "balance": "शेष",
+        "latePayments": "ढिलो भुक्तानी",
+        "noData": "प्रोफाइल उपलब्ध छैन",
+        "noDataHint": "ब्यूरो जाँच चलाउनुहोस्"
+      }
     }
   },
   "languages": {
@@ -4502,7 +4768,8 @@
     "PENDING": "पेन्डिङ",
     "INACTIVE": "निष्क्रिय",
     "Process Remittance": "रेमिट्यान्स प्रक्रिया",
-    "Allow full term length for each tranche disbursement": "सक्षम गरिएमा, प्रत्येक किस्ता वितरण बाँकी अवधिमा फिट हुनुको सट्टा पूर्ण ऋण अवधि तालिका अनुसरण गर्नेछ। केवल PROGRESSIVE ऋण तालिका प्रकारको लागि उपलब्ध।"
+    "Allow full term length for each tranche disbursement": "सक्षम गरिएमा, प्रत्येक किस्ता वितरण बाँकी अवधिमा फिट हुनुको सट्टा पूर्ण ऋण अवधि तालिका अनुसरण गर्नेछ। केवल PROGRESSIVE ऋण तालिका प्रकारको लागि उपलब्ध।",
+    "Waive": "माफ गर्नुहोस्"
   },
   "countries": {
     "AF": "अफगानिस्तान",
@@ -4684,5 +4951,71 @@
         "message": "कार्यान्वयन नभएको कार्यक्षमता!"
       }
     }
+  },
+  "copilot": {
+    "brand": "Mifos Intelligence AI",
+    "currentSession": "हालको सत्र",
+    "newChat": "नयाँ कुराकानी",
+    "close": "बन्द गर्नुहोस्",
+    "greeting": {
+      "morning": "शुभ प्रभात",
+      "afternoon": "शुभ अपराह्न",
+      "evening": "शुभ सन्ध्या"
+    },
+    "welcomeHeading": "आज म तपाईंलाई तपाईंका ग्राहकहरूलाई सहयोग गर्न कसरी मद्दत गर्न सक्छु?",
+    "suggestions": {
+      "clientDetails": "ग्राहक John Doe को विवरण देखाउनुहोस्",
+      "repaymentSchedule": "ऋण #107 को भुक्तानी तालिका के हो?",
+      "savingsBalance": "ग्राहक #52 को बचत खाताको ब्यालेन्स देखाउनुहोस्",
+      "overdueLoans": "यो हप्ता कति ऋणहरू बाँकी छन्?"
+    },
+    "input": {
+      "placeholder": "ग्राहक, ऋण, वा खाताहरूको बारेमा सोध्नुहोस्...",
+      "attach": "फाइल संलग्न गर्नुहोस्",
+      "voice": "आवाज इनपुट",
+      "send": "सन्देश पठाउनुहोस्",
+      "stop": "उत्पादन रोक्नुहोस्"
+    },
+    "disclaimer": "Mifos Intelligence AI मानव निर्णयलाई प्रतिस्थापन गर्न होइन, सहयोग गर्न डिजाइन गरिएको हो।",
+    "nav": {
+      "recentChats": "हालैका कुराकानीहरू",
+      "chat": "कुराकानी",
+      "preferences": "प्राथमिकताहरू",
+      "helpCenter": "सहायता केन्द्र"
+    },
+    "preferencesHeading": "प्राथमिकताहरू",
+    "recent": {
+      "emptyTitle": "कुनै हालैको कुराकानी छैन",
+      "emptySubtitle": "तपाईंको कुराकानी इतिहास यहाँ देखिनेछ",
+      "messages": "सन्देशहरू",
+      "delete": "कुराकानी मेटाउनुहोस्"
+    },
+    "help": {
+      "capabilitiesTitle": "Mifos Intelligence AI ले के गर्न सक्छ?",
+      "capabilities": {
+        "lookup": "ग्राहक जानकारी र प्रोफाइलहरू खोज्नुहोस्",
+        "loans": "ऋण विवरण र भुक्तानी तालिकाहरू हेर्नुहोस्",
+        "savings": "बचत खाताको ब्यालेन्स जाँच्नुहोस्",
+        "portfolio": "ग्राहक पोर्टफोलियोहरूको बारेमा अन्तर्दृष्टि प्राप्त गर्नुहोस्",
+        "navigate": "Mifos X मा निर्दिष्ट पृष्ठहरूमा नेभिगेट गर्नुहोस्"
+      },
+      "examplesTitle": "उदाहरण प्रश्नहरू",
+      "importantTitle": "महत्त्वपूर्ण",
+      "important": {
+        "assist": "AI प्रतिक्रियाहरू सहायताका लागि मात्र हुन्, अन्तिम निर्णय होइनन्",
+        "verify": "कार्य गर्नु अघि सधैं महत्त्वपूर्ण वित्तीय डेटा प्रमाणित गर्नुहोस्",
+        "noExecute": "AI ले आफैं कारोबार गर्दैन"
+      }
+    },
+    "cardType": {
+      "client": "ग्राहक",
+      "loan": "ऋण",
+      "savings": "बचत",
+      "insight": "अन्तर्दृष्टि",
+      "confirmation": "पुष्टि"
+    },
+    "confirmWarning": "यो कार्यमा वास्तविक पैसा संलग्न छ। कृपया पुष्टि गर्नुहोस्।",
+    "openAssistant": "AI सहायक खोल्नुहोस्",
+    "newChatTitle": "नयाँ कुराकानी"
   }
 }

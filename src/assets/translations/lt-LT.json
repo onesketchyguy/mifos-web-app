@@ -1,4 +1,4 @@
-﻿{
+{
   "APP_NAME": "Mifos® X WebApp",
   "Logged in as": "prisijungęs kaip",
   "Remember me": "Prisimink mane",
@@ -374,7 +374,8 @@
     "report": {
       "type": "Ataskaitos generavimas",
       "generated": "Ataskaita: {{reportName}} duomenys sugeneruoti",
-      "generatedNoData": "Ataskaita: {{reportName}} sugeneruota be duomenų"
+      "generatedNoData": "Ataskaita: {{reportName}} sugeneruota be duomenų",
+      "loadFailed": "Nepavyko įkelti ataskaitos duomenų. Bandykite dar kartą."
     },
     "clipboard": {
       "type": "Iškarpinė",
@@ -399,7 +400,11 @@
       "buyDownFeeAdjusted": "Buy Down mokesčio suma jau pakoreguota",
       "buyDownFeeLimit": "Buy Down mokesčio koregavimo suma turi būti mažesnė arba lygi",
       "businessRule": "Verslo taisyklė",
-      "alertWithAmount": "{{label}}: {{amount}}"
+      "alertWithAmount": "{{label}}: {{amount}}",
+      "bulkWaiveCharge": {
+        "type": "Mokesčio atleidimo klaida",
+        "message": "{{count}} mokesčio(-ių) nepavyko atleisti."
+      }
     },
     "error.auth.type": "Autentifikacijos klaida",
     "error.auth.message": "Jūsų sesija baigėsi arba prisijungimo duomenys neteisingi.",
@@ -481,7 +486,8 @@
         "liabilityTransfer": "atsakomybės perdavimas",
         "openingBalancesTransferContra": "atidarymo likučių pervedimo kontraktas",
         "payableDividends": "mokėtini Dividendai"
-      }
+      },
+      "ACC_DEF_REV_AM": "Atsidėjimai su atidėtų pajamų amortizacija"
     },
     "breadcrumbs": {
       "Home": "Namai"
@@ -756,7 +762,21 @@
       "PRINT": "Spausdinti",
       "DONE": "Atlikta",
       "Submitting": "Pateikiama",
-      "OK": "Gerai"
+      "OK": "Gerai",
+      "Create Loan Product (Classic)": "Create Loan Product (Classic)",
+      "Create Loan Product (Convenient)": "Create Loan Product (Convenient)",
+      "Pin": "Prisegti",
+      "Reset Filters": "Atstatyti Filtrus",
+      "Pay Charge": "Mokėti mokestį",
+      "Run": "Vykdyti",
+      "Show Closed Accounts": "Rodyti Uždarytas Sąskaitas",
+      "Undo Reset": "Atšaukti nustatymų atkūrimą",
+      "Unpin": "Atsegti",
+      "Waive Selected": "Atsisakyti pasirinktų",
+      "undo_account_transfer": "Atšaukti sąskaitos pervedimą",
+      "All": "Visi",
+      "Pause Breach": "Pristabdyti pažeidimą",
+      "Resume Breach": "Atnaujinti pažeidimą"
     },
     "catalogs": {
       "Interest payment waiver": "Palūkanų mokėjimo atsisakymas",
@@ -1027,7 +1047,12 @@
       "MONTHS": "MĖNESIŲ",
       "YEARS": "METAI",
       "Loan Creation": "Paskolos sukūrimas",
-      "Account_transfer": "Sąskaitos perkėlimas"
+      "Account_transfer": "Sąskaitos perkėlimas",
+      "Discount Fee": "Nuolaidos mokestis",
+      "In Arrears": "Vėluoja",
+      "Unknown": "Nežinoma",
+      "Waive loan charges": "Atsisakyti paskolos mokesčių",
+      "Working Capital Loan": "Apyvartinio kapitalo paskola"
     },
     "commons": {
       "50 characters long": "50 simbolių ilgio",
@@ -1545,7 +1570,31 @@
       "Identification": "Identifikacija",
       "Professional Information": "Profesinė informacija",
       "Add Profile Entry": "Pridėti profilio įrašą",
-      "Recipient Summary": "Gavėjo suvestinė"
+      "Recipient Summary": "Gavėjo suvestinė",
+      "Breach Actions": "Pažeidimas Veiksmai",
+      "Delinquency & Breach": "Delinkvencija ir pažeidimas",
+      "Interest": "Palūkanos",
+      "Multi-step form": "Multi-step form",
+      "Loan product creation": "Loan product creation",
+      "Near Breach Actions": "Artėjantis pažeidimas Veiksmai",
+      "Accounts": "Sąskaitos",
+      "Amortization Schedule": "Amortizacijos Grafikas",
+      "Average Gap": "Vidutinis Skirtumas",
+      "Breach Periods": "Pažeidimo Laikotarpiai",
+      "Near Breach History": "Artėjančių pažeidimų istorija",
+      "Peak Outstanding": "Didžiausia Negrąžinta Suma",
+      "Reports Catalog": "Ataskaitų katalogas",
+      "Total Days in Breach": "Bendras Pažeidimo Dienų Skaičius",
+      "Undo Reset": "Atšaukti nustatymų atkūrimą",
+      "User Profile": "Vartotojo Profilis",
+      "View Transaction": "Peržiūrėti Operaciją",
+      "View Transfer": "Peržiūrėti Pavedimą",
+      "Working Capital Loan Balances": "Apyvartinio kapitalo paskolos balansai",
+      "undo_account_transfer": "Atšaukti sąskaitos pervedimą",
+      "Loan Breach Actions": "Paskolos pažeidimo veiksmai",
+      "No Breach Actions": "Nėra pažeidimo veiksmų",
+      "Pause Timeline": "Pauzių laiko juosta",
+      "Location Map": "Vietos žemėlapis"
     },
     "inputs": {
       "Add Menu Item": "Pridėti meniu elementą",
@@ -3051,7 +3100,97 @@
       "Deposited At": "Įnešta",
       "Passport": "Pasas",
       "Driver's License": "Vairuotojo pažymėjimas",
-      "Mothers Maiden Name": "Motinos mergautinė pavardė"
+      "Mothers Maiden Name": "Motinos mergautinė pavardė",
+      "Annual interest rate": "Annual interest rate",
+      "Annual interest rate by loan cycle": "Annual interest rate by loan cycle",
+      "Annual interest rate frequency": "Annual interest rate frequency",
+      "Breach Actions": "Pažeidimo veiksmai",
+      "Actual": "Faktinis",
+      "Actual Amortization": "Faktinė amortizacija",
+      "Actual Balance": "Faktinis likutis",
+      "Actual Discount Fee Balance": "Faktinis nuolaidos mokesčio likutis",
+      "Actual Payment": "Faktinis mokėjimas",
+      "Amortization Amount": "Amortizacijos suma",
+      "Amortization Schedule": "Amortizacijos Grafikas",
+      "Amount Breakdown": "Sumos išskaidymas",
+      "Amount Received/Returned": "Gauta/grąžinta suma",
+      "Approved Discount": "Patvirtinta Nuolaida",
+      "Balanced": "Subalansuota",
+      "Balances": "Balansai",
+      "Breach Grace Days": "Pažeidimo lengvatos dienos",
+      "Breach Schedule": "Pažeidimų grafikas",
+      "Charge-off reason": "Apmokestinimo priežastis",
+      "Current": "Dabartinis",
+      "Disbursed": "Išmokėta",
+      "Discount External Id": "Nuolaidos išorinis ID",
+      "Discount External Id must differ from External Id": "Nuolaidos išorinis ID turi skirtis nuo išorinio ID",
+      "Discount Fee Adjustment": "Nuolaidos mokesčio koregavimas",
+      "Discount Fee Balance": "Diskonto mokesčio likutis",
+      "Entry Type": "Įrašo Tipas",
+      "Executed": "Įvykdyta",
+      "Expected": "Numatoma",
+      "Expected Amortization Amount": "Numatoma amortizacijos suma",
+      "Expected Balance": "Numatomas likutis",
+      "Expected Discount Fee Balance": "Numatomas nuolaidos mokesčio likutis",
+      "Expected Payment Amount": "Numatoma mokėjimo suma",
+      "External Id is too long": "Išorinis ID per ilgas",
+      "Filters": "Filtrai",
+      "Financial Summary": "Finansinė suvestinė",
+      "GL Account": "DK Sąskaita",
+      "Hide Projected": "Slėpti planuojamas",
+      "Identification": "Identifikavimas",
+      "In Arrears": "Vėluoja",
+      "In Balance": "Subalansuota",
+      "Income Modification": "Pajamų modifikavimas",
+      "Linked": "Susieta",
+      "Net Disbursal Amount": "Grynoji išmokėjimo suma",
+      "New": "Naujas",
+      "Net Balance": "Grynasis Balansas",
+      "Overpayment Amount": "Permokos suma",
+      "Payment Amount": "Mokėjimo suma",
+      "Payment Date": "Mokėjimo data",
+      "Payments Left": "Likusios įmokos",
+      "Period Payment Rates": "Laikotarpio mokėjimo normos",
+      "Previous": "Ankstesnis",
+      "Projected": "Planuojama",
+      "Proposed Discount": "Siūloma Nuolaida",
+      "Realized Income": "Realizuotos pajamos",
+      "Results": "Rezultatai",
+      "Schedule": "Schedule",
+      "System": "Sistema",
+      "Schedule Progress": "Grafiko eiga",
+      "Selected": "Pasirinkta",
+      "Start new period": "Pradėti naują laikotarpį",
+      "Submitted Date Range": "Pateikimo datų intervalas",
+      "Total Credits": "Bendras Kreditas",
+      "Total Debits": "Bendras Debetas",
+      "Total Outstanding": "Iš viso neapmokėta",
+      "Total Overdue": "Iš viso pradelsta",
+      "Total Paid": "Iš viso sumokėta",
+      "Total Paid Principal": "Iš viso sumokėta pagrindinė suma",
+      "Total records": "Iš viso elementų",
+      "Transaction Date Range": "Sandorio datų intervalas",
+      "Unrealized Income": "Nerealizuotos pajamos",
+      "active": "aktyvūs",
+      "entries": "įrašai",
+      "Active Pause": "Aktyvi pauzė",
+      "days": "dienos",
+      "Duration": "Trukmė",
+      "Expired": "Pasibaigė",
+      "Last Action": "Paskutinis veiksmas",
+      "No breach actions have been recorded for this loan": "Šiai paskolai nebuvo užregistruota jokių pažeidimo veiksmų",
+      "No records match the selected filter": "Joks įrašas neatitinka pasirinkto filtro",
+      "Ongoing": "Vyksta",
+      "Pause Active": "Pauzė aktyvi",
+      "Pauses": "Pauzės",
+      "Scheduled": "Suplanuota",
+      "Today": "Šiandien",
+      "Total Actions": "Iš viso veiksmų",
+      "Total Days Paused": "Iš viso pauzės dienų",
+      "Credit Profile": "Kredito profilis",
+      "Borrower": "Paskolos gavėjas",
+      "Latitude": "Platuma",
+      "Longitude": "Ilguma"
     },
     "links": {
       "Community": "bendruomenė",
@@ -3192,7 +3331,13 @@
       "Tasks": "Užduotys",
       "Remittances": "Pervedimai",
       "Process Remittance": "Apdoroti pervedimą",
-      "Undo Write-off": "Atšaukti nurašymą"
+      "Undo Write-off": "Atšaukti nurašymą",
+      "Update Breach": "Atnaujinti pažeidimą",
+      "Discount Fee": "Nuolaidų mokestis",
+      "Select All": "Pasirinkti viską",
+      "Select Item": "Pasirinkti elementą",
+      "Undo Payment Rate": "Anuliuoti mokėjimo normą",
+      "Update Near Breach": "Atnaujinti artėjantį pažeidimą"
     },
     "placeholders": {
       "Add new server": "Pridėti naują serverį",
@@ -3249,7 +3394,11 @@
       "Are you sure you want to": "Ar tikrai norite",
       "the productmix component with id": "Productmix komponentas su id",
       "the Reschedule Loan": "skolos tvarkaraštį iš naujo",
-      "the Transaction Type": "operacijos tipas"
+      "the Transaction Type": "operacijos tipas",
+      "Are you sure you want to resume the breach pause": "Ar tikrai norite atnaujinti pažeidimo sustabdymą?",
+      "Are you sure you want to waive charges": "Ar tikrai norite atsisakyti {{ count }} mokesčių",
+      "Are you sure you want to undo last reset action": "Ar tikrai norite atšaukti paskutinį nustatymų atkūrimo veiksmą?",
+      "undo_account_transfer": "Ar tikrai norite atšaukti šį sąskaitos pervedimą?"
     },
     "text": {
       "Loading data": "Duomenų įkėlimas",
@@ -3984,7 +4133,63 @@
       "Loan Originators": "Paskolų teikėjai",
       "Loan Reschedules": "Paskolų atidėjimas",
       "Settings saved successfully": "Nustatymai sėkmingai išsaugoti.",
-      "Undo Write-off Description": "Šis veiksmas atšauks nurašymo operaciją ir atkurs paskolą į ankstesnę aktyvią būseną. Pateikite pastabą, paaiškinančią šio veiksmo priežastį."
+      "Undo Write-off Description": "Šis veiksmas atšauks nurašymo operaciją ir atkurs paskolą į ankstesnę aktyvią būseną. Pateikite pastabą, paaiškinančią šio veiksmo priežastį.",
+      "Max": "Maks",
+      "Hidden variables and predefined values are included in the final payload automatically.": "Hidden variables and predefined values are included in the final payload automatically.",
+      "No Breach Actions": "Nėra Pažeidimas Veiksmai",
+      "No Near Breach Actions": "Nėra Artėjantis pažeidimas Veiksmai",
+      "Activated": "Aktyvuota",
+      "Amortization Schedule": "Amortizacijos grafikas",
+      "available": "prieinama",
+      "Balances": "Balansai",
+      "Breach Timeline": "Pažeidimų Laiko Juosta",
+      "Compliant": "Atitinka",
+      "Council Approval": "Tarybos patvirtinimas",
+      "Filter by engine": "Filtruoti pagal variklį",
+      "Gap": "Skirtumas",
+      "In Breach": "Pažeistas",
+      "Visible Columns": "Matomi stulpeliai",
+      "No columns selected": "Stulpelių nepasirinkta",
+      "Loan Fields": "Paskolos laukai",
+      "Data Tables": "Duomenų lentelės",
+      "No data tables": "Duomenų lentelių nerasta",
+      "Failed to load": "Nepavyko įkelti",
+      "Mild": "Lengvas",
+      "Moderate": "Vidutinis",
+      "No pending loans for Council Approval": "Nėra paskolų, laukiančių Tarybos patvirtinimo",
+      "No reports match your filters": "Nėra ataskaitų, atitinkančių filtrus",
+      "Page": "Puslapis",
+      "Period Payment Rates": "Laikotarpio mokėjimo normos",
+      "Pinned": "Prisegta",
+      "Resolved": "Išspręsta",
+      "Rows": "Eilutės",
+      "Severe": "Sunkus",
+      "Severity": "Sunkumas",
+      "Showing": "Rodoma",
+      "Submitted": "Pateikta",
+      "Template defaults are preloaded": "Template defaults are preloaded",
+      "Select a product below": "Select a product below",
+      "Upcoming": "Būsimas",
+      "Complete control over every aspect of product behavior": "Visiška kontrolė kiekvienam produkto elgsenos aspektui — nuo moratoriumo ir subvencijos iki kelių tranšių struktūrų, paskirstymo taisyklių ir dar daugiau.",
+      "Today": "Šiandien",
+      "of": "iš",
+      "Maker-Checker principle requires every tasks": "Maker-Checker principas reikalauja, kad kiekvieną užduotį atliktų du žmonės, kad būtų sumažinta klaidų ir netinkamo naudojimo galimybė. Vienas asmuo pradeda procesą, o antrasis jį užbaigia.",
+      "Breach Actions": "Pažeidimo veiksmai",
+      "SavingsAccountsStayedLockedBusinessEvent": "Savings Accounts Stayed Locked Business Event",
+      "WorkingCapitalLoanDisbursalTransactionBusinessEvent": "Working Capital Loan Disbursal Transaction Business Event",
+      "WorkingCapitalLoanUndoDisbursalTransactionBusinessEvent": "Working Capital Loan Undo Disbursal Transaction Business Event",
+      "WorkingCapitalLoanRepaymentTransactionBusinessEvent": "Working Capital Loan Repayment Transaction Business Event",
+      "WorkingCapitalLoanCreditBalanceRefundTransactionBusinessEvent": "Working Capital Loan Credit Balance Refund Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeTransactionBusinessEvent": "Working Capital Loan Discount Fee Transaction Business Event",
+      "WorkingCapitalLoanDiscountFeeAdjustmentTransactionBusinessEvent": "Working Capital Loan Discount Fee Adjustment Transaction Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPreBusinessEvent": "Working Capital Loan Charge Adjustment Pre Business Event",
+      "WorkingCapitalLoanChargeAdjustmentPostBusinessEvent": "Working Capital Loan Charge Adjustment Post Business Event",
+      "SavingsAccountForceWithdrawalBusinessEvent": "Savings Account Force Withdrawal Business Event",
+      "All Loan Products": "Visi paskolų produktai",
+      "All Offices": "Visi biurai",
+      "No loan was found": "Paskolų nerasta",
+      "SearchByLoan": "Ieškoti pagal sąskaitos numerį, paskolos gavėją ar produktą",
+      "Map tiles unavailable": "Žemėlapio plytelės nepasiekiamos"
     },
     "permissions": {
       "actions": {
@@ -4282,7 +4487,68 @@
       "No Identities Found": "Nerasta tapatybių",
       "validationSaved": "Patvirtinimo duomenys sėkmingai išsaugoti.",
       "workingCapitalDiscountUpdated": "Apyvartinio kapitalo paskolos nuolaida buvo sėkmingai atnaujinta.",
-      "unableToUpdateDiscount": "Nepavyko atnaujinti nuolaidos."
+      "unableToUpdateDiscount": "Nepavyko atnaujinti nuolaidos.",
+      "No Accounts Found": "Sąskaitų nerasta."
+    },
+    "selections": {
+      "standingInstructions": {
+        "accountTransferType": {
+          "account.transfer": "Pervidimas į taupomąją sąskaitą",
+          "loan.repayment": "Paskolos grąžinimas"
+        },
+        "standingInstructionPriority": {
+          "urgent": "Skubu",
+          "high": "Aukštas",
+          "medium": "Vidutinis",
+          "low": "Žemas"
+        },
+        "standingInstructionStatus": {
+          "active": "Aktyvus",
+          "disabled": "Išjungta",
+          "deleted": "Ištrinta"
+        },
+        "accountType": {
+          "savings": "Taupomoji sąskaita",
+          "loan": "Paskolos sąskaita"
+        },
+        "standingInstructionType": {
+          "fixed": "Fiksuota suma",
+          "dues": "Mokėtina suma"
+        },
+        "accountTransferRecurrenceType": {
+          "periodic": "Periodiškai",
+          "as.per.dues": "Pagal mokėjimo terminą"
+        },
+        "frequencyperiodFrequencyType": {
+          "days": "Dienos",
+          "weeks": "Savaitės",
+          "months": "Mėnesiai",
+          "years": "Metai"
+        },
+        "own.account": "Sava sąskaita",
+        "other.bank": "Kitas bankas"
+      }
+    },
+    "cbild": {
+      "creditProfile": {
+        "ficoScore": "FICO balas",
+        "riskBand": "Rizikos juosta",
+        "bureau": "Biuras",
+        "pulledAt": "Paskutinį kartą gauta",
+        "expiry": "Galiojimo pabaiga",
+        "delinquencies": "Įsiskolinimai",
+        "firstDelinquency": "Pirmas įsiskolinimas",
+        "none": "Nėra",
+        "yes": "Taip",
+        "scoreDropAlert": "FICO balas sumažėjo",
+        "hasDelinquencies": "Klientas turi įsiskolinimų",
+        "tradelines": "Kredito linijos",
+        "noTradelines": "Kredito linijų nėra",
+        "balance": "Likutis",
+        "latePayments": "Pavėluoti mokėjimai",
+        "noData": "Kredito profilis nepasiekiamas",
+        "noDataHint": "Atlikite biuro patikrinimą"
+      }
     }
   },
   "languages": {
@@ -4502,7 +4768,8 @@
     "PENDING": "LAUKIAMA",
     "INACTIVE": "NEAKTYVUS",
     "Process Remittance": "Apdoroti pervedimą",
-    "Allow full term length for each tranche disbursement": "Kai įjungta, kiekvienas tranšės išmokėjimas bus vykdomas pagal visą paskolos termino grafiką, o ne likusio termino ribose. Pasiekiama tik PROGRESYVIOJO paskolos grafiko tipui."
+    "Allow full term length for each tranche disbursement": "Kai įjungta, kiekvienas tranšės išmokėjimas bus vykdomas pagal visą paskolos termino grafiką, o ne likusio termino ribose. Pasiekiama tik PROGRESYVIOJO paskolos grafiko tipui.",
+    "Waive": "Atsisakyti"
   },
   "countries": {
     "AF": "Afganistanas",
@@ -4684,5 +4951,71 @@
         "message": "Neįgyvendinta funkcija!"
       }
     }
+  },
+  "copilot": {
+    "brand": "Mifos Intelligence AI",
+    "currentSession": "Dabartinė sesija",
+    "newChat": "Naujas pokalbis",
+    "close": "Uždaryti",
+    "greeting": {
+      "morning": "Labas rytas",
+      "afternoon": "Laba diena",
+      "evening": "Labas vakaras"
+    },
+    "welcomeHeading": "Kaip galiu padėti jums aptarnauti klientus šiandien?",
+    "suggestions": {
+      "clientDetails": "Parodykite kliento John Doe informaciją",
+      "repaymentSchedule": "Koks yra paskolos Nr. 107 grąžinimo grafikas?",
+      "savingsBalance": "Parodykite kliento Nr. 52 taupomosios sąskaitos likutį",
+      "overdueLoans": "Kiek paskolų yra pradelsta šią savaitę?"
+    },
+    "input": {
+      "placeholder": "Klauskite apie klientus, paskolas ar sąskaitas...",
+      "attach": "Pridėti failą",
+      "voice": "Balso įvestis",
+      "send": "Siųsti žinutę",
+      "stop": "Stabdyti generavimą"
+    },
+    "disclaimer": "Mifos Intelligence AI skirta padėti, o ne pakeisti žmogaus sprendimų priėmimą.",
+    "nav": {
+      "recentChats": "Naujausi pokalbiai",
+      "chat": "Pokalbis",
+      "preferences": "Nuostatos",
+      "helpCenter": "Pagalbos centras"
+    },
+    "preferencesHeading": "Nuostatos",
+    "recent": {
+      "emptyTitle": "Nėra naujausių pokalbių",
+      "emptySubtitle": "Jūsų pokalbių istorija bus rodoma čia",
+      "messages": "žinutės",
+      "delete": "Ištrinti pokalbį"
+    },
+    "help": {
+      "capabilitiesTitle": "Ką gali Mifos Intelligence AI?",
+      "capabilities": {
+        "lookup": "Ieškoti klientų informacijos ir profilių",
+        "loans": "Peržiūrėti paskolų informaciją ir grąžinimo grafikus",
+        "savings": "Tikrinti taupomųjų sąskaitų likučius",
+        "portfolio": "Gauti įžvalgų apie klientų portfelius",
+        "navigate": "Pereiti į konkrečius Mifos X puslapius"
+      },
+      "examplesTitle": "Užklausų pavyzdžiai",
+      "importantTitle": "Svarbu",
+      "important": {
+        "assist": "AI atsakymai skirti tik pagalbai, o ne galutiniams sprendimams",
+        "verify": "Prieš veikdami visada patikrinkite svarbius finansinius duomenis",
+        "noExecute": "AI pati nevykdo operacijų"
+      }
+    },
+    "cardType": {
+      "client": "Klientas",
+      "loan": "Paskola",
+      "savings": "Santaupos",
+      "insight": "Įžvalga",
+      "confirmation": "Patvirtinimas"
+    },
+    "confirmWarning": "Šis veiksmas susijęs su tikrais pinigais. Patvirtinkite.",
+    "openAssistant": "Atidaryti DI asistentą",
+    "newChatTitle": "Naujas pokalbis"
   }
 }

@@ -6,8 +6,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+import { environment } from 'environments/environment';
 /** Angular Imports */
-import { Component, OnInit, Input, TemplateRef, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  Input,
+  TemplateRef,
+  ElementRef,
+  ViewChild,
+  AfterViewInit,
+  inject
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
@@ -33,6 +44,7 @@ import { MatDivider } from '@angular/material/divider';
 import { MatNavList, MatListItem } from '@angular/material/list';
 import { MatIcon } from '@angular/material/icon';
 import { MatLine } from '@angular/material/grid-list';
+import { NgTemplateOutlet } from '@angular/common';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { remittanceConfig } from '../../../remittances/remittance.config';
 
@@ -56,10 +68,13 @@ import { catchError, finalize, of, take } from 'rxjs';
     MatListItem,
     RouterLinkActive,
     MatIcon,
-    MatLine
-  ]
+    MatLine,
+    NgTemplateOutlet
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SidenavComponent implements OnInit, AfterViewInit {
+  readonly cbIldEnabled = environment.cbIldEnabled;
   private router = inject(Router);
   private elementRef = inject(ElementRef);
   dialog = inject(MatDialog);
@@ -133,7 +148,8 @@ export class SidenavComponent implements OnInit, AfterViewInit {
     this.navItems = itemIds
       .map((id: string) => mainNavItems.find((item) => item.id === id))
       .filter((item): item is MainNavItem => !!item)
-      .filter((item) => !item.requiresRemittance || this.mifosRemittanceEnabled);
+      .filter((item) => !item.requiresRemittance || this.mifosRemittanceEnabled)
+      .filter((item) => !item.requiresCbIld || this.cbIldEnabled);
   }
 
   /**

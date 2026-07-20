@@ -7,10 +7,22 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, TemplateRef, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  TemplateRef,
+  ElementRef,
+  ViewChild,
+  AfterViewInit,
+  inject,
+  DestroyRef
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
-import { UntypedFormBuilder, Validators } from '@angular/forms';
+import { FormBuilder, Validators } from '@angular/forms';
+import { take } from 'rxjs';
 
 /** Custom Dialogs */
 import { FormDialogComponent } from 'app/shared/form-dialog/form-dialog.component';
@@ -70,12 +82,14 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
     MatRowDef,
     MatRow,
     MatPaginator
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ManageFundsComponent implements OnInit, AfterViewInit {
   private route = inject(ActivatedRoute);
-  private formBuilder = inject(UntypedFormBuilder);
+  private formBuilder = inject(FormBuilder);
   private organizationservice = inject(OrganizationService);
+  private destroyRef = inject(DestroyRef);
   dialog = inject(MatDialog);
   private router = inject(Router);
   private configurationWizardService = inject(ConfigurationWizardService);
@@ -116,7 +130,7 @@ export class ManageFundsComponent implements OnInit, AfterViewInit {
    * @param {PopoverService} popoverService PopoverService.
    */
   constructor() {
-    this.route.data.subscribe((data: { funds: any }) => {
+    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data: { funds: any }) => {
       this.fundsData = data.funds;
     });
   }
@@ -152,17 +166,20 @@ export class ManageFundsComponent implements OnInit, AfterViewInit {
    */
   addFund() {
     const newFund = this.fundForm.value;
-    this.organizationservice.createFund(newFund).subscribe((response: any) => {
-      this.fundsData.push({
-        id: response.resourceId,
-        name: newFund.name
+    this.organizationservice
+      .createFund(newFund)
+      .pipe(take(1))
+      .subscribe((response: any) => {
+        this.fundsData.push({
+          id: response.resourceId,
+          name: newFund.name
+        });
+        this.formRef.resetForm();
+        if (this.configurationWizardService.showManageFunds) {
+          this.configurationWizardService.showManageFunds = false;
+          this.openDialog();
+        }
       });
-      this.formRef.resetForm();
-      if (this.configurationWizardService.showManageFunds) {
-        this.configurationWizardService.showManageFunds = false;
-        this.openDialog();
-      }
-    });
   }
 
   /**
@@ -189,9 +206,12 @@ export class ManageFundsComponent implements OnInit, AfterViewInit {
     const editFundDialogRef = this.dialog.open(FormDialogComponent, { data });
     editFundDialogRef.afterClosed().subscribe((response: any) => {
       if (response.data) {
-        this.organizationservice.editFund(fundId, response.data.value).subscribe(() => {
-          this.fundsData[index].name = response.data.value.name;
-        });
+        this.organizationservice
+          .editFund(fundId, response.data.value)
+          .pipe(take(1))
+          .subscribe(() => {
+            this.fundsData[index].name = response.data.value.name;
+          });
       }
     });
   }

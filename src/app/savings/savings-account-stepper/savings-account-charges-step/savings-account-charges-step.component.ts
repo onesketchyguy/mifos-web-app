@@ -7,9 +7,9 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, OnChanges, Input, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, OnChanges, Input, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import { UntypedFormControl } from '@angular/forms';
+import { FormControl } from '@angular/forms';
 
 /** Custom Dialogs */
 import { FormDialogComponent } from 'app/shared/form-dialog/form-dialog.component';
@@ -67,7 +67,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     ChargesFilterPipe,
     DateFormatPipe,
     FormatNumberPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SavingsAccountChargesStepComponent implements OnInit, OnChanges {
   private dialog = inject(MatDialog);
@@ -79,7 +80,7 @@ export class SavingsAccountChargesStepComponent implements OnInit, OnChanges {
   /** Savings Account Template */
   @Input() savingsAccountTemplate: any;
   /** Currency Code */
-  @Input() currencyCode: UntypedFormControl;
+  @Input() currencyCode: FormControl;
   /** active Client Members in case of GSIM Account */
   @Input() activeClientMembers?: any;
 

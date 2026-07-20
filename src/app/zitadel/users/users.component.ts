@@ -8,7 +8,16 @@
 
 import { MatPaginatorModule } from '@angular/material/paginator';
 /** Angular Imports */
-import { Component, OnInit, TemplateRef, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  TemplateRef,
+  ElementRef,
+  ViewChild,
+  AfterViewInit,
+  inject
+} from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortModule } from '@angular/material/sort';
@@ -34,7 +43,8 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
     MatPaginatorModule,
     MatSortModule,
     MatTableModule
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class UsersComponent implements OnInit, AfterViewInit {
   private route = inject(ActivatedRoute);

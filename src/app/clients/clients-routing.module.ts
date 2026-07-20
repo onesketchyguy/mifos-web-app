@@ -21,6 +21,8 @@ import { AddFamilyMemberComponent } from './clients-view/family-members-tab/add-
 import { EditFamilyMemberComponent } from './clients-view/family-members-tab/edit-family-member/edit-family-member.component';
 import { IdentitiesTabComponent } from './clients-view/identities-tab/identities-tab.component';
 import { NotesTabComponent } from './clients-view/notes-tab/notes-tab.component';
+import { BureauReadinessComponent } from './clients-view/bureau-readiness/bureau-readiness.component';
+import { CreditProfileComponent } from './clients-view/credit-profile/credit-profile.component';
 import { DocumentsTabComponent } from './clients-view/documents-tab/documents-tab.component';
 import { DatatableTabComponent } from './clients-view/datatable-tab/datatable-tab.component';
 import { AddressTabComponent } from './clients-view/address-tab/address-tab.component';
@@ -65,7 +67,7 @@ import {
 const routes: Routes = [
   Route.withShell([
     {
-      path: 'clients',
+      path: '',
       data: { title: 'Clients', breadcrumb: 'Clients', routeParamBreadcrumb: false },
       children: [
         {
@@ -182,6 +184,16 @@ const routes: Routes = [
               }
             },
             {
+              path: 'bureau-readiness',
+              component: BureauReadinessComponent,
+              data: { title: 'Bureau Readiness', breadcrumb: 'Bureau Readiness', routeParamBreadcrumb: false }
+            },
+            {
+              path: 'credit-profile',
+              component: CreditProfileComponent,
+              data: { title: 'Credit Profile', breadcrumb: 'Credit Profile', routeParamBreadcrumb: false }
+            },
+            {
               path: 'datatables',
               children: [
                 {
@@ -199,7 +211,7 @@ const routes: Routes = [
       ]
     },
     {
-      path: 'clients',
+      path: '',
       data: { title: 'Clients', breadcrumb: 'Clients', routeParamBreadcrumb: false },
       children: [
         {

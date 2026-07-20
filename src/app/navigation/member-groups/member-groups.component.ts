@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, Input, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, ViewChild } from '@angular/core';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
 import {
@@ -45,7 +45,8 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
     MatRowDef,
     MatRow,
     MatPaginator
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class MemberGroupsComponent {
   /** Columns to be displayed in the member groups table. */

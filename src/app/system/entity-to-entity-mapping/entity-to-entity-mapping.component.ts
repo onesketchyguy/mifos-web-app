@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, ViewChild, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, ViewChild, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort } from '@angular/material/sort';
@@ -72,7 +72,8 @@ import { isAccountFeatureEnabled } from 'app/shared/account-features/account-fea
     FaIconComponent,
     MatPaginator,
     DateFormatPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class EntityToEntityMappingComponent implements OnInit {
   private route = inject(ActivatedRoute);

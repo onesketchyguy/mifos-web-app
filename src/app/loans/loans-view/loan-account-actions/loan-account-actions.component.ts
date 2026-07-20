@@ -7,7 +7,8 @@
  */
 
 /** Angular Imports. */
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LoansAccountCloseComponent } from './loans-account-close/loans-account-close.component';
 import { UndoApprovalComponent } from './undo-approval/undo-approval.component';
@@ -45,6 +46,8 @@ import { LoanProductBaseComponent } from 'app/products/loan-products/common/loan
 import { UpdateDiscountComponent } from './update-discount/update-discount.component';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
 import { LoanDelinquencyLetterComponent } from './loan-delinquency-letter/loan-delinquency-letter.component';
+import { NearBreachConfigComponent } from '../working-capital/loan-account-actions/near-breach-config/near-breach-config.component';
+import { BreachConfigComponent } from '../working-capital/loan-account-actions/breach-config/breach-config.component';
 
 /**
  * Loan Account Actions component.
@@ -87,10 +90,14 @@ import { LoanDelinquencyLetterComponent } from './loan-delinquency-letter/loan-d
     UndoWriteOffComponent,
     AttachOriginatorComponent,
     UpdateDiscountComponent,
-    LoanDelinquencyLetterComponent
-  ]
+    LoanDelinquencyLetterComponent,
+    NearBreachConfigComponent,
+    BreachConfigComponent
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoanAccountActionsComponent {
+  private readonly destroyRef = inject(DestroyRef);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   accountFeatures = accountFeatures;
@@ -142,6 +149,9 @@ export class LoanAccountActionsComponent {
     'Attach Loan Originator': boolean;
     'Update discount': boolean;
     'Generate Delinquency Letter': boolean;
+    'Discount Fee': boolean;
+    'Update Near Breach': boolean;
+    'Update Breach': boolean;
   } = {
     Close: false,
     'Undo Approval': false,
@@ -184,7 +194,10 @@ export class LoanAccountActionsComponent {
     'Undo Write-off': false,
     'Attach Loan Originator': false,
     'Update discount': false,
-    'Generate Delinquency Letter': false
+    'Generate Delinquency Letter': false,
+    'Discount Fee': false,
+    'Update Near Breach': false,
+    'Update Breach': false
   };
 
   actionButtonData: any;
@@ -198,11 +211,11 @@ export class LoanAccountActionsComponent {
     // Safely access data with optional chaining
     this.navigationData = currentNavigation?.extras?.state?.data;
 
-    this.route.data.subscribe((data: { actionButtonData: any }) => {
+    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data: { actionButtonData: any }) => {
       this.actionButtonData = data.actionButtonData ? data.actionButtonData : {};
     });
 
-    this.route.params.subscribe((params) => {
+    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       this.actionName = params['action'];
       if (this.actionName === 'Change Loan Officer') {
         this.actionName = 'Assign Loan Officer';

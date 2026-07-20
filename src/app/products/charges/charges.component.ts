@@ -7,7 +7,16 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, TemplateRef, ElementRef, ViewChild, AfterViewInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  TemplateRef,
+  ElementRef,
+  ViewChild,
+  AfterViewInit,
+  inject
+} from '@angular/core';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
 import {
@@ -65,7 +74,8 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
     MatRow,
     MatPaginator,
     FormatNumberPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ChargesComponent implements OnInit, AfterViewInit {
   private route = inject(ActivatedRoute);
@@ -78,8 +88,8 @@ export class ChargesComponent implements OnInit, AfterViewInit {
   chargeData: Charge[] = [];
   /** Columns to be displayed in charges table. */
   displayedColumns: string[] = [
-    'name',
     'chargeAppliesTo',
+    'name',
     'chargeTimeType',
     'chargeCalculationType',
     'amount',
@@ -209,6 +219,7 @@ export class ChargesComponent implements OnInit, AfterViewInit {
       return charge.chargeAppliesTo.id === chargeAppliesTo;
     });
     this.dataSource = new MatTableDataSource(filteredCharges);
+    this.dataSource.paginator = this.paginator;
   }
 
   private visibleChargeData(): Charge[] {

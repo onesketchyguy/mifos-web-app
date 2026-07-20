@@ -7,7 +7,7 @@
  */
 
 import { SelectionModel } from '@angular/cdk/collections';
-import { Component, OnInit, ViewChild, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, ViewChild, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatPaginator } from '@angular/material/paginator';
 import {
@@ -59,7 +59,8 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
     MatRow,
     MatPaginator,
     DatetimeFormatPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoanLockedComponent implements OnInit {
   private route = inject(ActivatedRoute);

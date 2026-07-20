@@ -88,6 +88,15 @@ export const environment = {
   mifosInterbankTransfersEnabled:
     window.env?.mifosInterbankTransfersEnabled !== 'false' && window.env?.mifosInterbankTransfersEnabled !== false,
 
+  /**
+   * Mifos Copilot AI assistant: deployment master switch (level 1 feature flag).
+   * Off by default; set MIFOS_ENABLE_COPILOT=true to load the panel for a deployment.
+   * When off, the panel never renders and its lazy chunk is never downloaded.
+   */
+  enableCopilot: loadedEnv.enableCopilot === 'true' || loadedEnv.enableCopilot === true || false,
+  /** Base URL of the Mifos MCP server the Copilot talks to. */
+  copilotMcpBaseUrl: loadedEnv.copilotMcpBaseUrl || 'https://ai.mifos.community',
+
   /** Remittance Module Integration */
   mifosRemittanceApiUrl: window.env?.mifosRemittanceApiClientUrl || '',
   mifosRemittanceApiProvider: window.env?.mifosRemittanceApiProvider || '',
@@ -115,6 +124,9 @@ export const environment = {
    */
   enablePostalCodeLookup:
     loadedEnv.enablePostalCodeLookup === 'true' || loadedEnv.enablePostalCodeLookup === true || false,
+
+  enableClientAddressLocation:
+    loadedEnv.enableClientAddressLocation === 'true' || loadedEnv.enableClientAddressLocation === true || false,
 
   minPasswordLength: resolvedMinPasswordLength,
   passwordRegex:
@@ -145,6 +157,10 @@ export const environment = {
     checking: isRuntimeFlagEnabled(loadedEnv.enableCheckingAccounts)
   },
 
+  /** CB-ILD Credit Bureau plugin base URL — must be HTTPS in production */
+  /** CB-ILD feature flag — set cbIldEnabled=true in env to show CB-ILD tabs */
+  cbIldEnabled: loadedEnv.cbIldEnabled === 'true' || loadedEnv.cbIldEnabled === true || false,
+  pluginBaseUrl: loadedEnv.pluginBaseUrl || 'http://localhost:8084',
   OIDC: {
     // Support legacy FINERACT_PLUGIN_OIDC_* variable names for backward compatibility
     oidcServerEnabled:

@@ -7,7 +7,18 @@
  */
 
 /** Angular Imports */
-import { AfterViewInit, ChangeDetectorRef, Component, QueryList, ViewChild, ViewChildren, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  AfterViewInit,
+  ChangeDetectorRef,
+  Component,
+  DestroyRef,
+  QueryList,
+  ViewChild,
+  ViewChildren,
+  inject
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { of } from 'rxjs';
 import { ActivatedRoute } from '@angular/router';
 
@@ -54,9 +65,11 @@ import { accountFeatures } from 'app/shared/account-features/account-features.co
     LoansAccountDatatableStepComponent,
     LoansAccountPreviewStepComponent,
     LoansAccountTribalDataStepComponent
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CreateLoansAccountComponent extends LoanProductBaseComponent implements AfterViewInit {
+  private readonly destroyRef = inject(DestroyRef);
   private route = inject(ActivatedRoute);
   private loansService = inject(LoansService);
   private settingsService = inject(SettingsService);
@@ -107,12 +120,12 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
   constructor() {
     super();
     this.loanProductsBasicDetails = [];
-    this.route.data.subscribe(
-      (data: { loansAccountTemplate: any; loanProductsBasicDetails: LoanProductBasicDetails[] }) => {
+    this.route.data
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((data: { loansAccountTemplate: any; loanProductsBasicDetails: LoanProductBasicDetails[] }) => {
         this.loanProductsBasicDetails = data.loanProductsBasicDetails;
         this.loansAccountTemplate = data.loansAccountTemplate;
-      }
-    );
+      });
   }
 
   ngAfterViewInit() {
@@ -162,6 +175,9 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
   setProductType($event: any): void {
     this.productType = $event;
     this.loanProductService.initialize(this.productType);
+    this.loansAccountProductTemplate = null;
+    this.productId = null;
+    this.cdr.detectChanges();
   }
 
   setDatatables(): void {
@@ -489,7 +505,6 @@ export class CreateLoansAccountComponent extends LoanProductBaseComponent implem
 
     // No Empty values to be sent
     [
-      'discount',
       'delinquencyGraceDays',
       'delinquencyStartType'
     ].forEach((attr: string) => {

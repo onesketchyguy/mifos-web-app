@@ -7,6 +7,7 @@
  */
 
 import {
+  ChangeDetectionStrategy,
   Component,
   DestroyRef,
   EventEmitter,
@@ -88,7 +89,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     CurrencyPipe,
     DateFormatPipe,
     FormatNumberPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RepaymentScheduleTabComponent implements OnInit, OnChanges {
   private route = inject(ActivatedRoute);

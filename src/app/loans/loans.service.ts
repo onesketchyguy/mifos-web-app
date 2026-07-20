@@ -16,13 +16,16 @@ import { Observable, catchError, map, of } from 'rxjs';
 import { Dates } from 'app/core/utils/dates';
 import { SettingsService } from 'app/settings/settings.service';
 import { DisbursementData } from './models/loan-account.model';
+import { PeriodPaymentRateChange } from './models/working-capital-loan-account.model';
+import { BreachSchedule } from './models/working-capital-loan-account.model';
+import {
+  WorkingCapitalBreachAction,
+  WorkingCapitalBreachActionRequest,
+  WorkingCapitalNearBreachActionRequest,
+  WorkingCapitalNearBreachActions
+} from './models/working-capital/working-capital-loan-account.model';
 
-export interface WorkingCapitalLoanDiscountUpdateRequest {
-  discountAmount: number;
-  note?: string;
-  locale: string;
-  dateFormat: string;
-}
+export type LoanAccountPath = 'loans' | 'working-capital-loans';
 
 /**
  * Loans service.
@@ -42,6 +45,23 @@ export class LoansService {
    * @returns {Observable<any>}
    */
   getLoans(offset: number = 0, limit: number = 100): Observable<any> {
+    const httpParams = new HttpParams().set('offset', offset.toString()).set('limit', limit.toString());
+    return this.http.get('/loans', { params: httpParams });
+  }
+
+  /**
+   * Retrieves a single page of loans for the loans list screen.
+   *
+   * The Fineract `/loans` endpoint on this deployment does not honor server-side
+   * text search or the (removed) `sqlSearch` status filter, so the component loads
+   * the full set (search / status-filter / sort / paging all run on the client) —
+   * but it does so progressively, page by page, so the first rows render quickly
+   * instead of blocking on the whole dataset. See `LoansComponent`.
+   * @param {number} offset Row offset.
+   * @param {number} limit Page size.
+   * @returns {Observable<any>} A Fineract page (`{ pageItems, totalFilteredRecords }`).
+   */
+  getLoansPage(offset: number, limit: number): Observable<any> {
     const httpParams = new HttpParams().set('offset', offset.toString()).set('limit', limit.toString());
     return this.http.get('/loans', { params: httpParams });
   }
@@ -103,11 +123,27 @@ export class LoansService {
   }
 
   /**
+   * Flat office list, used to populate the loans list office filter.
+   * @returns {Observable<any[]>}
+   */
+  getOffices(): Observable<any[]> {
+    return this.http.get<any[]>('/offices');
+  }
+
+  /**
+   * Loan product list (id/name), used to populate the loans list product filter.
+   * @returns {Observable<any[]>}
+   */
+  getLoanProducts(): Observable<any[]> {
+    return this.http.get<any[]>('/loanproducts');
+  }
+
+  /**
    * @param {string} loanId loanId of the loan.
    * @returns {Observable<any>}
    */
-  getLoanChargeTemplateResource(loanId: string): Observable<any> {
-    return this.http.get(`/loans/${loanId}/charges/template`);
+  getLoanChargeTemplateResource(loanAccountPath: LoanAccountPath, loanId: string): Observable<any> {
+    return this.http.get(`/${loanAccountPath}/${loanId}/charges/template`);
   }
 
   getLoanActionTemplate(loanId: string, command: string): Observable<any> {
@@ -217,6 +253,30 @@ export class LoansService {
     return this.http.get(`/working-capital-loans/${loanId}/delinquency-range-schedule`);
   }
 
+  getBreachActions(loanId: string) {
+    return this.http.get(`/working-capital-loans/${loanId}/breach-actions`);
+  }
+
+  createBreachAction(loanId: string, payload: any) {
+    return this.http.post(`/working-capital-loans/${loanId}/breach-actions`, payload);
+  }
+
+  getWorkingCapitalLoanAmortizationSchedule(loanId: string) {
+    return this.http.get(`/working-capital-loans/${loanId}/amortization-schedule`);
+  }
+
+  getWorkingCapitalLoanBreachSchedule(loanId: string): Observable<BreachSchedule[]> {
+    return this.http.get<BreachSchedule[]>(`/working-capital-loans/${loanId}/breach-schedule`);
+  }
+
+  getWorkingCapitalLoanNearBreachActions(loanId: string): Observable<WorkingCapitalNearBreachActions[]> {
+    return this.http.get<WorkingCapitalNearBreachActions[]>(`/working-capital-loans/${loanId}/near-breach-actions`);
+  }
+
+  getWorkingCapitalLoanBreachActions(loanId: string): Observable<WorkingCapitalBreachAction[]> {
+    return this.http.get<WorkingCapitalBreachAction[]>(`/working-capital-loans/${loanId}/breach-actions`);
+  }
+
   /**
    * Returns the loan template data with specific condition
    * @param loanId Loan Id
@@ -233,8 +293,8 @@ export class LoansService {
    * @param {any} loanCharge to apply on a Loan Account.
    * @returns {Observable<any>}
    */
-  createLoanCharge(loanId: string, resourceType: string, loanCharge: any): Observable<any> {
-    return this.http.post(`/loans/${loanId}/${resourceType}`, loanCharge);
+  createLoanCharge(loanAccountPath: LoanAccountPath, loanId: string, loanCharge: any): Observable<any> {
+    return this.http.post(`/${loanAccountPath}/${loanId}/charges`, loanCharge);
   }
 
   /**
@@ -299,6 +359,10 @@ export class LoansService {
   getWorkingCapitalLoanDetails(loanId: string) {
     const httpParams = new HttpParams().set('associations', 'all');
     return this.http.get(`/working-capital-loans/${loanId}`, { params: httpParams });
+  }
+
+  getWorkingCapitalLoanCharges(loanId: string) {
+    return this.http.get(`/working-capital-loans/${loanId}/charges`);
   }
 
   getApproveAssociationsDetails(loanId: any) {
@@ -414,6 +478,29 @@ export class LoansService {
   }
 
   /**
+   * Reads one page of rows from a loan datatable via the advanced query API.
+   *
+   * The loans list uses this to show custom-table columns: one paged request per
+   * table covers every loan, instead of a `/datatables/{name}/{loanId}` call per row.
+   * Dates are requested in ISO format so parsing is independent of the UI locale.
+   * @param {string} datatableName Registered datatable name.
+   * @param {string[]} resultColumns Columns to fetch (must include the `loan_id` FK).
+   * @param {number} page Zero-based page number.
+   * @param {number} size Page size.
+   * @returns {Observable<any>} A Spring page (`{ content, last, ... }`).
+   */
+  queryLoanDatatableRows(datatableName: string, resultColumns: string[], page: number, size: number): Observable<any> {
+    return this.http.post(`/datatables/${datatableName}/query`, {
+      request: { resultColumns },
+      page,
+      size,
+      dateFormat: 'yyyy-MM-dd',
+      dateTimeFormat: 'yyyy-MM-dd HH:mm:ss',
+      locale: 'en'
+    });
+  }
+
+  /**
    * @param loanId Loan Id of loan to get add datatable entry for.
    * @param datatableName Data Table name.
    * @param data Data.
@@ -458,6 +545,18 @@ export class LoansService {
   applyWorkingCapitalLoanAccountCommand(loanId: any, command: any, data?: any): Observable<any> {
     const httpParams = new HttpParams().set('command', command);
     return this.http.post(`/working-capital-loans/${loanId}`, data, { params: httpParams });
+  }
+
+  applyWorkingCapitalLoanActionCommand(
+    loanId: string,
+    data: any,
+    command: string,
+    transactionId?: any
+  ): Observable<any> {
+    const httpParams = new HttpParams().set('command', command);
+    return transactionId
+      ? this.http.post(`/working-capital-loans/${loanId}/transactions/${transactionId}`, data, { params: httpParams })
+      : this.http.post(`/working-capital-loans/${loanId}/transactions`, data, { params: httpParams });
   }
 
   addInterestPauseToLoan(loanId: any, data?: any): Observable<any> {
@@ -664,13 +763,6 @@ export class LoansService {
     return this.http.get(`/working-capital-loans/${loanId}/template`, { params: httpParams });
   }
 
-  updateWorkingCapitalLoanDiscount(
-    loanId: string | number,
-    data: WorkingCapitalLoanDiscountUpdateRequest
-  ): Observable<any> {
-    return this.http.put(`/working-capital-loans/${loanId}/discount`, data);
-  }
-
   guarantorAccountResource(loanId: string, clientId: any): Observable<any> {
     const httpParams = new HttpParams().set('clientId', clientId);
     return this.http.get(`/loans/${loanId}/guarantors/accounts/template`, { params: httpParams });
@@ -689,8 +781,8 @@ export class LoansService {
    * @param {string} chargeId loans charge Id
    * @returns {Observable<any>}
    */
-  getLoansAccountCharge(accountId: string, chargeId: string): Observable<any> {
-    return this.http.get(`/loans/${accountId}/charges/${chargeId}`);
+  getLoansAccountCharge(loanAccountPath: LoanAccountPath, accountId: string, chargeId: string): Observable<any> {
+    return this.http.get(`/${loanAccountPath}/${accountId}/charges/${chargeId}`);
   }
 
   /**
@@ -700,9 +792,15 @@ export class LoansService {
    * @param {string} chargeId Charge Id
    * @returns {Observable<any>}
    */
-  executeLoansAccountChargesCommand(accountId: string, command: string, data: any, chargeId: any): Observable<any> {
+  executeLoansAccountChargesCommand(
+    loanAccountPath: LoanAccountPath,
+    accountId: string,
+    command: string,
+    data: any,
+    chargeId: any
+  ): Observable<any> {
     const httpParams = new HttpParams().set('command', command);
-    return this.http.post(`/loans/${accountId}/charges/${chargeId}`, data, { params: httpParams });
+    return this.http.post(`/${loanAccountPath}/${accountId}/charges/${chargeId}`, data, { params: httpParams });
   }
 
   /**
@@ -711,8 +809,13 @@ export class LoansService {
    * @param {any} chargeId Charge Id
    * @returns {Observable<any>}
    */
-  editLoansAccountCharge(accountId: string, data: any, chargeId: any): Observable<any> {
-    return this.http.put(`/loans/${accountId}/charges/${chargeId}`, data);
+  editLoansAccountCharge(
+    loanAccountPath: LoanAccountPath,
+    accountId: string,
+    data: any,
+    chargeId: any
+  ): Observable<any> {
+    return this.http.put(`/${loanAccountPath}/${accountId}/charges/${chargeId}`, data);
   }
 
   /**
@@ -720,8 +823,8 @@ export class LoansService {
    * @param {any} chargeId Charge Id
    * @returns {Observable<any>}
    */
-  deleteLoansAccountCharge(accountId: string, chargeId: any): Observable<any> {
-    return this.http.delete(`/loans/${accountId}/charges/${chargeId}`);
+  deleteLoansAccountCharge(loanAccountPath: LoanAccountPath, accountId: string, chargeId: any): Observable<any> {
+    return this.http.delete(`/${loanAccountPath}/${accountId}/charges/${chargeId}`);
   }
 
   /**
@@ -734,12 +837,17 @@ export class LoansService {
   }
 
   /**
+   * @param {string} productType Loans Product Type
    * @param {string} accountId Loans Account Id
    * @param {string} transactionId Transaction Id
    * @returns {Observable<any>}
    */
-  getLoansAccountTransaction(accountId: string, transactionId: string): Observable<any> {
-    return this.http.get(`/loans/${accountId}/transactions/${transactionId}`);
+  getLoansAccountTransaction(
+    productType: 'loans' | 'working-capital-loans',
+    accountId: string,
+    transactionId: string
+  ): Observable<any> {
+    return this.http.get(`/${productType}/${accountId}/transactions/${transactionId}`);
   }
 
   getTransactionImportNote(
@@ -859,14 +967,22 @@ export class LoansService {
     return this.http.post('/loans?command=calculateLoanSchedule', payload);
   }
 
-  attachLoanOriginator(loanId: string, originatorId: string): Observable<any> {
+  attachLoanOriginator(
+    productType: 'loans' | 'working-capital-loans',
+    loanId: string,
+    originatorId: string
+  ): Observable<any> {
     const emptyBody = {};
-    return this.http.post(`/loans/${loanId}/originators/${originatorId}`, emptyBody);
+    return this.http.post(`/${productType}/${loanId}/originators/${originatorId}`, emptyBody);
   }
 
-  detachLoanOriginator(loanId: string, originatorId: string): Observable<any> {
+  detachLoanOriginator(
+    productType: 'loans' | 'working-capital-loans',
+    loanId: string,
+    originatorId: string
+  ): Observable<any> {
     const emptyBody = {};
-    return this.http.delete(`/loans/${loanId}/originators/${originatorId}`, emptyBody);
+    return this.http.delete(`/${productType}/${loanId}/originators/${originatorId}`, emptyBody);
   }
 
   /**
@@ -1007,5 +1123,41 @@ export class LoansService {
   getEntityDataTableChecks(offset: number = 0, limit: number = -1): Observable<any> {
     const httpParams = new HttpParams().set('offset', offset.toString()).set('limit', limit.toString());
     return this.http.get('/entityDatatableChecks', { params: httpParams });
+  }
+
+  /**
+   * Returns the Working Capital Loan Payment Rates data
+   */
+  getWorkingCapitalPeriodPaymentRates(loanId: any): Observable<PeriodPaymentRateChange[]> {
+    return this.http.get<PeriodPaymentRateChange[]>(`/working-capital-loans/${loanId}/rate-changes`);
+  }
+
+  /**
+   * Add a Working Capital Loan Payment Rates
+   */
+  addWorkingCapitalPeriodPaymentRate(loanId: any, payload: any) {
+    return this.http.put(`/working-capital-loans/${loanId}/payment-rate`, payload);
+  }
+
+  /**
+   * Returns the Working Capital Loan Transactions data
+   */
+  getWorkingCapitalTransactions(loanId: string, page: number = 0, size: number = 100) {
+    const httpParams = new HttpParams().set('page', page.toString()).set('size', size.toString());
+    return this.http.get(`/working-capital-loans/${loanId}/transactions`, { params: httpParams });
+  }
+
+  /**
+   * Add a Working Capital Loan Near Breach Action
+   */
+  addWorkingCapitalNearBreachAction(loanId: string, payload: WorkingCapitalNearBreachActionRequest) {
+    return this.http.post(`/working-capital-loans/${loanId}/near-breach-actions`, payload);
+  }
+
+  /**
+   * Add a Working Capital Loan Breach Action
+   */
+  addWorkingCapitalBreachAction(loanId: string, payload: WorkingCapitalBreachActionRequest) {
+    return this.http.post(`/working-capital-loans/${loanId}/breach-actions`, payload);
   }
 }

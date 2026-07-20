@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import {
   MAT_DIALOG_DATA,
   MatDialogRef,
@@ -39,7 +39,8 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     MatCheckbox,
     MatDialogActions,
     MatDialogClose
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ColumnDialogComponent implements OnInit {
   dialogRef = inject<MatDialogRef<ColumnDialogComponent>>(MatDialogRef);
@@ -83,7 +84,8 @@ export class ColumnDialogComponent implements OnInit {
       ],
       mandatory: [{ value: this.data.isColumnNullable, disabled: this.data.type === 'existing' }],
       unique: [
-        { value: this.data.isColumnUnique, disabled: this.data.isColumnNullable || this.data.type === 'existing' }],
+        { value: this.data.isColumnUnique, disabled: this.data.isColumnNullable || this.data.type === 'existing' }
+      ],
       indexed: [{ value: this.data.isColumnIndexed, disabled: this.data.type === 'existing' }],
       code: [
         {

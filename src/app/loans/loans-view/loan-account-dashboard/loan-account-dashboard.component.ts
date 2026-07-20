@@ -6,10 +6,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-import { Component, OnInit, AfterViewInit, ViewChild, ElementRef, inject, OnDestroy } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnInit,
+  AfterViewInit,
+  OnDestroy,
+  ViewChild,
+  ElementRef,
+  inject
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
-import { Subscription } from 'rxjs';
 import { MatCard, MatCardHeader, MatCardContent, MatCardTitle } from '@angular/material/card';
 import { Chart, registerables } from 'chart.js';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
@@ -31,13 +41,13 @@ Chart.register(...registerables);
     MatCardHeader,
     MatCardContent,
     MatCardTitle
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoanAccountDashboardComponent implements OnInit, AfterViewInit, OnDestroy {
+  private readonly destroyRef = inject(DestroyRef);
   private route = inject(ActivatedRoute);
   private translate = inject(TranslateService);
-  private langChangeSubscription?: Subscription;
-  private routeDataSubscription?: Subscription;
 
   @ViewChild('statusChart', { static: false }) statusChartCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('paymentsChart', { static: false }) paymentsChartCanvas!: ElementRef<HTMLCanvasElement>;
@@ -61,7 +71,7 @@ export class LoanAccountDashboardComponent implements OnInit, AfterViewInit, OnD
   ngOnInit(): void {
     this.loanId = this.route.parent?.snapshot.paramMap.get('loanId') || '';
 
-    this.routeDataSubscription = this.route.parent!.data.subscribe((data: { loanDetailsData: any }) => {
+    this.route.parent?.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data: { loanDetailsData: any }) => {
       if (data.loanDetailsData) {
         this.loanData = data.loanDetailsData;
         this.calculateMetrics();
@@ -72,7 +82,7 @@ export class LoanAccountDashboardComponent implements OnInit, AfterViewInit, OnD
       }
     });
 
-    this.langChangeSubscription = this.translate.onLangChange.subscribe(() => {
+    this.translate.onLangChange.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.statusChart) {
         this.createStatusChart();
       }
@@ -321,12 +331,6 @@ export class LoanAccountDashboardComponent implements OnInit, AfterViewInit, OnD
     if (this.initTimeout !== null) {
       clearTimeout(this.initTimeout);
       this.initTimeout = null;
-    }
-    if (this.routeDataSubscription) {
-      this.routeDataSubscription.unsubscribe();
-    }
-    if (this.langChangeSubscription) {
-      this.langChangeSubscription.unsubscribe();
     }
     if (this.statusChart) {
       this.statusChart.destroy();

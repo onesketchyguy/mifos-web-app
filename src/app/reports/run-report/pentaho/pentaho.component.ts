@@ -7,8 +7,16 @@
  */
 
 /** Angular Imports */
-import { Component, OnChanges, OnDestroy, Input, inject } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnChanges,
+  OnDestroy,
+  Input,
+  inject,
+  ChangeDetectorRef
+} from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
 
 /** Custom Services */
@@ -26,13 +34,15 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
   styleUrls: ['./pentaho.component.scss'],
   imports: [
     ...STANDALONE_SHARED_IMPORTS
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PentahoComponent implements OnChanges, OnDestroy {
   private sanitizer = inject(DomSanitizer);
   private reportsService = inject(ReportsService);
   private settingsService = inject(SettingsService);
   private progressBarService = inject(ProgressBarService);
+  private changeDetectorRef = inject(ChangeDetectorRef);
 
   /** Run Report Data */
   @Input() dataObject: any;
@@ -40,7 +50,7 @@ export class PentahoComponent implements OnChanges, OnDestroy {
   /** substitute for resolver */
   hideOutput = true;
   /** trusted resource url for pentaho output */
-  pentahoUrl: any;
+  pentahoUrl: SafeResourceUrl | null = null;
   /** current blob URL to track and revoke */
   private currentBlobUrl: string | null = null;
   /** current report request subscription */
@@ -67,7 +77,14 @@ export class PentahoComponent implements OnChanges, OnDestroy {
       .subscribe({
         next: (res: any) => {
           const contentType = res.headers.get('Content-Type');
-          const file = new Blob([res.body], { type: contentType });
+          const outputType = this.dataObject.formData['output-type'];
+          let type: string = contentType ?? 'application/octet-stream';
+
+          if (outputType === 'PDF') {
+            type = 'application/pdf';
+          }
+
+          const file = new Blob([res.body], { type });
 
           if (this.currentBlobUrl) {
             URL.revokeObjectURL(this.currentBlobUrl);
@@ -82,11 +99,13 @@ export class PentahoComponent implements OnChanges, OnDestroy {
 
           this.pentahoUrl = this.sanitizer.bypassSecurityTrustResourceUrl(filecontent);
           this.hideOutput = false;
+          this.changeDetectorRef.markForCheck();
           this.progressBarService.decrease();
         },
         error: () => {
           this.hideOutput = true;
           this.pentahoUrl = null;
+          this.changeDetectorRef.markForCheck();
         }
       });
   }

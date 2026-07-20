@@ -8,6 +8,7 @@
 
 /** Angular Imports */
 import {
+  ChangeDetectionStrategy,
   Component,
   OnInit,
   Input,
@@ -19,8 +20,10 @@ import {
   TemplateRef,
   AfterContentChecked,
   ChangeDetectorRef,
+  DestroyRef,
   inject
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSidenav } from '@angular/material/sidenav';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
@@ -74,7 +77,8 @@ import { SettingsService } from 'app/settings/settings.service';
     ThemeToggleComponent,
     MatMenu,
     MatMenuItem
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ToolbarComponent implements OnInit, AfterViewInit, AfterContentChecked {
   private breakpointObserver = inject(BreakpointObserver);
@@ -86,6 +90,7 @@ export class ToolbarComponent implements OnInit, AfterViewInit, AfterContentChec
   private changeDetector = inject(ChangeDetectorRef);
   private documentationLinks = inject(DocumentationLinksService);
   private settingsService = inject(SettingsService);
+  private destroyRef = inject(DestroyRef);
   accountFeatures = accountFeatures;
 
   get showConfigWizard(): boolean {
@@ -119,7 +124,7 @@ export class ToolbarComponent implements OnInit, AfterViewInit, AfterContentChec
    * Subscribes to breakpoint for handset.
    */
   ngOnInit() {
-    this.isHandset$.subscribe((isHandset) => {
+    this.isHandset$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((isHandset) => {
       if (isHandset && this.sidenavCollapsed) {
         this.toggleSidenavCollapse(false);
       }

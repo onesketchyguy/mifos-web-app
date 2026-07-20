@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
   MatDialogRef,
   MAT_DIALOG_DATA,
@@ -37,7 +37,8 @@ import { SettingsService } from 'app/settings/settings.service';
     MatDialogClose,
     MatProgressBar,
     MatDialogActions
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ConfigurationWizardComponent {
   dialogRef = inject<MatDialogRef<ConfigurationWizardComponent>>(MatDialogRef);

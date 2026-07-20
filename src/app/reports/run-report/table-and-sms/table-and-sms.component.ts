@@ -7,7 +7,8 @@
  */
 
 /** Angular Imports */
-import { Component, Input, ViewChild, OnChanges, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, Input, ViewChild, OnChanges, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatPaginator } from '@angular/material/paginator';
 import {
   MatTableDataSource,
@@ -34,8 +35,10 @@ import { FormDialogComponent } from 'app/shared/form-dialog/form-dialog.componen
 import { environment } from '../../../../environments/environment';
 import { ProgressBarService } from 'app/core/progress-bar/progress-bar.service';
 import { ReportExcelExportService } from '../../report-excel-export.service';
+import { sanitizeCsvValue } from 'app/core/utils/csv.utils';
 
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { MatIcon } from '@angular/material/icon';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 
 /**
@@ -58,11 +61,14 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
     MatRowDef,
     MatRow,
     MatPaginator,
-    FaIconComponent
+    FaIconComponent,
+    MatIcon
   ]
 })
 export class TableAndSmsComponent implements OnChanges {
   private reportsService = inject(ReportsService);
+  private destroyRef = inject(DestroyRef);
+  private cdr = inject(ChangeDetectorRef);
   dialog = inject(MatDialog);
   private decimalPipe = inject(DecimalPipe);
   private progressBarService = inject(ProgressBarService);
@@ -82,6 +88,7 @@ export class TableAndSmsComponent implements OnChanges {
   /** Data to be converted into CSV file */
   csvData: any;
   notExistsReportData = false;
+  hasError = false;
   toBeExportedToRepo = false;
 
   /** Paginator for run-report table. */
@@ -92,6 +99,7 @@ export class TableAndSmsComponent implements OnChanges {
    */
   ngOnChanges() {
     this.hideOutput = true;
+    this.hasError = false;
     this.columnTypes = [];
     this.displayedColumns = [];
     this.getRunReportData();
@@ -101,19 +109,31 @@ export class TableAndSmsComponent implements OnChanges {
     const exportS3 = this.dataObject.formData.exportS3;
     this.reportsService
       .getRunReportData(this.dataObject.report.name, this.dataObject.formData)
-      .subscribe((res: any) => {
-        this.toBeExportedToRepo = exportS3;
-        if (!this.toBeExportedToRepo) {
-          this.csvData = res.data;
-          this.notExistsReportData = res.data.length === 0;
-          this.setOutputTable(res.data);
-          res.columnHeaders.forEach((header: any) => {
-            this.columnTypes.push(header.columnDisplayType);
-            this.displayedColumns.push(header.columnName);
-          });
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (res: any) => {
+          this.toBeExportedToRepo = exportS3;
+          if (!this.toBeExportedToRepo) {
+            this.csvData = res.data;
+            this.notExistsReportData = res.data.length === 0;
+            if (!this.notExistsReportData) {
+              this.setOutputTable(res.data);
+              res.columnHeaders.forEach((header: any) => {
+                this.columnTypes.push(header.columnDisplayType);
+                this.displayedColumns.push(header.columnName);
+              });
+            }
+          }
+          this.hideOutput = false;
+          this.progressBarService.decrease();
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.hasError = true;
+          this.hideOutput = false;
+          this.progressBarService.decrease();
+          this.cdr.markForCheck();
         }
-        this.hideOutput = false;
-        this.progressBarService.decrease();
       });
   }
 
@@ -188,8 +208,8 @@ export class TableAndSmsComponent implements OnChanges {
    */
   downloadCSV(fileName: string, delimiter: string) {
     const headers = this.displayedColumns;
-    let csv = this.csvData.map((object: any) => object.row.join(delimiter));
-    csv.unshift(`data:text/csv;charset=utf-8,${headers.join(delimiter)}`);
+    let csv = this.csvData.map((object: any) => object.row.map((cell: any) => sanitizeCsvValue(cell)).join(delimiter));
+    csv.unshift(`data:text/csv;charset=utf-8,${headers.map(sanitizeCsvValue).join(delimiter)}`);
     csv = csv.join('\r\n');
     const link = document.createElement('a');
     link.setAttribute('href', encodeURI(csv));

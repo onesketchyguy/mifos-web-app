@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatNavList, MatListItem } from '@angular/material/list';
 import { MatIcon } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
@@ -29,7 +29,8 @@ import { BulkDeleteDialogComponent } from './bulk-delete-dialog/bulk-delete-dial
     MatListItem,
     MatIcon,
     FaIconComponent
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class BulkImportComponent {
   private dialog = inject(MatDialog);

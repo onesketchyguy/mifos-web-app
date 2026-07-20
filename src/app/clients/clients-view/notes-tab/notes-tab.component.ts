@@ -7,7 +7,8 @@
  */
 
 /** Angular Imports */
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 
 /** Custom Components */
@@ -28,12 +29,14 @@ import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
   imports: [
     ...STANDALONE_SHARED_IMPORTS,
     EntityNotesTabComponent
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class NotesTabComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private clientsService = inject(ClientsService);
   private authenticationService = inject(AuthenticationService);
+  private destroyRef = inject(DestroyRef);
 
   /** Client ID */
   entityId: string;
@@ -57,7 +60,7 @@ export class NotesTabComponent implements OnInit {
   ngOnInit(): void {
     const credentials = this.authenticationService.getCredentials();
     this.username = credentials.username;
-    this.route.data.subscribe((data: { clientNotes: any }) => {
+    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data: { clientNotes: any }) => {
       this.entityNotes = data.clientNotes;
     });
   }

@@ -10,6 +10,7 @@
 import { Injectable } from '@angular/core';
 
 import * as ExcelJS from 'exceljs';
+import { sanitizeCsvValue } from 'app/core/utils/csv.utils';
 
 export interface ReportExcelExportOptions {
   columnTypes?: string[];
@@ -82,7 +83,7 @@ export class ReportExcelExportService {
         showColumnStripes: false
       },
       columns: columns.map((column) => ({
-        name: column,
+        name: sanitizeCsvValue(column),
         filterButton: true
       })),
       rows
@@ -108,9 +109,10 @@ export class ReportExcelExportService {
     }
     if (this.isNumericColumn(columnType)) {
       const numberValue = this.toNumber(value);
-      return numberValue === null ? value : numberValue;
+      return numberValue === null ? sanitizeCsvValue(value) : numberValue;
     }
-    return value;
+    // Formula-injection guard: spreadsheet apps can execute cell text starting with =+-@ as a formula.
+    return sanitizeCsvValue(value);
   }
 
   private applyWorksheetFormatting(

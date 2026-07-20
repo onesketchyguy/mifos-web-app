@@ -43,7 +43,7 @@ import { savingsAccountFeatureCanMatchGuard } from 'app/shared/account-features/
 const routes: Routes = [
   Route.withShell([
     {
-      path: 'groups',
+      path: '',
       data: { title: 'Groups', breadcrumb: 'Groups', routeParamBreadcrumb: false },
       children: [
         {

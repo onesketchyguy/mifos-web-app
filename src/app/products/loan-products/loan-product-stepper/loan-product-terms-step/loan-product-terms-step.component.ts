@@ -6,7 +6,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-import { Component, OnInit, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { UntypedFormGroup, UntypedFormBuilder, Validators, UntypedFormArray, UntypedFormControl } from '@angular/forms';
 import { MatDialog } from '@angular/material/dialog';
 
@@ -65,7 +65,8 @@ import { LoanProductBaseComponent } from '../../common/loan-product-base.compone
     MatStepperPrevious,
     MatStepperNext,
     FindPipe
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoanProductTermsStepComponent extends LoanProductBaseComponent implements OnInit, OnChanges {
   private formBuilder = inject(UntypedFormBuilder);
@@ -572,7 +573,7 @@ export class LoanProductTermsStepComponent extends LoanProductBaseComponent impl
         };
       case 'NominalInterestRate':
         return {
-          title: this.translateService.instant('labels.heading.Nominal Interest Rate by loan cycle'),
+          title: this.translateService.instant('labels.inputs.Annual interest rate by loan cycle'),
           formfields: this.getFormfields(values)
         };
     }

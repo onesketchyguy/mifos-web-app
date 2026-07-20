@@ -117,9 +117,15 @@
 @if (actions['Attach Loan Originator']) {
   <mifosx-attach-originator [dataObject]="actionButtonData"></mifosx-attach-originator>
 }
-@if (actions['Update discount']) {
+@if (actions['Discount Fee']) {
   <mifosx-update-discount [dataObject]="actionButtonData"></mifosx-update-discount>
 }
 @if (actions['Generate Delinquency Letter']) {
   <mifosx-loan-delinquency-letter [dataObject]="actionButtonData || navigationData"></mifosx-loan-delinquency-letter>
+}
+@if (actions['Update Near Breach']) {
+  <mifosx-near-breach-config [dataObject]="actionButtonData"></mifosx-near-breach-config>
+}
+@if (actions['Update Breach']) {
+  <mifosx-breach-config [dataObject]="actionButtonData"></mifosx-breach-config>
 }

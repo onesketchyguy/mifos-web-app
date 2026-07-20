@@ -123,7 +123,7 @@ import { savingsAccountFeatureCanActivateGuard } from 'app/shared/account-featur
 const routes: Routes = [
   Route.withShell([
     {
-      path: 'organization',
+      path: '',
       data: { title: 'Organization', breadcrumb: 'Organization' },
       children: [
         {

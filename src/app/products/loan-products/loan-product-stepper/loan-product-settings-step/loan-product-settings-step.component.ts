@@ -6,7 +6,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-import { Component, OnInit, Input, Output, EventEmitter, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, Input, Output, EventEmitter, inject } from '@angular/core';
 import { UntypedFormGroup, UntypedFormBuilder, Validators, UntypedFormControl } from '@angular/forms';
 import { LoanProducts } from '../../loan-products';
 import { rangeValidator } from 'app/shared/validators/percentage.validator';
@@ -42,7 +42,8 @@ import { InputPositiveIntegerComponent } from 'app/shared/input-positive-integer
     MatSelectTrigger,
     BreachDisplayComponent,
     InputPositiveIntegerComponent
-  ]
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoanProductSettingsStepComponent extends LoanProductBaseComponent implements OnInit {
   private formBuilder = inject(UntypedFormBuilder);
@@ -192,7 +193,8 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
           ? this.loanProductsTemplate.delinquencyStartType.id
           : null,
         breachId: this.loanProductsTemplate.breach?.id ?? null,
-        nearBreachId: this.loanProductsTemplate.nearBreach?.id ?? null
+        nearBreachId: this.loanProductsTemplate.nearBreach?.id ?? null,
+        breachGraceDays: this.loanProductsTemplate.breachGraceDays ?? null
       });
     }
 
@@ -463,7 +465,8 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
         ],
         delinquencyStartType: [''],
         breachId: [''],
-        nearBreachId: ['']
+        nearBreachId: [''],
+        breachGraceDays: ['']
       });
     }
   }
@@ -926,7 +929,8 @@ export class LoanProductSettingsStepComponent extends LoanProductBaseComponent i
     } else if (propertyName === 'breachId') {
       this.loanProductSettingsForm.patchValue({
         breachId: '',
-        nearBreachId: ''
+        nearBreachId: '',
+        breachGraceDays: null
       });
     } else if (propertyName === 'nearBreachId') {
       this.loanProductSettingsForm.patchValue({
