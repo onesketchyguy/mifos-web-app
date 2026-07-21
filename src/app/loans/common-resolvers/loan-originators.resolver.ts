@@ -10,7 +10,8 @@ import { Injectable, inject } from '@angular/core';
 import { ActivatedRouteSnapshot } from '@angular/router';
 import { LoansService } from 'app/loans/loans.service';
 import { LoanProductService } from 'app/products/loan-products/services/loan-product.service';
-import { Observable, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
@@ -29,7 +30,9 @@ export class LoanOriginatorsResolver {
       return throwError(() => new Error('Missing loanId route param'));
     }
     if (this.loanProductService.isLoanProduct) {
-      return this.loansService.getLoanOriginators(loanId);
+      // Not all Fineract backends expose the loan-originators endpoint; don't let a
+      // missing/unsupported feature block the loan view from loading.
+      return this.loansService.getLoanOriginators(loanId).pipe(catchError(() => of([])));
     }
   }
 }

@@ -10,7 +10,8 @@
 import { Injectable, inject } from '@angular/core';
 
 /** rxjs Imports */
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 /** Custom Services */
 import { OrganizationService } from '../organization.service';
@@ -34,7 +35,9 @@ export class LoanOriginatorsResolver {
     if (originatorId) {
       return this.organizationService.getLoanOriginator(originatorId);
     } else {
-      return this.organizationService.getLoanOriginators();
+      // Not all Fineract backends expose the loan-originators endpoint; don't let a
+      // missing/unsupported feature block routes (e.g. loan creation) that merely list it.
+      return this.organizationService.getLoanOriginators().pipe(catchError(() => of([])));
     }
   }
 }

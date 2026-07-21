@@ -8,7 +8,8 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
+import { SKIP_ERROR_HANDLER } from 'app/core/http/error-handler.interceptor';
 
 /** rxjs Imports */
 import { Observable } from 'rxjs';
@@ -444,10 +445,13 @@ export class SystemService {
 
   /**
    * @param {string} configurationId Configuration ID of configuration.
+   * @param {boolean} skipErrorHandler Set true for configuration properties that may not exist on
+   * every Fineract backend, so a 404 doesn't surface a global error toast.
    * @returns {Observable<any>} Configuration.
    */
-  getConfigurationByName(configurationName: string): Observable<any> {
-    return this.http.get(`/configurations/name/${configurationName}`);
+  getConfigurationByName(configurationName: string, skipErrorHandler = false): Observable<any> {
+    const options = skipErrorHandler ? { context: new HttpContext().set(SKIP_ERROR_HANDLER, true) } : {};
+    return this.http.get(`/configurations/name/${configurationName}`, options);
   }
 
   /**

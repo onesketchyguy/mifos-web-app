@@ -8,7 +8,8 @@
 
 /** Angular Imports */
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
+import { SKIP_ERROR_HANDLER } from 'app/core/http/error-handler.interceptor';
 
 /** rxjs Imports */
 import { Observable } from 'rxjs';
@@ -840,7 +841,10 @@ export class OrganizationService {
    * @returns {Observable<any>} Loan Originators data
    */
   getLoanOriginators(): Observable<any> {
-    return this.http.get('/loan-originators');
+    // Not every Fineract backend has this endpoint; skip the global error handler since
+    // callers (e.g. route resolvers) already degrade gracefully when it's unavailable.
+    const skipErrors = { context: new HttpContext().set(SKIP_ERROR_HANDLER, true) };
+    return this.http.get('/loan-originators', skipErrors);
   }
 
   /**

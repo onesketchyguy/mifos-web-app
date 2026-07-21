@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, DestroyRef, OnInit, ViewChild, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, OnInit, ViewChild, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -92,6 +92,7 @@ export class TribalLoanManagementComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   /** How often streamed loans are flushed to the table while loading. */
   private readonly streamRenderIntervalMs = 250;
@@ -306,15 +307,20 @@ export class TribalLoanManagementComponent implements OnInit {
             this.upsertTribalLoanData(loan);
           }
           this.rebuildFilteredLists();
+          // The report path can resolve entirely inside one HTTP callback, sometimes
+          // outside Angular's zone — force a repaint instead of hoping a tick fires.
+          this.cdr.detectChanges();
         },
         error: (err: any) => {
           this.loadError = err?.message || 'Failed to load tribal loan data.';
           this.dropUnverifiedCachedLoans();
           this.isLoading = false;
+          this.cdr.detectChanges();
         },
         complete: () => {
           this.dropUnverifiedCachedLoans();
           this.isLoading = false;
+          this.cdr.detectChanges();
         }
       });
   }
@@ -533,10 +539,12 @@ export class TribalLoanManagementComponent implements OnInit {
           this.submissionResults = results;
           this.isSubmittingPayments = false;
           this.resetValidation();
+          this.cdr.detectChanges();
         },
         error: (error: any) => {
           this.submitError = this.getErrorMessage(error);
           this.isSubmittingPayments = false;
+          this.cdr.detectChanges();
         }
       });
   }

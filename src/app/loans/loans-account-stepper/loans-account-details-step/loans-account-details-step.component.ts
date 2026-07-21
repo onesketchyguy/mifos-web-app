@@ -165,8 +165,12 @@ export class LoansAccountDetailsStepComponent extends LoanProductBaseComponent i
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.filterOriginators());
     this.systemService
-      .getConfigurationByName(LoansAccountDetailsStepComponent.ORIGINATOR_CREATION_CONFIG)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .getConfigurationByName(LoansAccountDetailsStepComponent.ORIGINATOR_CREATION_CONFIG, true)
+      .pipe(
+        // Not all Fineract backends define this configuration property; treat it as disabled rather than erroring.
+        catchError(() => of(null)),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe((config: GlobalConfiguration) => {
         this.originatorCreationEnabled = config?.enabled ?? false;
         this.cdr.markForCheck();

@@ -1110,7 +1110,11 @@ export class LoansService {
    * Returns the Loan Originators data
    */
   getLoanOriginators(loanId: any) {
-    return this.http.get(`/loans/${loanId}/originators`);
+    // Not every Fineract backend has this endpoint; skip the global error handler since
+    // callers (e.g. route resolvers) already degrade gracefully when it's unavailable.
+    return this.http.get(`/loans/${loanId}/originators`, {
+      context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
+    });
   }
 
   /**
