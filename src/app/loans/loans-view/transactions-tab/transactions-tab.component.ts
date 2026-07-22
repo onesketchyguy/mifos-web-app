@@ -374,6 +374,13 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     );
   }
 
+  transactionTypeLabel(transaction: LoanTransaction): string {
+    if (transaction.type.repayment && transaction.paymentDetailData?.paymentType?.name) {
+      return transaction.paymentDetailData.paymentType.name;
+    }
+    return this.translateService.instant('labels.catalogs.' + transaction.type.value);
+  }
+
   loanTransactionBadgeClass(transaction: LoanTransaction): string {
     if (transaction.manuallyReversed || transaction.reversed) return 'badge-reversed';
     if (this.isAccrualKindOf(transaction.type)) return 'badge-accrual';

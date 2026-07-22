@@ -850,65 +850,57 @@ export class LoansService {
     return this.http.get(`/${productType}/${accountId}/transactions/${transactionId}`);
   }
 
+  private readonly transactionNoteTable = 'c_txn_note';
+
   getTransactionImportNote(
     transactionId: string,
     loanId: string
   ): Observable<{ importNote: string; rowId: number } | null> {
-    return this.http
-      .get<any[]>(`/api/ivytek/loan-notes?loanId=${loanId}`, {
-        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
-      })
-      .pipe(
-        map((rows) => {
-          const matching = (rows ?? []).filter((r) => String(r.transaction_id) === String(transactionId));
-          const row = matching.length
-            ? matching.reduce((latest, r) => (!latest || r.id > latest.id ? r : latest), null as any)
-            : null;
-          return row?.note ? { importNote: row.note, rowId: row.id } : null;
-        }),
-        catchError(() => of(null))
-      );
+    return this.http.get<any[]>(`/datatables/${this.transactionNoteTable}/${loanId}`).pipe(
+      map((rows) => {
+        const matching = rows?.filter((r) => String(r.transaction_id) === String(transactionId)) ?? [];
+        const row = matching.length
+          ? matching.reduce((latest, r) => (!latest || r.id > latest.id ? r : latest), null as any)
+          : null;
+        return row?.note ? { importNote: row.note, rowId: row.id } : null;
+      }),
+      catchError(() => of(null))
+    );
   }
 
   updateTransactionNote(loanId: string, rowId: number, note: string): Observable<any> {
-    return this.http.post(
-      '/api/ivytek/loan-note',
-      { loanId: Number(loanId), rowId, note },
-      {
-        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
-      }
-    );
+    const payload = { note, locale: 'en', dateFormat: 'dd MMMM yyyy' };
+    return this.http.put(`/datatables/${this.transactionNoteTable}/${loanId}/${rowId}`, payload);
   }
 
+  /**
+   * Returns all transaction notes for a loan as a Map of transactionId → note.
+   * @param {string} loanId Fineract loan id.
+   */
   getAllTransactionNotesForLoan(loanId: string): Observable<Map<string, string>> {
-    return this.http
-      .get<any[]>(`/api/ivytek/loan-notes?loanId=${loanId}`, {
-        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
-      })
-      .pipe(
-        map((rows) => {
-          const noteMap = new Map<string, string>();
-          (rows ?? []).forEach((r) => {
-            if (r.transaction_id && r.note) noteMap.set(String(r.transaction_id), r.note);
-          });
-          return noteMap;
-        }),
-        catchError(() => of(new Map<string, string>()))
-      );
+    return this.http.get<any[]>(`/datatables/${this.transactionNoteTable}/${loanId}`).pipe(
+      map((rows) => {
+        const noteMap = new Map<string, string>();
+        rows?.forEach((r) => {
+          if (r.transaction_id && r.note) noteMap.set(String(r.transaction_id), r.note);
+        });
+        return noteMap;
+      }),
+      catchError(() => of(new Map<string, string>()))
+    );
   }
 
+  /**
+   * Saves a note to the c_txn_note datatable for a loan transaction.
+   * @param {string} loanId Fineract loan id.
+   * @param {string} transactionId Fineract transaction id.
+   * @param {string} note Note text.
+   */
   saveTransactionNote(loanId: string, transactionId: string, note: string): Observable<any> {
-    return this.http.post(
-      '/api/ivytek/loan-note',
-      {
-        loanId: Number(loanId),
-        transactionId: Number(transactionId),
-        note
-      },
-      {
-        context: new HttpContext().set(SKIP_ERROR_HANDLER, true)
-      }
-    );
+    const payload = { transaction_id: Number(transactionId), note, locale: 'en', dateFormat: 'dd MMMM yyyy' };
+    return this.http
+      .post(`/datatables/${this.transactionNoteTable}/${loanId}`, payload)
+      .pipe(map((response) => ({ success: true, ...(response as any) })));
   }
 
   /**

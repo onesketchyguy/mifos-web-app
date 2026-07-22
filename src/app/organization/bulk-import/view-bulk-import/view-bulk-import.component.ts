@@ -7,7 +7,7 @@
  */
 
 /** Angular Imports */
-import { Component, HostListener, OnInit, ViewChild, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, OnInit, ViewChild, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort, MatSortHeader } from '@angular/material/sort';
@@ -137,6 +137,9 @@ export class ViewBulkImportComponent implements OnInit {
   private systemService = inject(SystemService);
   private ivyTekCsvParser = inject(IvyTekCsvParserService);
   private ivyTekFieldMapping = inject(IvyTekFieldMappingService);
+  private cdr = inject(ChangeDetectorRef);
+  /** Wall-clock time of the last forced progress render, used to throttle change detection. */
+  private lastIvyTekProgressRenderAt = 0;
   private ivyTekClientAddressTemplate: any = null;
   private ivyTekClientAddressTemplateUnavailable = false;
   /** Fineract tenant business date fetched at import time; caps corrected loan dates. */
@@ -2676,6 +2679,7 @@ export class ViewBulkImportComponent implements OnInit {
           const row = rows[nextIndex];
           nextIndex += 1;
           await worker(row);
+          await this.yieldIvyTekProgressFrame();
         }
       })
     );
@@ -2759,6 +2763,26 @@ export class ViewBulkImportComponent implements OnInit {
     if (processed % 25 === 0 || processed === total) {
       this.updateIvyTekPipelineRun(updates);
     }
+  }
+
+  /**
+   * Lets the browser repaint the import progress bar/counter mid-stage, throttled to ~100ms.
+   *
+   * The import stages run as long chains of awaited (often already-resolved) promises. Awaiting
+   * resolved promises only drains the microtask queue, which never yields to the browser's render
+   * step — so the bound progress fields freeze until the whole stage finishes (only a real DOM event
+   * such as clicking Cancel forced a repaint). Breaking the chain with a macrotask (setTimeout) lets
+   * the browser paint and lets Angular's zone run change detection on the fresh counts.
+   * @param {boolean} force Yield immediately, ignoring the throttle (e.g. on the final record).
+   */
+  private async yieldIvyTekProgressFrame(force = false): Promise<void> {
+    const now = Date.now();
+    if (!force && now - this.lastIvyTekProgressRenderAt < 100) {
+      return;
+    }
+    this.lastIvyTekProgressRenderAt = now;
+    this.cdr.detectChanges();
+    await new Promise<void>((resolve) => setTimeout(resolve));
   }
 
   /**
@@ -12146,6 +12170,7 @@ export class ViewBulkImportComponent implements OnInit {
     const worker = async () => {
       while (index < tasks.length) {
         await tasks[index++]();
+        await this.yieldIvyTekProgressFrame();
       }
     };
     await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));

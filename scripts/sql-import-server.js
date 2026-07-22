@@ -784,14 +784,21 @@ async function applyLoanInterestUpdate(client, update, loanCols, warnings) {
 }
 
 async function ensureNoteTable(client) {
-  await client.query(`
-    create table if not exists ${NOTE_TABLE} (
-      id bigserial primary key,
-      loan_id bigint not null references m_loan(id),
-      transaction_id decimal(19,6),
-      note varchar(1000)
-    )
-  `);
+  // c_txn_note is now a Fineract-managed datatable (created via System → Manage
+  // Data Tables), NOT a raw table this server owns. We must never recreate it as
+  // a plain table: a hand-made structure is one Fineract can't introspect, which
+  // breaks the /datatables listing and the Manage Data Tables GUI. So require the
+  // datatable to exist, and only add the unique constraint the note upsert
+  // (ON CONFLICT below) depends on — Fineract's multi-row datatable doesn't
+  // create one on (loan_id, transaction_id).
+  const exists = await client.query('select to_regclass($1) as t', [NOTE_TABLE]);
+  if (!exists.rows[0].t) {
+    throw new Error(
+      `${NOTE_TABLE} datatable not found. Create it in Fineract → System → Manage Data Tables ` +
+        `(Multi Row, Entity "Loan Account", columns transaction_id:Number and note:String[1000]) ` +
+        `before importing notes.`
+    );
+  }
   await client.query(`
     do $$ begin
       if not exists (

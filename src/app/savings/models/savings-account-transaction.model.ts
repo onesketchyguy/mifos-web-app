@@ -14,6 +14,7 @@ export interface SavingsAccountTransaction {
   entryType: string;
   accountId: number;
   accountNo: string;
+  externalId?: string;
   date: number[];
   currency: Currency;
   amount: number;

@@ -100,7 +100,7 @@
         <td mat-cell *matCellDef="let transaction" class="no-strike">
           <span class="badge" [ngClass]="loanTransactionBadgeClass(transaction)">
             <span class="badge-dot"></span>
-            {{ transaction.type.value | translateKey: 'catalogs' }}
+            {{ transactionTypeLabel(transaction) }}
           </span>
         </td>
       </ng-container>
