@@ -69,6 +69,8 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
   command = '';
   classificationOptions: any[] = [];
   private originalAmount = 0;
+  /** Full payoff amount from the transaction template, used as the upper bound for the default. */
+  private payoffAmount = 0;
 
   /**
    * @param {FormBuilder} formBuilder Form Builder.
@@ -95,6 +97,7 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
     }
     if (this.loanProductService.isLoanProduct && this.isRepayment()) {
       this.loadPenalties();
+      this.loadRegularPaymentAmount();
     }
   }
 
@@ -149,12 +152,53 @@ export class MakeRepaymentComponent extends LoanAccountActionsBaseComponent impl
   setRepaymentLoanDetails() {
     this.paymentTypes = this.dataObject.paymentTypeOptions;
     this.classificationOptions = this.dataObject.classificationOptions;
-    this.originalAmount = Number(this.dataObject.amount) || 0;
+    this.payoffAmount = Number(this.dataObject.amount) || 0;
+    this.originalAmount = this.payoffAmount;
     if (this.repaymentLoanForm) {
       this.repaymentLoanForm.patchValue({
         transactionAmount: this.originalAmount
       });
     }
+  }
+
+  /**
+   * Defaults the transaction amount to the regular scheduled payment on the note
+   * rather than the full payoff. The payoff is only used when the regular payment
+   * would exceed the outstanding balance (e.g. the final installment).
+   */
+  private loadRegularPaymentAmount() {
+    this.loanService
+      .getLoanAccountResource(this.loanId, 'repaymentSchedule')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (loanDetails: any) => {
+          const regularPayment = this.resolveRegularPaymentAmount(loanDetails);
+          if (regularPayment == null || regularPayment <= 0) {
+            return;
+          }
+          this.originalAmount = Math.min(regularPayment, this.payoffAmount || regularPayment);
+          this.recalculateTransactionAmount();
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          // Leave the template's payoff amount in place if the schedule is unavailable.
+        }
+      });
+  }
+
+  /**
+   * Resolves the regular payment amount from the loan's repayment schedule,
+   * preferring the oldest installment that is not yet fully paid.
+   */
+  private resolveRegularPaymentAmount(loanDetails: any): number | null {
+    const periods: any[] = loanDetails?.repaymentSchedule?.periods ?? [];
+    const nextInstallment = periods.find((period: any) => period.period != null && !period.complete);
+    const installmentAmount = Number(nextInstallment?.totalDueForPeriod);
+    if (!isNaN(installmentAmount) && installmentAmount > 0) {
+      return installmentAmount;
+    }
+    const fixedEmiAmount = Number(loanDetails?.fixedEmiAmount);
+    return !isNaN(fixedEmiAmount) && fixedEmiAmount > 0 ? fixedEmiAmount : null;
   }
 
   /**

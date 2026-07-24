@@ -403,6 +403,15 @@ function csvRowToSqlTransaction(row, loanIdMap, loanIdentifierMap) {
           'Deferred Interest Paid'
         ]
       ]) ?? '',
+    // Principal balance remaining AFTER this transaction. In IvyTek,
+    // BalanceDue = CurrentBalanceDue - PrinciplePaid; it maps directly to
+    // Fineract's m_loan_transaction.outstanding_loan_balance_derived.
+    outstandingBalance: csvVal(
+      row,
+      'IvytekTestPkg__BalanceDue__c',
+      'balance_due',
+      'Balance Due'
+    ),
     paymentType: resolvePaymentTypeName(
       csvVal(row, 'IvytekTestPkg__TypPay__c'),
       csvVal(row, 'IvytekTestPkg__Description__c')
@@ -525,6 +534,7 @@ function processTransaction(txn) {
     amount,
     principal,
     interest,
+    outstandingBalance: parseDecimalString(txn.outstandingBalance),
     paymentType: txn.paymentType || '',
     specialCode: txn.specialCode || '',
     historyType: txn.historyType || '',
@@ -1014,14 +1024,15 @@ async function insertTransactions(client, records, createdBy, batchSize) {
     const principals = batch.map((r) => r.principal ?? null);
     const interests = batch.map((r) => r.interest ?? null);
     const isReversed = batch.map((r) => r.voided);
+    const outstandingBalances = batch.map((r) => r.outstandingBalance ?? null);
 
     const unnest = `unnest(
         $1::varchar[], $2::bigint[], $3::smallint[], $4::date[],
-        $5::numeric[], $6::numeric[], $7::numeric[], $8::boolean[]
+        $5::numeric[], $6::numeric[], $7::numeric[], $8::boolean[], $9::numeric[]
       ) as s(external_id, loan_id, transaction_type_enum, transaction_date,
-             amount, principal, interest, is_reversed)`;
+             amount, principal, interest, is_reversed, outstanding_balance)`;
 
-    // INSERT uses $9=created_by and $10=last_modified_by; UPDATE only needs $9=last_modified_by
+    // INSERT uses $10=created_by and $11=last_modified_by; UPDATE only needs $10=last_modified_by
     const insertParams = [
       externalIds,
       loanIds,
@@ -1031,6 +1042,7 @@ async function insertTransactions(client, records, createdBy, batchSize) {
       principals,
       interests,
       isReversed,
+      outstandingBalances,
       createdBy,
       createdBy
     ];
@@ -1043,6 +1055,7 @@ async function insertTransactions(client, records, createdBy, batchSize) {
       principals,
       interests,
       isReversed,
+      outstandingBalances,
       createdBy
     ];
 
@@ -1070,11 +1083,12 @@ async function insertTransactions(client, records, createdBy, batchSize) {
         s.amount,
         coalesce(s.principal, 0::numeric),
         coalesce(s.interest, 0::numeric),
-        0::numeric, 0::numeric, 0::numeric, 0::numeric, 0::numeric,
+        0::numeric, 0::numeric, 0::numeric, 0::numeric,
+        coalesce(s.outstanding_balance, 0::numeric),
         s.transaction_date,
         false,
         current_timestamp,
-        $9::bigint, $10::bigint,
+        $10::bigint, $11::bigint,
         current_timestamp, current_timestamp,
         null, null,
         case when s.is_reversed then s.transaction_date else null end
@@ -1101,11 +1115,11 @@ async function insertTransactions(client, records, createdBy, batchSize) {
         penalty_charges_portion_derived  = 0::numeric,
         overpayment_portion_derived      = 0::numeric,
         unrecognized_income_portion      = 0::numeric,
-        outstanding_loan_balance_derived = 0::numeric,
+        outstanding_loan_balance_derived = coalesce(s.outstanding_balance, 0::numeric),
         submitted_on_date                = s.transaction_date,
         is_reversed                      = s.is_reversed,
         reversed_on_date                 = case when s.is_reversed then s.transaction_date else null end,
-        last_modified_by                 = $9::bigint,
+        last_modified_by                 = $10::bigint,
         last_modified_on_utc             = current_timestamp
       from ${unnest}
       where t.external_id = s.external_id`,
@@ -2560,6 +2574,97 @@ const LOAN_STATUS_ACTIVE = 300;
 const LOAN_STATUS_CLOSED_OBLIGATIONS_MET = 600;
 
 /**
+ * Rebuilds a migrated loan's repayment schedule by reconciling IvyTek source truth
+ * onto the loan's existing (Fineract-disbursed) installment DATES — so bi-weekly /
+ * semi-monthly frequencies are preserved for free. Principal is distributed so the
+ * PAST installments (due before the current-due date) sum exactly to principalPaid and
+ * the OPEN ones sum exactly to principalOutstanding (== IvyTek BalanceNow); the last
+ * row of each group absorbs the rounding remainder, so the sums are penny-exact.
+ * Interest is NOT re-derived here: the caller's accrued-to-date total (IvyTek
+ * AccruedInterestAll + back interest, already projected to today) is placed as a single
+ * lump on the CURRENT (first open) installment — it's interest owed NOW, and full-term
+ * contractual interest isn't what IvyTek tracks. Later open rows are principal-only;
+ * their interest accrues forward via the daily tick, which updates that same current
+ * installment. Historical per-installment interest isn't reconstructable (no pre-2021
+ * transactions), so paid rows carry none. All money is in integer CENTS to keep sums exact.
+ *
+ * @param {{id:number,duedate:Date}[]} installments existing rows, sorted by due date
+ * @param {Date} asOfDate arrears reference (open installments due before this are overdue)
+ * @param {number} principalPaidCents
+ * @param {number} principalOutstandingCents == IvyTek BalanceNow
+ * @param {Date|null} currentDueDate oldest unpaid; the past/open split point
+ * @param {number} openInterestTotalCents accrued-to-date interest to place on the current installment
+ * @returns {{rows:Array,openInterestCents:number,overduePrincipalCents:number,overdueInterestCents:number,overdueSince:Date|null,paidCount:number}}
+ */
+function reconcileInstallments(
+  installments,
+  asOfDate,
+  principalPaidCents,
+  principalOutstandingCents,
+  currentDueDate,
+  openInterestTotalCents
+) {
+  const distribute = (totalCents, count) => {
+    if (count <= 0) return [];
+    const base = Math.trunc(totalCents / count);
+    const arr = new Array(count).fill(base);
+    arr[count - 1] = totalCents - base * (count - 1); // last row absorbs the remainder
+    return arr;
+  };
+  const splitDate = currentDueDate ?? asOfDate ?? new Date();
+  let splitIdx = installments.findIndex((r) => r.duedate >= splitDate);
+  if (splitIdx < 0) splitIdx = installments.length; // all past -> everything paid
+  if (splitIdx === 0 && principalPaidCents > 0) splitIdx = 1; // keep a home for paid principal
+  const openCount = installments.length - splitIdx;
+
+  const paidPrin = distribute(principalPaidCents, splitIdx);
+  const openPrin = distribute(principalOutstandingCents, openCount);
+  if (openCount === 0 && splitIdx > 0) {
+    paidPrin[splitIdx - 1] += principalOutstandingCents; // no open rows: park outstanding on the last row
+  }
+
+  const rows = [];
+  let overduePrincipalCents = 0;
+  let overdueInterestCents = 0;
+  let overdueSince = null;
+  let oi = 0;
+  for (let i = 0; i < installments.length; i++) {
+    const inst = installments[i];
+    const isOpen = i >= splitIdx;
+    const p = isOpen ? openPrin[oi] : paidPrin[i];
+    // Accrued-to-date interest is a single lump on the current (first open) installment;
+    // if nothing is open it rides the last (parked) row so the total still reconciles.
+    let interestCents = 0;
+    if (isOpen && oi === 0) interestCents = openInterestTotalCents;
+    else if (!isOpen && openCount === 0 && i === splitIdx - 1) interestCents = openInterestTotalCents;
+    if (isOpen) {
+      oi++;
+      if (inst.duedate < asOfDate) {
+        overduePrincipalCents += p;
+        overdueInterestCents += interestCents;
+        if (!overdueSince) overdueSince = inst.duedate;
+      }
+    }
+    rows.push({
+      id: inst.id,
+      duedate: inst.duedate,
+      principalCents: p,
+      principalCompletedCents: isOpen ? 0 : p,
+      interestCents,
+      completed: !isOpen
+    });
+  }
+  return {
+    rows,
+    openInterestCents: openInterestTotalCents,
+    overduePrincipalCents,
+    overdueInterestCents,
+    overdueSince,
+    paidCount: splitIdx
+  };
+}
+
+/**
  * Applies one loan's source-truth state. Runs inside the caller's transaction;
  * the caller wraps each loan in a SAVEPOINT so one failure doesn't kill the batch.
  *
@@ -2696,11 +2801,34 @@ async function syncLoanState(
     actions.push(`back interest due $${backInterestDue.toFixed(2)} added to outstanding interest`);
   }
 
-  const interestCharged = interestPaid + interestOutstanding;
-
   if (!origination) {
     throw new Error(`Loan ${loanId}: missing/unparseable origination date "${loan.originationDate}"`);
   }
+
+  // --- reconcile the repayment schedule onto the disbursed installment dates ----
+  // Read the frequency-aware dates Fineract already generated at disbursement and
+  // redistribute principal/interest onto them (reconcileInstallments). This replaces
+  // the old 1-2 row "collapse" that Fineract's daily recalc then zeroed. openInterest
+  // (total remaining schedule interest) becomes the loan's interest-outstanding; if a
+  // loan has no disbursed schedule we keep the accrued snapshot and the old path.
+  const scheduleRows = await client.query(
+    `SELECT id, duedate FROM m_loan_repayment_schedule WHERE loan_id = $1 ORDER BY duedate ASC, installment ASC`,
+    [loanId]
+  );
+  const principalOutstandingCents = closed ? 0 : Math.round(principalOutstanding * 100);
+  const principalPaidCents = closed ? Math.round(principalOriginal * 100) : Math.round(principalPaid * 100);
+  const reconciled = scheduleRows.rows.length
+    ? reconcileInstallments(
+        scheduleRows.rows.map((r) => ({ id: r.id, duedate: new Date(r.duedate) })),
+        asOfDate ?? new Date(),
+        principalPaidCents,
+        principalOutstandingCents,
+        parseSourceDate(loan.currentDueDate),
+        closed ? 0 : Math.round(interestOutstanding * 100)
+      )
+    : null;
+  const openInterest = reconciled ? reconciled.openInterestCents / 100 : closed ? 0 : interestOutstanding;
+  const interestCharged = interestPaid + openInterest;
 
   // Corrected interest-charged-from date: anchor minus however many accrual days
   // IvyTek's AccruedInterestAll implies (days_accrued = accrued / perDiem — same
@@ -2749,10 +2877,14 @@ async function syncLoanState(
     principal_outstanding_derived: closed ? 0 : principalOutstanding,
     interest_charged_derived: interestCharged,
     interest_repaid_derived: interestPaid,
-    interest_outstanding_derived: closed ? 0 : interestOutstanding,
+    interest_outstanding_derived: closed ? 0 : openInterest,
     total_expected_repayment_derived: principalOriginal + interestCharged,
     total_repayment_derived: principalPaid + interestPaid,
-    total_outstanding_derived: closed ? 0 : principalOutstanding + interestOutstanding,
+    total_outstanding_derived: closed ? 0 : principalOutstanding + openInterest,
+    // Migrated loans can't be recalculated correctly (pre-2021 payment history is
+    // missing, so Fineract would recompute principal too high and break the 1:1) —
+    // the reconciled schedule is authoritative, so interest recalc stays OFF per loan.
+    is_interest_recalculation_enabled: false,
     total_expected_costofloan_derived: interestCharged,
     total_costofloan_derived: interestPaid,
     loan_status_id: closed ? LOAN_STATUS_CLOSED_OBLIGATIONS_MET : LOAN_STATUS_ACTIVE,
@@ -2777,65 +2909,116 @@ async function syncLoanState(
     actions.push(`m_loan: ${loanAssignments.length} column(s) set from source`);
   }
 
-  // --- m_loan_repayment_schedule: rebuilt from source truth -----------------
-  await client.query(`DELETE FROM m_loan_repayment_schedule WHERE loan_id = $1`, [loanId]);
+  // --- disable interest recalculation for this migrated loan -----------------
+  // Belt-and-suspenders with is_interest_recalculation_enabled=false above: drop the
+  // per-loan recalc detail and its recalc calendar instances (entity types 6/7) so
+  // Fineract's daily recalc can never regenerate this schedule from the incomplete
+  // pre-2021 history and recompute the principal too high.
+  if (await tableExists(client, 'm_loan_interest_recalculation_details')) {
+    await client.query('DELETE FROM m_loan_interest_recalculation_details WHERE loan_id = $1', [loanId]);
+  }
+  if (await tableExists(client, 'm_calendar_instance')) {
+    await client.query('DELETE FROM m_calendar_instance WHERE entity_id = $1 AND entity_type_enum IN (6, 7)', [
+      loanId
+    ]);
+  }
+
+  // --- m_loan_repayment_schedule: reconciled onto the disbursed installments -
   const now = new Date();
-  const auditColumns = {
-    createdby_id: createdBy,
-    created_date: now,
-    lastmodifiedby_id: createdBy,
-    lastmodified_date: now,
-    created_by: createdBy,
-    last_modified_by: createdBy,
-    created_on_utc: now,
-    last_modified_on_utc: now
-  };
-  let installment = 0;
-  const paidDueDate = lastPayment ?? currentDue ?? maturity ?? reconciliation ?? origination;
-  if (principalPaid > 0 || interestPaid > 0 || closed) {
-    installment += 1;
-    await insertFilteredRow(
-      client,
-      'm_loan_repayment_schedule',
-      {
-        loan_id: loanId,
-        fromdate: origination,
-        duedate: paidDueDate,
-        installment,
-        principal_amount: principalPaid,
-        principal_completed_derived: principalPaid,
-        interest_amount: interestPaid,
-        interest_completed_derived: interestPaid,
-        completed_derived: true,
-        obligations_met_on_date: paidDueDate,
-        recalculated_interest_component: false,
-        ...auditColumns
-      },
-      cols.schedule
+  if (reconciled) {
+    for (const row of reconciled.rows) {
+      await client.query(
+        `UPDATE m_loan_repayment_schedule SET
+           principal_amount = $1,
+           principal_completed_derived = $2,
+           interest_amount = $3,
+           interest_completed_derived = 0,
+           interest_waived_derived = 0,
+           completed_derived = $4,
+           obligations_met_on_date = $5,
+           recalculated_interest_component = false,
+           lastmodified_date = $6
+         WHERE id = $7`,
+        [
+          (row.principalCents / 100).toFixed(6),
+          (row.principalCompletedCents / 100).toFixed(6),
+          (row.interestCents / 100).toFixed(6),
+          row.completed,
+          row.completed ? toIso(row.duedate) : null,
+          now,
+          row.id
+        ]
+      );
+    }
+    // Completed rows carry principal only — historical per-installment interest isn't
+    // reconstructable (no pre-2021 transactions) — so interest_completed stays 0 and
+    // Interest Paid reads 0; interest lives entirely on the open installments.
+    actions.push(
+      `schedule: reconciled ${reconciled.rows.length} installment(s) ` +
+        `(${reconciled.paidCount} paid, ${reconciled.rows.length - reconciled.paidCount} open, ` +
+        `open interest $${(reconciled.openInterestCents / 100).toFixed(2)})`
     );
+  } else {
+    // Fallback: loan has no disbursed schedule (e.g. never approved+disbursed) — keep
+    // the original 1-2 row summary so it still has something to show.
+    await client.query(`DELETE FROM m_loan_repayment_schedule WHERE loan_id = $1`, [loanId]);
+    const auditColumns = {
+      createdby_id: createdBy,
+      created_date: now,
+      lastmodifiedby_id: createdBy,
+      lastmodified_date: now,
+      created_by: createdBy,
+      last_modified_by: createdBy,
+      created_on_utc: now,
+      last_modified_on_utc: now
+    };
+    let installment = 0;
+    const paidDueDate = lastPayment ?? currentDue ?? maturity ?? reconciliation ?? origination;
+    if (principalPaid > 0 || interestPaid > 0 || closed) {
+      installment += 1;
+      await insertFilteredRow(
+        client,
+        'm_loan_repayment_schedule',
+        {
+          loan_id: loanId,
+          fromdate: origination,
+          duedate: paidDueDate,
+          installment,
+          principal_amount: principalPaid,
+          principal_completed_derived: principalPaid,
+          interest_amount: interestPaid,
+          interest_completed_derived: interestPaid,
+          completed_derived: true,
+          obligations_met_on_date: paidDueDate,
+          recalculated_interest_component: false,
+          ...auditColumns
+        },
+        cols.schedule
+      );
+    }
+    if (!closed && (principalOutstanding > 0 || interestOutstanding > 0)) {
+      installment += 1;
+      await insertFilteredRow(
+        client,
+        'm_loan_repayment_schedule',
+        {
+          loan_id: loanId,
+          fromdate: installment > 1 ? paidDueDate : origination,
+          duedate: currentDue ?? maturity ?? reconciliation ?? paidDueDate,
+          installment,
+          principal_amount: principalOutstanding,
+          principal_completed_derived: 0,
+          interest_amount: interestOutstanding,
+          interest_completed_derived: 0,
+          completed_derived: false,
+          recalculated_interest_component: false,
+          ...auditColumns
+        },
+        cols.schedule
+      );
+    }
+    actions.push(`schedule: no disbursed installments — wrote ${installment}-row summary (fallback)`);
   }
-  if (!closed && (principalOutstanding > 0 || interestOutstanding > 0)) {
-    installment += 1;
-    await insertFilteredRow(
-      client,
-      'm_loan_repayment_schedule',
-      {
-        loan_id: loanId,
-        fromdate: installment > 1 ? paidDueDate : origination,
-        duedate: currentDue ?? maturity ?? reconciliation ?? paidDueDate,
-        installment,
-        principal_amount: principalOutstanding,
-        principal_completed_derived: 0,
-        interest_amount: interestOutstanding,
-        interest_completed_derived: 0,
-        completed_derived: false,
-        recalculated_interest_component: false,
-        ...auditColumns
-      },
-      cols.schedule
-    );
-  }
-  actions.push(`schedule: rebuilt with ${installment} installment(s)`);
 
   // --- disbursement transactions re-dated to the true origination -----------
   const disb = await client.query(
@@ -2850,34 +3033,63 @@ async function syncLoanState(
 
   // --- m_loan_arrears_aging: source-truth arrears, or none ------------------
   await client.query(`DELETE FROM m_loan_arrears_aging WHERE loan_id = $1`, [loanId]);
-  const isOverdue =
-    !closed &&
-    currentDue !== null &&
-    reconciliation !== null &&
-    currentDue < reconciliation &&
-    principalOutstanding + interestOutstanding > 0;
-  if (isOverdue) {
-    const overdueTotal =
-      amountOverdue !== null && amountOverdue > 0 ? amountOverdue : principalOutstanding + interestOutstanding;
-    const interestOverdue = Math.min(overdueTotal, interestOutstanding);
-    const principalOverdue = Math.max(0, overdueTotal - interestOverdue);
-    await insertFilteredRow(
-      client,
-      'm_loan_arrears_aging',
-      {
-        loan_id: loanId,
-        principal_overdue_derived: principalOverdue,
-        interest_overdue_derived: interestOverdue,
-        fee_charges_overdue_derived: 0,
-        penalty_charges_overdue_derived: 0,
-        total_overdue_derived: overdueTotal,
-        overdue_since_date_derived: currentDue
-      },
-      cols.arrears
-    );
-    actions.push(`arrears aging: overdue ${overdueTotal.toFixed(2)} since ${currentDue}`);
+  if (reconciled) {
+    // Arrears come straight from the reconciled schedule: only the OPEN installments
+    // already past the reconciliation date, not the whole balance (the old collapse
+    // dumped everything into one past-due lump, flagging current loans 100% in arrears).
+    const principalOverdue = reconciled.overduePrincipalCents / 100;
+    const interestOverdue = reconciled.overdueInterestCents / 100;
+    const overdueTotal = principalOverdue + interestOverdue;
+    const overdueSinceIso = reconciled.overdueSince ? toIso(reconciled.overdueSince) : currentDue;
+    if (!closed && overdueTotal > 0) {
+      await insertFilteredRow(
+        client,
+        'm_loan_arrears_aging',
+        {
+          loan_id: loanId,
+          principal_overdue_derived: principalOverdue,
+          interest_overdue_derived: interestOverdue,
+          fee_charges_overdue_derived: 0,
+          penalty_charges_overdue_derived: 0,
+          total_overdue_derived: overdueTotal,
+          overdue_since_date_derived: overdueSinceIso
+        },
+        cols.arrears
+      );
+      actions.push(`arrears aging: overdue ${overdueTotal.toFixed(2)} since ${overdueSinceIso}`);
+    } else {
+      actions.push('arrears aging: cleared (no overdue installments per schedule)');
+    }
   } else {
-    actions.push('arrears aging: cleared (not overdue per source)');
+    const isOverdue =
+      !closed &&
+      currentDue !== null &&
+      reconciliation !== null &&
+      currentDue < reconciliation &&
+      principalOutstanding + interestOutstanding > 0;
+    if (isOverdue) {
+      const overdueTotal =
+        amountOverdue !== null && amountOverdue > 0 ? amountOverdue : principalOutstanding + interestOutstanding;
+      const interestOverdue = Math.min(overdueTotal, interestOutstanding);
+      const principalOverdue = Math.max(0, overdueTotal - interestOverdue);
+      await insertFilteredRow(
+        client,
+        'm_loan_arrears_aging',
+        {
+          loan_id: loanId,
+          principal_overdue_derived: principalOverdue,
+          interest_overdue_derived: interestOverdue,
+          fee_charges_overdue_derived: 0,
+          penalty_charges_overdue_derived: 0,
+          total_overdue_derived: overdueTotal,
+          overdue_since_date_derived: currentDue
+        },
+        cols.arrears
+      );
+      actions.push(`arrears aging: overdue ${overdueTotal.toFixed(2)} since ${currentDue}`);
+    } else {
+      actions.push('arrears aging: cleared (not overdue per source)');
+    }
   }
 
   // --- daily accrual registration -------------------------------------------
@@ -2885,6 +3097,10 @@ async function syncLoanState(
   // keeps reconciling to "today" every day, not just at import time. The stored
   // date is the interest ANCHOR (data-implied snapshot), so the tick's
   // base + per_diem × days(today − anchor) matches this sync's math exactly.
+  // Both reconciled and fallback loans register: interest is a single lump on the
+  // current installment either way, and the tick advances that one installment (not the
+  // whole schedule), so the accrued value keeps reconciling to today without disturbing
+  // the principal amortization the reconcile rebuilt.
   if (!closed && perDiem && perDiem > 0 && interestAnchor) {
     await client.query(
       `INSERT INTO ${ACCRUAL_TRACK_TABLE}
@@ -2905,7 +3121,11 @@ async function syncLoanState(
         toIso(asOfDate) ?? interestAnchor
       ]
     );
-    actions.push('registered for daily interest accrual');
+    actions.push(
+      reconciled
+        ? 'registered for daily interest accrual (interest on current installment)'
+        : 'registered for daily interest accrual (fallback summary loan)'
+    );
   } else {
     await client.query(`DELETE FROM ${ACCRUAL_TRACK_TABLE} WHERE loan_id = $1`, [loanId]);
   }
@@ -3256,9 +3476,21 @@ async function runInterestAccrualTick(dbConfig) {
         params.push(loanId);
         await client.query(`UPDATE m_loan SET ${assignments.join(', ')} WHERE id = $${params.length}`, params);
       }
+      // Interest lives on the current (earliest open) installment only — zero every
+      // other open row first so re-running the tick can't multiply it across the schedule.
+      await client.query(
+        `UPDATE m_loan_repayment_schedule SET interest_amount = 0
+         WHERE loan_id = $1 AND completed_derived = false`,
+        [loanId]
+      );
       await client.query(
         `UPDATE m_loan_repayment_schedule SET interest_amount = $1
-         WHERE loan_id = $2 AND completed_derived = false`,
+         WHERE id = (
+           SELECT id FROM m_loan_repayment_schedule
+           WHERE loan_id = $2 AND completed_derived = false
+           ORDER BY duedate ASC, installment ASC
+           LIMIT 1
+         )`,
         [
           target.toFixed(6),
           loanId
