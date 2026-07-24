@@ -222,13 +222,6 @@
   background: var(--ch-blue-20) !important;
 }
 
-/* ── ID cell ─────────────────────────────────────────────────── */
-.tx-id {
-  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
-  font-size: 12px;
-  color: var(--ch-text-2);
-}
-
 /* ── Transaction type badges (same system as charges-tab) ────── */
 .badge {
   display: inline-flex;

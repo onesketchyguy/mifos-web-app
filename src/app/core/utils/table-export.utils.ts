@@ -27,6 +27,45 @@ const MIN_COLUMN_WIDTH = 10;
 const MAX_COLUMN_WIDTH = 45;
 const COLUMN_WIDTH_PADDING = 2;
 
+type NumberFormat = 'integer' | 'decimal';
+
+/** Excel number-format strings, keyed by the per-column format kind. */
+const EXCEL_NUMBER_FORMAT: Record<NumberFormat, string> = {
+  integer: '#,##0',
+  decimal: '#,##0.00'
+};
+
+/**
+ * Determines a per-column number format so the XLSX and printable outputs render numeric
+ * cells identically. A column whose numbers are all integers (e.g. the row counter) is shown
+ * without decimals; any column that contains a fractional value (e.g. money) is shown with two
+ * decimals and thousands separators. Non-numeric columns return `null` and render as plain text.
+ */
+function columnNumberFormats(headers: string[], rows: TableCell[][]): (NumberFormat | null)[] {
+  return headers.map((_, columnIndex) => {
+    let hasNumber = false;
+    for (const row of rows) {
+      const value = row[columnIndex];
+      if (typeof value === 'number') {
+        hasNumber = true;
+        if (!Number.isInteger(value)) {
+          return 'decimal';
+        }
+      }
+    }
+    return hasNumber ? 'integer' : null;
+  });
+}
+
+/** Formats a number for the printable table to mirror the XLSX `EXCEL_NUMBER_FORMAT`. */
+function formatPrintNumber(value: number, format: NumberFormat): string {
+  const fractionDigits = format === 'decimal' ? 2 : 0;
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  });
+}
+
 function columnWidth(header: string, rows: TableCell[][], columnIndex: number): number {
   const longest = rows.reduce((maxLength, row) => {
     const value = row[columnIndex];
@@ -60,7 +99,7 @@ export async function exportTableToXlsx(
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
   });
 
-  const isNumericColumn = headers.map((_, columnIndex) => rows.some((row) => typeof row[columnIndex] === 'number'));
+  const columnFormats = columnNumberFormats(headers, rows);
   const tableRows = rows.map((row) =>
     row.map((cell) => (typeof cell === 'number' ? cell : cell === null ? null : sanitizeCsvValue(cell)))
   );
@@ -88,8 +127,9 @@ export async function exportTableToXlsx(
     const column = worksheet.getColumn(index + 1);
     column.width = columnWidth(header, rows, index);
     column.alignment = { vertical: 'middle' };
-    if (isNumericColumn[index]) {
-      column.numFmt = '#,##0.00';
+    const format = columnFormats[index];
+    if (format) {
+      column.numFmt = EXCEL_NUMBER_FORMAT[format];
     }
   });
 
@@ -122,10 +162,19 @@ export function printTable(title: string, headers: string[], rows: TableCell[][]
     return;
   }
 
-  const tableHeaders = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('');
+  const columnFormats = columnNumberFormats(headers, rows);
+  const tableHeaders = headers
+    .map((header, columnIndex) => `<th${columnFormats[columnIndex] ? ' class="num"' : ''}>${escapeHtml(header)}</th>`)
+    .join('');
   const tableRows = rows
     .map((row, index) => {
-      const cells = row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('');
+      const cells = row
+        .map((cell, columnIndex) => {
+          const format = columnFormats[columnIndex];
+          const content = typeof cell === 'number' && format ? formatPrintNumber(cell, format) : escapeHtml(cell);
+          return `<td${format ? ' class="num"' : ''}>${content}</td>`;
+        })
+        .join('');
       const rowClass = reversedRows?.[index] ? ' class="reversed"' : '';
       return `<tr${rowClass}>${cells}</tr>`;
     })
@@ -166,6 +215,10 @@ export function printTable(title: string, headers: string[], rows: TableCell[][]
           th {
             background: #f5f5f5;
             font-weight: 600;
+          }
+
+          .num {
+            text-align: right;
           }
 
           .reversed {

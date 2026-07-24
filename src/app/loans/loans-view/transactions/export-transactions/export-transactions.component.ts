@@ -89,8 +89,6 @@ export class ExportTransactionsComponent implements OnInit {
   /** Columns shown in the transactions table. */
   displayedColumns: string[] = [
     'row',
-    'id',
-    'externalId',
     'date',
     'transactionType',
     'amount',
@@ -172,8 +170,6 @@ export class ExportTransactionsComponent implements OnInit {
   private columnHeaders(): string[] {
     return [
       '#',
-      this.translateService.instant('labels.inputs.Id'),
-      this.translateService.instant('labels.inputs.External Id'),
       this.translateService.instant('labels.inputs.Transaction Date'),
       this.translateService.instant('labels.inputs.Transaction Type'),
       this.translateService.instant('labels.inputs.Amount'),
@@ -188,8 +184,6 @@ export class ExportTransactionsComponent implements OnInit {
   private buildExportRows(): TableCell[][] {
     return this.filteredTransactions.map((transaction, index) => [
       index + 1,
-      transaction.id,
-      transaction.externalId ?? '',
       this.dateFormatPipe.transform(transaction.date),
       this.transactionTypeLabel(transaction),
       transaction.amount,

@@ -47,7 +47,6 @@ import { AlertService } from 'app/core/alert/alert.service';
 import { DatepickerBase } from 'app/shared/form-dialog/formfield/model/datepicker-base';
 import { NgClass } from '@angular/common';
 import { MatSlideToggle } from '@angular/material/slide-toggle';
-import { ExternalIdentifierComponent } from '../../../shared/external-identifier/external-identifier.component';
 import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
 import { MatIcon } from '@angular/material/icon';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -72,7 +71,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
     MatCellDef,
     MatCell,
     NgClass,
-    ExternalIdentifierComponent,
     MatMenuTrigger,
     MatIcon,
     MatMenu,
@@ -151,8 +149,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     if (this.loanProductService.isLoanProduct) {
       this.displayedColumns = [
         'row',
-        'id',
-        'externalId',
         'date',
         'transactionType',
         'amount',
@@ -167,8 +163,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
       this.breakdownColspan = 5; // amount, principal, interest, fee, penalties
       this.groupHeaderColumns = [
         'group-row',
-        'group-id',
-        'group-externalId',
         'group-date',
         'group-transactionType',
         'group-breakdown',
@@ -179,8 +173,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
     } else {
       this.displayedColumns = [
         'row',
-        'id',
-        'externalId',
         'date',
         'transactionType',
         'amount',
@@ -193,8 +185,6 @@ export class TransactionsTabComponent extends LoanProductBaseComponent implement
       this.breakdownColspan = 4; // amount, principal, fee, penalties
       this.groupHeaderColumns = [
         'group-row',
-        'group-id',
-        'group-externalId',
         'group-date',
         'group-transactionType',
         'group-breakdown',
