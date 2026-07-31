@@ -9,6 +9,7 @@
 /** Angular Imports */
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   OnInit,
   TemplateRef,
@@ -41,9 +42,12 @@ import { of } from 'rxjs';
 import { PopoverService } from '../../configuration-wizard/popover/popover.service';
 import { ConfigurationWizardService } from '../../configuration-wizard/configuration-wizard.service';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { MatSlideToggle } from '@angular/material/slide-toggle';
+import { MatTooltip } from '@angular/material/tooltip';
 import { STANDALONE_SHARED_IMPORTS } from 'app/standalone-shared.module';
 import { accountFeatures } from 'app/shared/account-features/account-features.config';
 import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
+import { DatatableVisibilityService } from './datatable-visibility.service';
 
 /**
  * Manage Data Tables component.
@@ -55,6 +59,8 @@ import { applyFuzzyTableFilter } from 'app/shared/utils/fuzzy-search.util';
   imports: [
     ...STANDALONE_SHARED_IMPORTS,
     FaIconComponent,
+    MatSlideToggle,
+    MatTooltip,
     MatTable,
     MatSort,
     MatColumnDef,
@@ -76,6 +82,8 @@ export class ManageDataTablesComponent implements OnInit, AfterViewInit {
   private router = inject(Router);
   private configurationWizardService = inject(ConfigurationWizardService);
   private popoverService = inject(PopoverService);
+  private datatableVisibility = inject(DatatableVisibilityService);
+  private cdr = inject(ChangeDetectorRef);
 
   /** Data table data. */
   dataTableData: any;
@@ -83,7 +91,8 @@ export class ManageDataTablesComponent implements OnInit, AfterViewInit {
   displayedColumns: string[] = [
     'registeredTableName',
     'applicationTableName',
-    'entitySubType'
+    'entitySubType',
+    'userView'
   ];
   /** Data source for manage data tables table. */
   dataSource: MatTableDataSource<any>;
@@ -129,6 +138,39 @@ export class ManageDataTablesComponent implements OnInit, AfterViewInit {
    */
   ngOnInit() {
     this.setDataTables();
+    // Prime the user-view flags so the toggles render their current state.
+    this.datatableVisibility.load().subscribe(() => this.cdr.markForCheck());
+  }
+
+  /**
+   * Whether the given data table appears on an end-user screen and therefore
+   * honours the user-view flag (client / loan / group / center / savings tables).
+   * @param {any} dataTable Registered data table.
+   */
+  isUserViewEligible(dataTable: any): boolean {
+    return this.datatableVisibility.isOperational(dataTable.applicationTableName);
+  }
+
+  /**
+   * Current user-view flag for the given data table.
+   * @param {any} dataTable Registered data table.
+   */
+  isUserView(dataTable: any): boolean {
+    return this.datatableVisibility.isMarkedUserView(dataTable.registeredTableName);
+  }
+
+  /**
+   * Marks or un-marks a data table as a user view and refreshes the toggles.
+   * @param {any} dataTable Registered data table.
+   * @param {boolean} visible Whether the table should be shown to users.
+   */
+  toggleUserView(dataTable: any, visible: boolean): void {
+    this.datatableVisibility.setUserVisible(dataTable.registeredTableName, visible).subscribe({
+      next: () => this.cdr.markForCheck(),
+      // On failure the persisted state is unchanged; re-render so the toggle
+      // snaps back to reality (the HTTP error is surfaced globally).
+      error: () => this.cdr.markForCheck()
+    });
   }
 
   /**

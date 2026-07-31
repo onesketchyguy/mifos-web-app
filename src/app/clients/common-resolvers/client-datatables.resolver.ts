@@ -14,6 +14,7 @@ import { Observable } from 'rxjs';
 
 /** Custom Services */
 import { ClientsService } from '../clients.service';
+import { DatatableVisibilityService } from 'app/system/manage-data-tables/datatable-visibility.service';
 
 /**
  * Client datatables resolver.
@@ -21,12 +22,13 @@ import { ClientsService } from '../clients.service';
 @Injectable()
 export class ClientDatatablesResolver {
   private clientsService = inject(ClientsService);
+  private datatableVisibility = inject(DatatableVisibilityService);
 
   /**
-   * Returns the Client datatables.
+   * Returns the Client datatables filtered to the ones marked as a user view.
    * @returns {Observable<any>}
    */
   resolve(): Observable<any> {
-    return this.clientsService.getClientDatatables();
+    return this.datatableVisibility.filterUserVisible(this.clientsService.getClientDatatables());
   }
 }

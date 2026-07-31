@@ -14,6 +14,7 @@ import { Observable } from 'rxjs';
 
 /** Custom Services */
 import { LoansService } from '../loans.service';
+import { DatatableVisibilityService } from 'app/system/manage-data-tables/datatable-visibility.service';
 
 /**
  * loan datatables resolver.
@@ -21,12 +22,13 @@ import { LoansService } from '../loans.service';
 @Injectable()
 export class LoanDatatablesResolver {
   private loansService = inject(LoansService);
+  private datatableVisibility = inject(DatatableVisibilityService);
 
   /**
-   * Returns the loan datatables.
+   * Returns the loan datatables filtered to the ones marked as a user view.
    * @returns {Observable<any>}
    */
   resolve(): Observable<any> {
-    return this.loansService.getLoanDataTables();
+    return this.datatableVisibility.filterUserVisible(this.loansService.getLoanDataTables());
   }
 }

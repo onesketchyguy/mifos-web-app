@@ -15,6 +15,7 @@ import { Observable } from 'rxjs';
 
 /** Custom Services */
 import { GroupsService } from '../groups.service';
+import { DatatableVisibilityService } from 'app/system/manage-data-tables/datatable-visibility.service';
 
 /**
  * Group Datatables data resolver.
@@ -22,12 +23,13 @@ import { GroupsService } from '../groups.service';
 @Injectable()
 export class GroupDatatablesResolver {
   private groupsService = inject(GroupsService);
+  private datatableVisibility = inject(DatatableVisibilityService);
 
   /**
-   * Returns the Group's Datatables data.
+   * Returns the Group's Datatables data filtered to the ones marked as a user view.
    * @returns {Observable<any>}
    */
   resolve(): Observable<any> {
-    return this.groupsService.getGroupDatatables();
+    return this.datatableVisibility.filterUserVisible(this.groupsService.getGroupDatatables());
   }
 }

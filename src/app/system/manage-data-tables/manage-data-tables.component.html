@@ -39,6 +39,33 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'labels.inputs.Sub Type' | translate }}</th>
         <td mat-cell *matCellDef="let dataTable">{{ dataTable.entitySubType }}</td>
       </ng-container>
+
+      <ng-container matColumnDef="userView">
+        <th
+          mat-header-cell
+          *matHeaderCellDef
+          [matTooltip]="
+            'labels.text.When enabled this data table is shown to users as a tab on their screens' | translate
+          "
+        >
+          {{ 'labels.inputs.User View' | translate }}
+        </th>
+        <td mat-cell *matCellDef="let dataTable" (click)="$event.stopPropagation()">
+          @if (isUserViewEligible(dataTable)) {
+            <mat-slide-toggle
+              color="primary"
+              [checked]="isUserView(dataTable)"
+              (change)="toggleUserView(dataTable, $event.checked)"
+            ></mat-slide-toggle>
+          } @else {
+            <span
+              class="not-user-facing"
+              [matTooltip]="'labels.text.This data table is not shown on end-user screens' | translate"
+              >&mdash;</span
+            >
+          }
+        </td>
+      </ng-container>
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
       <tr
         mat-row

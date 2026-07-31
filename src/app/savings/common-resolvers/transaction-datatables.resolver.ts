@@ -15,17 +15,19 @@ import { Observable } from 'rxjs';
 
 // Custom Service
 import { SavingsService } from '../savings.service';
+import { DatatableVisibilityService } from 'app/system/manage-data-tables/datatable-visibility.service';
 
 @Injectable()
 export class TransactionDatatablesResolver {
   private savingsService = inject(SavingsService);
+  private datatableVisibility = inject(DatatableVisibilityService);
 
   /**
-   *
+   * Returns the savings transaction datatables filtered to the ones marked as a user view.
    * @param route
    * @returns {Observable<any>}
    */
   resolve(route: ActivatedRouteSnapshot): Observable<any> {
-    return this.savingsService.getSavingsTransactionDatatables();
+    return this.datatableVisibility.filterUserVisible(this.savingsService.getSavingsTransactionDatatables());
   }
 }

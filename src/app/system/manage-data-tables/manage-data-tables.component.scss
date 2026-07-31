@@ -12,4 +12,9 @@ table {
   .select-row:hover {
     cursor: pointer;
   }
+
+  // Muted placeholder for data tables that never appear on end-user screens.
+  .not-user-facing {
+    opacity: 0.5;
+  }
 }
