@@ -501,7 +501,11 @@ function mapTransactionType(historyType, paymentType, specialCode, amount, voide
   if (ht === 'legacydisbursementmarker') return 1;
   if (ht === 'repaymenthistory') return 2;
   if (voided || sc === '2') return 3;
-  if (pt === 'charge' || sc === '1') return 17;
+  // Legacy 'charge' rows have no backing m_loan_charge/m_loan_charge_paid_by, so
+  // CHARGE_PAYMENT (17) makes the Advanced Payment processor NPE on reprocessing
+  // (handleChargePayment -> getLoanChargesPaid().findFirst().get()). Map them to
+  // CONTRA (3) — inert in reprocessing — consistent with the negative/void rows below.
+  if (pt === 'charge' || sc === '1') return 3;
   if (pt === 'informational' || sc === '99') return 3;
   if (amountNum < 0) return 3;
   return 2;
@@ -2907,6 +2911,100 @@ async function syncLoanState(
     loanParams.push(loanId);
     await client.query(`UPDATE m_loan SET ${loanAssignments.join(', ')} WHERE id = $${loanParams.length}`, loanParams);
     actions.push(`m_loan: ${loanAssignments.length} column(s) set from source`);
+  }
+
+  // --- multi-disburse loans: satisfy Fineract's disbursed-principal invariant -
+  // For a loan on a multi-disbursal product, Fineract computes "disbursed principal"
+  // as SUM(principal) over m_loan_disbursement_detail rows that have an actual
+  // disbursedon_date — it ignores m_loan.principal_disbursed_derived entirely
+  // (Loan.getDisbursedAmount()). Migrated loans carry a single origination marker
+  // row with principal 0, so Fineract sees disbursed=0 < principal repaid and
+  // LoanRefundValidator.validateTransactionAmountThreshold rejects EVERY repayment
+  // with "amount.exceeds.threshold" (HTTP 403), regardless of the amount entered.
+  // Give the origination tranche its real principal so disbursed >= repaid, leaving
+  // any additional (e.g. charge) disbursement rows untouched.
+  if (principalOriginal > 0 && (await tableExists(client, 'm_loan_disbursement_detail'))) {
+    const multi = await client.query(
+      `SELECT pl.allow_multiple_disbursals AS m
+         FROM m_loan l JOIN m_product_loan pl ON pl.id = l.product_id
+        WHERE l.id = $1`,
+      [loanId]
+    );
+    if (multi.rows[0]?.m) {
+      const dd = await client.query(
+        `SELECT id, expected_disburse_date, disbursedon_date, principal
+           FROM m_loan_disbursement_detail
+          WHERE loan_id = $1
+          ORDER BY expected_disburse_date NULLS FIRST, id`,
+        [loanId]
+      );
+      const disbursed = dd.rows
+        .filter((r) => r.disbursedon_date != null)
+        .reduce((sum, r) => sum + Number(r.principal), 0);
+      if (disbursed < principalOriginal) {
+        // The origination tranche: the row dated at origination, else the earliest.
+        const originationRow =
+          dd.rows.find((r) => toIso(r.disbursedon_date) === origination) ||
+          dd.rows.find((r) => toIso(r.expected_disburse_date) === origination) ||
+          dd.rows[0];
+        // Principal already carried by OTHER disbursed rows (leave those alone).
+        const otherDisbursed = dd.rows
+          .filter((r) => r.disbursedon_date != null && r.id !== originationRow?.id)
+          .reduce((sum, r) => sum + Number(r.principal), 0);
+        const originationPrincipal = Math.max(principalOriginal - otherDisbursed, 0);
+        if (originationRow) {
+          await client.query(
+            `UPDATE m_loan_disbursement_detail
+                SET principal = $1,
+                    net_disbursal_amount = $1,
+                    disbursedon_date = $2,
+                    expected_disburse_date = COALESCE(expected_disburse_date, $2)
+              WHERE id = $3`,
+            [originationPrincipal, origination, originationRow.id]
+          );
+          actions.push(
+            `disbursement detail #${originationRow.id}: principal set to ${originationPrincipal} ` +
+              `(disbursed ${origination}) so getDisbursedAmount() >= principal repaid`
+          );
+        } else {
+          await client.query(
+            `INSERT INTO m_loan_disbursement_detail
+               (loan_id, expected_disburse_date, disbursedon_date, principal, net_disbursal_amount, is_reversed)
+             VALUES ($1, $2, $2, $3, $3, false)`,
+            [loanId, origination, principalOriginal]
+          );
+          actions.push(
+            `inserted origination disbursement detail: principal ${principalOriginal} (disbursed ${origination})`
+          );
+        }
+      }
+    }
+  }
+
+  // --- orphaned CHARGE_PAYMENT transactions: retype so reprocessing can't NPE -
+  // Legacy 'charge' line-items are imported as CHARGE_PAYMENT (enum 17) but the
+  // migration never creates the m_loan_charge_paid_by link those require. On any
+  // repayment, the Advanced Payment Allocation processor calls handleChargePayment()
+  // -> loanTransaction.getLoanChargesPaid().stream().findFirst().get(), which throws
+  // NoSuchElementException (HTTP 500) when the link is missing. Balances are already
+  // authoritative from the reconcile, so retype these audit-only rows to CONTRA
+  // (enum 3) — the type the import already uses for negative/void/informational rows.
+  // CONTRA is inert during progressive reprocessing (falls through to the switch's
+  // no-op default), so it neither crashes nor perturbs the reconciled schedule. Only
+  // touches CHARGE_PAYMENT rows with no charge link, so any genuine linked charge
+  // payment is left untouched.
+  const orphanChargePayments = await client.query(
+    `UPDATE m_loan_transaction lt
+        SET transaction_type_enum = 3
+      WHERE lt.loan_id = $1
+        AND lt.transaction_type_enum = 17
+        AND NOT EXISTS (SELECT 1 FROM m_loan_charge_paid_by c WHERE c.loan_transaction_id = lt.id)`,
+    [loanId]
+  );
+  if (orphanChargePayments.rowCount) {
+    actions.push(
+      `retyped ${orphanChargePayments.rowCount} unlinked CHARGE_PAYMENT txn(s) -> CONTRA (inert in reprocessing)`
+    );
   }
 
   // --- disable interest recalculation for this migrated loan -----------------
