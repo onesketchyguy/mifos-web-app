@@ -106,15 +106,33 @@ export class ViewBulkImportComponent implements OnInit {
   private readonly ivyTekImportConcurrency = 10;
   private readonly ivyTekAnnualInterestRateFrequencyType = 3;
   private readonly ivyTekStaticSnapshotImport = true;
-  private readonly ivyTekPostHistoricalRepaymentsToFineract = false;
+  /**
+   * History-start import (approach A): active migrated loans are re-originated at their
+   * first recorded repayment date with the reconstructed opening balance and disbursed
+   * natively (full amount, via transactionAmount), so Fineract generates a real
+   * repayment schedule and every loan is fully serviceable. The IvyTek payment history
+   * is then posted as real repayment transactions, which reduce the opening balance back
+   * to BalanceNow — so principal stays exactly 1:1 while the loan can be serviced,
+   * undone, and accrues interest going forward. This replaces the SQL schedule-forging
+   * approach, which produced loans whose schedule could never be reconciled (the
+   * repayment template 500'd and any payment tripped the multi-disburse threshold guard).
+   */
+  private readonly ivyTekHistoryStartImport = true;
+  // History-start mode posts the IvyTek payment history as real REST repayments instead
+  // of raw-inserting them via the SQL transaction stage, so the schedule reprocesses.
+  private readonly ivyTekPostHistoricalRepaymentsToFineract = true;
   /**
    * Full-SQL loan import: the REST stage only creates loan shells; every balance,
    * date, schedule, and arrears value is then written directly from IvyTek source
    * truth by /api/ivytek/loan-state-sync. Fineract never computes interest or
    * arrears for migrated loans, so no date corrections or migration repayments
    * are needed on the REST path.
+   *
+   * Disabled for history-start mode: SQL forging cannot regenerate
+   * m_loan_repayment_schedule, so a forged loan is never serviceable. Fineract must
+   * own the schedule via a native disbursement instead ([[ivyTekHistoryStartImport]]).
    */
-  private readonly ivyTekFullSqlLoanImport = true;
+  private readonly ivyTekFullSqlLoanImport = false;
   private readonly ivyTekDefaultChargeName = '';
   private readonly ivyTekDefaultChargeAmountSource = 'amount_financed';
   private readonly ivyTekImportNames = [
@@ -389,6 +407,65 @@ export class ViewBulkImportComponent implements OnInit {
 
   get hasPendingIvyTekPipelineRun(): boolean {
     return this.ivyTekPipelineRun?.status === 'labels.inputs.Running' && !this.isIvyTekPipelineRunning;
+  }
+
+  /**
+   * Single source of truth for the live progress indicator shown while an IvyTek
+   * import is running. Each stage used to render its own near-identical progress
+   * block (clients, loans, transactions, attachment cleanup, attachment upload),
+   * which meant several differently-worded bars competing for attention. This
+   * collapses them into one view-model so the template renders exactly one bar,
+   * always labelled with the operation actually in flight. Returns null when
+   * nothing is running. `total` is 0/unknown only for the cleanup pass, which the
+   * caller renders as an indeterminate bar.
+   */
+  get ivyTekActiveProgress(): {
+    labelKey: string;
+    processed: number;
+    total: number;
+    indeterminate: boolean;
+  } | null {
+    if (this.ivyTekImporting) {
+      return {
+        labelKey: 'labels.text.Processed IvyTek records',
+        processed: this.ivyTekProcessedRecords,
+        total: this.ivyTekTotalRecords,
+        indeterminate: false
+      };
+    }
+    if (this.ivyTekLoanImporting) {
+      return {
+        labelKey: 'labels.text.Processed IvyTek loan records',
+        processed: this.ivyTekLoanProcessedRecords,
+        total: this.ivyTekLoanTotalRecords,
+        indeterminate: false
+      };
+    }
+    if (this.ivyTekTransactionImporting) {
+      return {
+        labelKey: 'labels.text.Processed IvyTek transaction records',
+        processed: this.ivyTekTransactionProcessedRecords,
+        total: this.ivyTekTransactionTotalRecords,
+        indeterminate: false
+      };
+    }
+    if (this.ivyTekCleanupRunning) {
+      return {
+        labelKey: 'labels.text.Deleting existing IvyTek attachments',
+        processed: this.ivyTekCleanupProcessedRecords,
+        total: this.ivyTekCleanupTotalRecords,
+        indeterminate: !this.ivyTekCleanupTotalRecords
+      };
+    }
+    if (this.ivyTekAttachmentImporting) {
+      return {
+        labelKey: 'labels.text.Uploaded IvyTek attachments',
+        processed: this.ivyTekAttachmentProcessedRecords,
+        total: this.ivyTekAttachmentTotalRecords,
+        indeterminate: false
+      };
+    }
+    return null;
   }
 
   get ivyTekStartStage(): string {
@@ -3177,7 +3254,7 @@ export class ViewBulkImportComponent implements OnInit {
         this.shouldPostIvyTekTransactionsInStage3() || this.shouldUseIvyTekStaticLoanSnapshot()
           ? false
           : this.shouldCloseIvyTekLoanAfterDisbursement(row, balanceNow);
-      const payloadPrincipal = this.getIvyTekLoanPayloadPrincipal(
+      let payloadPrincipal = this.getIvyTekLoanPayloadPrincipal(
         row,
         principal,
         balanceNow,
@@ -3193,15 +3270,15 @@ export class ViewBulkImportComponent implements OnInit {
       );
       const principalSnapshotAdjustment = this.getIvyTekPrincipalSnapshotAdjustment(principal, payloadPrincipal);
       const originationDateCorrection = this.getIvyTekOriginationDateCorrection(row, historicalRepaymentSummary);
-      const payloadLoanDate = this.getIvyTekLoanPayloadDate(row, historicalRepaymentSummary);
-      const payloadInterestRatePercent = this.getIvyTekLoanPayloadInterestRatePercent(
+      let payloadLoanDate = this.getIvyTekLoanPayloadDate(row, historicalRepaymentSummary);
+      let payloadInterestRatePercent = this.getIvyTekLoanPayloadInterestRatePercent(
         row,
         balanceNow,
         shouldApproveAndDisburse,
         shouldCloseAfterDisbursement,
         historicalRepaymentSummary
       );
-      const payloadInterestChargedFromDate = this.getIvyTekLoanInterestChargedFromDate(
+      let payloadInterestChargedFromDate = this.getIvyTekLoanInterestChargedFromDate(
         row,
         balanceNow,
         shouldApproveAndDisburse,
@@ -3209,6 +3286,30 @@ export class ViewBulkImportComponent implements OnInit {
         historicalRepaymentSummary
       );
       const migrationTransactionDate = this.getIvyTekMigrationTransactionDate(row, payloadLoanDate);
+
+      // History-start re-origination (approach A): override the created loan so Fineract
+      // generates a native, serviceable schedule at a recent disbursement date with the
+      // reconstructed opening balance. The posted payment history reduces it to BalanceNow
+      // (exact 1:1). Interest is held at 0% here; go-forward interest is a follow-up pass.
+      const historyStartPlan = this.getIvyTekHistoryStartPlan(
+        row,
+        balanceNow,
+        historicalRepaymentSummary,
+        principal,
+        repayments,
+        shouldApproveAndDisburse,
+        shouldCloseAfterDisbursement
+      );
+      let payloadRepayments: number | null = repayments;
+      let historyStartDisburseAmount: number | null = null;
+      if (historyStartPlan) {
+        payloadPrincipal = historyStartPlan.principal;
+        payloadLoanDate = historyStartPlan.disbursementDate;
+        payloadRepayments = historyStartPlan.numberOfRepayments;
+        payloadInterestRatePercent = 0;
+        payloadInterestChargedFromDate = '';
+        historyStartDisburseAmount = historyStartPlan.principal;
+      }
       result.mappedValues = {
         ...result.mappedValues,
         staticSnapshotMode: this.shouldUseIvyTekStaticLoanSnapshot() ? 'Yes' : 'No',
@@ -3244,7 +3345,7 @@ export class ViewBulkImportComponent implements OnInit {
         product,
         productDetails,
         payloadPrincipal,
-        repayments,
+        payloadRepayments,
         payloadInterestRatePercent,
         payloadLoanDate,
         payloadInterestChargedFromDate
@@ -3363,12 +3464,12 @@ export class ViewBulkImportComponent implements OnInit {
           const tribalLoanDataUpdated = await this.upsertIvyTekLoanTribalData(result.loanId, row);
           this.setIvyTekLoanTribalResult(result, tribalLoanDataUpdated);
         }
-        const createdLoanDate = createdLoan.loanDate || this.getIvyTekLoanDate(row);
+        const createdLoanDate = createdLoan.loanDate || payloadLoanDate || this.getIvyTekLoanDate(row);
         if (result.loanId) {
           await this.restoreIvyTekLoanInterestRateForStaticImport(result, result.loanId, row, payload, response);
         }
         if (result.loanId && shouldApproveAndDisburse) {
-          await this.approveAndDisburseIvyTekLoan(result.loanId, createdLoanDate);
+          await this.approveAndDisburseIvyTekLoan(result.loanId, createdLoanDate, historyStartDisburseAmount);
         }
         // Full-SQL mode: balances, closure, and arrears come from the loan-state-sync
         // SQL step, so no REST migration repayment or settle/close is posted.
@@ -7917,7 +8018,7 @@ export class ViewBulkImportComponent implements OnInit {
    */
   private shouldPostIvyTekHistoricalRepayments(summary: any): boolean {
     return (
-      !this.shouldUseIvyTekStaticLoanSnapshot() &&
+      (this.ivyTekHistoryStartImport || !this.shouldUseIvyTekStaticLoanSnapshot()) &&
       !!summary?.count &&
       summary.totalAmount > 0 &&
       this.ivyTekPostHistoricalRepaymentsToFineract
@@ -9699,6 +9800,108 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {boolean} shouldApproveAndDisburse Whether the importer will activate the loan.
    * @param {boolean} shouldCloseAfterDisbursement Whether this zero-balance loan will be closed immediately.
    */
+  /**
+   * Builds the history-start re-origination plan for a migrated loan (approach A).
+   *
+   * Active loans with recorded IvyTek payment history are re-originated at their first
+   * recorded repayment date with the reconstructed opening balance (BalanceNow + total
+   * amount paid since), disbursed in full so Fineract generates a native, serviceable
+   * schedule. Posting the payment history then reduces the balance back to BalanceNow,
+   * keeping principal exactly 1:1. Loans without usable history — and non-active loans
+   * that will be paid off and closed — disburse at the recent reconciliation date rather
+   * than the decades-old origination, which would otherwise make interest recalculation
+   * recompute the whole gap and hang servicing. Returns null when no native disbursement
+   * applies (history-start mode off, or the loan is not being disbursed).
+   * @param {any} row IvyTek loan row.
+   * @param {number | null} balanceNow IvyTek current principal outstanding.
+   * @param {any} historicalRepaymentSummary Grouped IvyTek payment history for this loan.
+   * @param {number | null} originalPrincipal IvyTek original principal amount.
+   * @param {number | null} sourceRepayments IvyTek number of payments.
+   * @param {boolean} shouldApproveAndDisburse Whether the import activates this loan.
+   * @param {boolean} shouldCloseAfterDisbursement Whether this loan is closed after disbursement.
+   */
+  private getIvyTekHistoryStartPlan(
+    row: any,
+    balanceNow: number | null,
+    historicalRepaymentSummary: any,
+    originalPrincipal: number | null,
+    sourceRepayments: number | null,
+    shouldApproveAndDisburse: boolean,
+    shouldCloseAfterDisbursement: boolean
+  ): { principal: number; disbursementDate: string; numberOfRepayments: number } | null {
+    if (!this.ivyTekHistoryStartImport || !shouldApproveAndDisburse) {
+      return null;
+    }
+
+    const frequency = this.getIvyTekRepaymentFrequency(row);
+    const reconciliationDate = this.parseIvyTekDate(this.getIvyTekReconciliationDateString()) || new Date();
+    const format = (date: Date) => this.dateUtils.formatDate(date, this.settingsService.dateFormat);
+    const hasHistory =
+      !!historicalRepaymentSummary?.count &&
+      historicalRepaymentSummary.totalAmount > 0 &&
+      !!historicalRepaymentSummary.firstDate;
+
+    if (hasHistory && !shouldCloseAfterDisbursement) {
+      const openingBalance = this.roundIvyTekMoney((balanceNow ?? 0) + historicalRepaymentSummary.totalAmount);
+      const firstDate = this.parseIvyTekDate(historicalRepaymentSummary.firstDate);
+      const disbursementDate = firstDate ? new Date(firstDate) : new Date(reconciliationDate);
+      // Anchor the disbursement one repayment period before the first payment so the
+      // schedule's first instalment lines up with it and there is no empty gap to recompute.
+      if (firstDate) {
+        if (frequency.type === 1) {
+          disbursementDate.setDate(disbursementDate.getDate() - 7 * frequency.every);
+        } else {
+          disbursementDate.setMonth(disbursementDate.getMonth() - frequency.every);
+        }
+      }
+      // Size the schedule to span the recorded payment history (disbursement -> last
+      // payment) plus a small go-forward buffer, so every payment lands on an instalment
+      // without inflating the schedule. The previous balanceNow/median payoff estimate
+      // produced 200-300 instalment schedules on large-balance loans, and each of a loan's
+      // (up to 100+) reprocessing repayment posts scales with schedule length — the measured
+      // cause of the overnight import only reaching a third. The closing interest reschedule
+      // sets the true remaining term.
+      const lastDate = this.parseIvyTekDate(historicalRepaymentSummary.lastDate);
+      let spanPeriods = historicalRepaymentSummary.count;
+      if (firstDate && lastDate && lastDate.getTime() > firstDate.getTime()) {
+        if (frequency.type === 1) {
+          spanPeriods = Math.round((lastDate.getTime() - firstDate.getTime()) / (7 * frequency.every * 86400000)) + 1;
+        } else {
+          const months =
+            (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + (lastDate.getMonth() - firstDate.getMonth());
+          spanPeriods = Math.round(months / frequency.every) + 1;
+        }
+      }
+      const numberOfRepayments = Math.max(spanPeriods, 1) + 6;
+      if (openingBalance > 0) {
+        return { principal: openingBalance, disbursementDate: format(disbursementDate), numberOfRepayments };
+      }
+    }
+
+    const openingBalance = shouldCloseAfterDisbursement
+      ? (originalPrincipal ?? balanceNow)
+      : (balanceNow ?? originalPrincipal);
+    if (openingBalance === null || openingBalance <= 0) {
+      return null;
+    }
+    const numberOfRepayments = sourceRepayments || historicalRepaymentSummary?.count || 12;
+    return {
+      principal: this.roundIvyTekMoney(openingBalance),
+      disbursementDate: format(reconciliationDate),
+      numberOfRepayments
+    };
+  }
+
+  /**
+   * Gets a loan's approved/disbursable principal for a native (full) disbursement amount.
+   * @param {any} loan Loan account response.
+   */
+  private getIvyTekApprovedPrincipal(loan: any): number | null {
+    const value =
+      loan?.approvedPrincipal ?? loan?.principal ?? loan?.proposedPrincipal ?? loan?.summary?.principalDisbursed;
+    return value === undefined || value === null ? null : this.parseIvyTekDecimal(value.toString());
+  }
+
   private getIvyTekLoanPayloadPrincipal(
     row: any,
     principal: number | null,
@@ -9822,7 +10025,13 @@ export class ViewBulkImportComponent implements OnInit {
     payload: any,
     loan: any
   ) {
-    if (!this.shouldUseIvyTekStaticLoanSnapshot() || !row || !payload || result.status === 'labels.inputs.Failed') {
+    if (
+      !this.shouldUseIvyTekStaticLoanSnapshot() ||
+      this.ivyTekHistoryStartImport ||
+      !row ||
+      !payload ||
+      result.status === 'labels.inputs.Failed'
+    ) {
       return;
     }
 
@@ -10594,10 +10803,10 @@ export class ViewBulkImportComponent implements OnInit {
 
     if (!this.isIvyTekLoanActiveOrOverpaid(loanForLifecycle)) {
       if (this.isIvyTekLoanApproved(loanForLifecycle)) {
-        await this.disburseIvyTekLoan(loanId, loanDate);
+        await this.disburseIvyTekLoan(loanId, loanDate, this.getIvyTekApprovedPrincipal(loanForLifecycle));
         messages.push(`Existing approved loan was disbursed on ${loanDate}.`);
       } else if (this.canUpdateExistingIvyTekLoan(loanForLifecycle)) {
-        await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
+        await this.approveAndDisburseIvyTekLoan(loanId, loanDate, this.getIvyTekApprovedPrincipal(loanForLifecycle));
         messages.push(`Existing pending loan was approved and disbursed on ${loanDate}.`);
       } else {
         return 'Existing loan state prevented automatic approval/disbursement.';
@@ -10644,10 +10853,10 @@ export class ViewBulkImportComponent implements OnInit {
 
     if (!this.isIvyTekLoanActiveOrOverpaid(loanForLifecycle)) {
       if (this.isIvyTekLoanApproved(loanForLifecycle)) {
-        await this.disburseIvyTekLoan(loanId, loanDate);
+        await this.disburseIvyTekLoan(loanId, loanDate, this.getIvyTekApprovedPrincipal(loanForLifecycle));
         messages.push(`Existing approved loan was disbursed on ${loanDate}.`);
       } else if (this.canUpdateExistingIvyTekLoan(loanForLifecycle)) {
-        await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
+        await this.approveAndDisburseIvyTekLoan(loanId, loanDate, this.getIvyTekApprovedPrincipal(loanForLifecycle));
         messages.push(`Existing pending loan was approved and disbursed on ${loanDate}.`);
       } else {
         return 'Existing loan state prevented automatic approval/disbursement.';
@@ -10696,7 +10905,7 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} loanId Mifos loan id.
    * @param {string} loanDate Loan date text.
    */
-  private async approveAndDisburseIvyTekLoan(loanId: string, loanDate: string) {
+  private async approveAndDisburseIvyTekLoan(loanId: string, loanDate: string, disburseAmount: number | null = null) {
     const commandData = {
       dateFormat: this.settingsService.dateFormat,
       locale: this.settingsService.language.code
@@ -10707,7 +10916,7 @@ export class ViewBulkImportComponent implements OnInit {
         approvedOnDate: loanDate
       })
     );
-    await this.disburseIvyTekLoan(loanId, loanDate);
+    await this.disburseIvyTekLoan(loanId, loanDate, disburseAmount);
   }
 
   /**
@@ -10715,14 +10924,19 @@ export class ViewBulkImportComponent implements OnInit {
    * @param {string} loanId Mifos loan id.
    * @param {string} loanDate Loan date text.
    */
-  private async disburseIvyTekLoan(loanId: string, loanDate: string) {
-    await firstValueFrom(
-      this.loansService.executeLoanCommand(loanId, 'disburse', {
-        actualDisbursementDate: loanDate,
-        dateFormat: this.settingsService.dateFormat,
-        locale: this.settingsService.language.code
-      })
-    );
+  private async disburseIvyTekLoan(loanId: string, loanDate: string, disburseAmount: number | null = null) {
+    const commandData: any = {
+      actualDisbursementDate: loanDate,
+      dateFormat: this.settingsService.dateFormat,
+      locale: this.settingsService.language.code
+    };
+    // Multi-disburse products disburse $0 unless the amount is specified, which leaves the
+    // loan Overpaid on the first repayment; a native full disbursement is required for the
+    // loan to be serviceable (see [[ivyTekHistoryStartImport]]).
+    if (disburseAmount !== null && disburseAmount > 0) {
+      commandData.transactionAmount = disburseAmount;
+    }
+    await firstValueFrom(this.loansService.executeLoanCommand(loanId, 'disburse', commandData));
   }
 
   /**
@@ -10748,7 +10962,7 @@ export class ViewBulkImportComponent implements OnInit {
       return '';
     }
 
-    if (this.shouldUseIvyTekStaticLoanSnapshot()) {
+    if (this.shouldUseIvyTekStaticLoanSnapshot() && !this.ivyTekHistoryStartImport) {
       return '';
     }
 
@@ -11089,12 +11303,12 @@ export class ViewBulkImportComponent implements OnInit {
     }
 
     if (this.isIvyTekLoanApproved(loan)) {
-      await this.disburseIvyTekLoan(loanId, loanDate);
+      await this.disburseIvyTekLoan(loanId, loanDate, this.getIvyTekApprovedPrincipal(loan));
       return `Historical loan was disbursed on ${loanDate} before close.`;
     }
 
     if (this.canUpdateExistingIvyTekLoan(loan)) {
-      await this.approveAndDisburseIvyTekLoan(loanId, loanDate);
+      await this.approveAndDisburseIvyTekLoan(loanId, loanDate, this.getIvyTekApprovedPrincipal(loan));
       return `Historical loan was approved and disbursed on ${loanDate} before close.`;
     }
 

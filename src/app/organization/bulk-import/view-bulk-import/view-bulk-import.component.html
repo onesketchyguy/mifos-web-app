@@ -202,6 +202,23 @@
         </div>
       }
 
+      <!-- Single live progress bar for whichever stage is currently running. Placed
+           directly under the status panel so the persisted run summary and the live
+           "what's happening right now" read as one region. Every stage feeds the same
+           ivyTekActiveProgress view-model, replacing five near-identical bars. -->
+      @if (ivyTekActiveProgress; as progress) {
+        <div class="ivytek-progress">
+          <span class="ivytek-progress-label">
+            {{ progress.labelKey | translate }}
+            {{ progress.processed }} / {{ progress.indeterminate ? '?' : progress.total }}
+          </span>
+          <mat-progress-bar
+            [mode]="progress.indeterminate ? 'indeterminate' : 'determinate'"
+            [value]="progress.total ? (progress.processed / progress.total) * 100 : 0"
+          ></mat-progress-bar>
+        </div>
+      }
+
       <form [formGroup]="ivyTekImportForm">
         <mat-card-content class="ivytek-start-stage-row layout-row gap-2percent">
           <mat-form-field class="flex-fill">
@@ -470,77 +487,6 @@
               <input matInput type="password" formControlName="password" />
             </mat-form-field>
           </form>
-        </div>
-      }
-
-      @if (ivyTekImporting) {
-        <div class="ivytek-progress">
-          <span class="ivytek-progress-label">
-            {{ 'labels.text.Processed IvyTek records' | translate }}
-            {{ ivyTekProcessedRecords }} / {{ ivyTekTotalRecords }}
-          </span>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="ivyTekTotalRecords ? (ivyTekProcessedRecords / ivyTekTotalRecords) * 100 : 0"
-          ></mat-progress-bar>
-        </div>
-      }
-
-      @if (ivyTekLoanImporting) {
-        <div class="ivytek-progress">
-          <span class="ivytek-progress-label">
-            {{ 'labels.text.Processed IvyTek loan records' | translate }}
-            {{ ivyTekLoanProcessedRecords }} / {{ ivyTekLoanTotalRecords }}
-          </span>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="ivyTekLoanTotalRecords ? (ivyTekLoanProcessedRecords / ivyTekLoanTotalRecords) * 100 : 0"
-          ></mat-progress-bar>
-        </div>
-      }
-
-      @if (ivyTekTransactionImporting) {
-        <div class="ivytek-progress">
-          <span class="ivytek-progress-label">
-            {{ 'labels.text.Processed IvyTek transaction records' | translate }}
-            {{ ivyTekTransactionProcessedRecords }} / {{ ivyTekTransactionTotalRecords }}
-          </span>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="
-              ivyTekTransactionTotalRecords
-                ? (ivyTekTransactionProcessedRecords / ivyTekTransactionTotalRecords) * 100
-                : 0
-            "
-          ></mat-progress-bar>
-        </div>
-      }
-
-      @if (ivyTekCleanupRunning) {
-        <div class="ivytek-progress">
-          <span class="ivytek-progress-label">
-            Deleting existing IvyTek attachments: {{ ivyTekCleanupProcessedRecords }} /
-            {{ ivyTekCleanupTotalRecords || '?' }}
-          </span>
-          <mat-progress-bar
-            [mode]="ivyTekCleanupTotalRecords ? 'determinate' : 'indeterminate'"
-            [value]="ivyTekCleanupTotalRecords ? (ivyTekCleanupProcessedRecords / ivyTekCleanupTotalRecords) * 100 : 0"
-          ></mat-progress-bar>
-        </div>
-      }
-
-      @if (ivyTekAttachmentImporting) {
-        <div class="ivytek-progress">
-          <span class="ivytek-progress-label">
-            {{ 'labels.text.Uploaded IvyTek attachments' | translate }}
-            {{ ivyTekAttachmentProcessedRecords }} / {{ ivyTekAttachmentTotalRecords }}
-          </span>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="
-              ivyTekAttachmentTotalRecords ? (ivyTekAttachmentProcessedRecords / ivyTekAttachmentTotalRecords) * 100 : 0
-            "
-          ></mat-progress-bar>
         </div>
       }
 

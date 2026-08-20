@@ -2860,13 +2860,73 @@ async function syncLoanState(
     }
   }
 
+  // --- self-reconciling disbursement principal ------------------------------
+  // The posting bug's root cause: the loan's disbursement is a $0 placeholder while
+  // the real principal sits in a negative "legacy marker" transaction. Fineract computes
+  // getDisbursedAmount() from the disbursement (detail/transaction), NOT the _derived
+  // columns, so on the first posted repayment it reprocesses "repaid > disbursed(0)" ->
+  // Overpaid, which shreds the imported IvyTek splits. Fix: disburse the loan for exactly
+  // the principal the imported repayments have already paid down against, so
+  //   disbursed − repaid == principalOutstanding == IvyTek BalanceNow (1:1, penny-exact),
+  // taken from the actual non-reversed repayment rows already inserted this run rather
+  // than from a source field that may not match the ledger. Falls back to principalOriginal
+  // for loans with no imported repayment history.
+  const repaidAgg = await client.query(
+    `SELECT COALESCE(SUM(principal_portion_derived), 0) AS p,
+            COALESCE(SUM(interest_portion_derived), 0) AS i
+       FROM m_loan_transaction
+      WHERE loan_id = $1 AND transaction_type_enum = 2 AND COALESCE(is_reversed, false) = false`,
+    [loanId]
+  );
+  const repaidPrincipal = Number(repaidAgg.rows[0].p) || 0;
+  const repaidInterest = Number(repaidAgg.rows[0].i) || 0;
+  const hasImportedRepayments = repaidPrincipal > 0 || repaidInterest > 0;
+  // For active loans the disbursed principal is what's still outstanding plus what the
+  // repayments retired; for closed loans everything was retired. No repayments -> keep
+  // the source original (the pre-existing forge path).
+  const disbursedPrincipal = hasImportedRepayments
+    ? closed
+      ? repaidPrincipal
+      : principalOutstanding + repaidPrincipal
+    : principalOriginal;
+  // When repayments back the paid-down amount, trust them over the source-derived
+  // principalPaid so the summary and the ledger agree exactly (== what reprocessing yields).
+  const principalRepaidDerived = hasImportedRepayments ? repaidPrincipal : principalPaid;
+  const interestRepaidDerived = hasImportedRepayments ? repaidInterest : interestPaid;
+
+  // --- disburse at the START of available payment history, not true origination ---
+  // A long empty gap between the disbursement and the first real payment makes Fineract's
+  // interest recalculation recompute every intervening day on the FIRST posted transaction:
+  // for a 2010-origination loan whose payment history only starts in 2021 that's 16 years of
+  // daily recompute -> the post hangs AND recalc re-derives the paid installments, destroying
+  // the 1:1 IvyTek splits. Anchoring the disbursement just before the earliest repayment keeps
+  // recalc's span tight (verified live: a tight-span loan posts a forward payment in ~3s and
+  // leaves historical splits untouched while still accruing interest forward). disbursedPrincipal
+  // IS the balance at that point, so disbursed − repaid still == BalanceNow. The true origination
+  // stays on submittedon/approvedon for reference.
+  const firstRepayment = await client.query(
+    `SELECT MIN(transaction_date) AS d FROM m_loan_transaction
+      WHERE loan_id = $1 AND transaction_type_enum = 2 AND COALESCE(is_reversed, false) = false`,
+    [loanId]
+  );
+  let disbursementDate = origination;
+  if (hasImportedRepayments && firstRepayment.rows[0].d) {
+    const d = new Date(firstRepayment.rows[0].d);
+    d.setDate(d.getDate() - 1); // strictly before the earliest repayment
+    const iso = toIso(d);
+    if (iso && iso > origination) {
+      disbursementDate = iso;
+      actions.push(`disbursement anchored to history start ${iso} (true origination ${origination}) to keep recalc span tight`);
+    }
+  }
+
   // --- m_loan: lifecycle dates, terms, and every derived summary column -----
   const loanDesired = {
     submittedon_date: origination,
     approvedon_date: origination,
-    expected_disbursedon_date: origination,
-    disbursedon_date: origination,
-    disbursement_date: origination,
+    expected_disbursedon_date: disbursementDate,
+    disbursedon_date: disbursementDate,
+    disbursement_date: disbursementDate,
     interest_calculated_from_date: interestChargedFrom,
     interest_charged_from_date: interestChargedFrom,
     expected_maturedon_date: maturity ?? undefined,
@@ -2876,21 +2936,21 @@ async function syncLoanState(
     approved_principal: principalOriginal,
     annual_nominal_interest_rate: annualRate ?? undefined,
     nominal_interest_rate_per_period: annualRate ?? undefined,
-    principal_disbursed_derived: principalOriginal,
-    principal_repaid_derived: principalPaid,
+    principal_disbursed_derived: disbursedPrincipal,
+    principal_repaid_derived: principalRepaidDerived,
     principal_outstanding_derived: closed ? 0 : principalOutstanding,
-    interest_charged_derived: interestCharged,
-    interest_repaid_derived: interestPaid,
+    interest_charged_derived: interestRepaidDerived + (closed ? 0 : openInterest),
+    interest_repaid_derived: interestRepaidDerived,
     interest_outstanding_derived: closed ? 0 : openInterest,
-    total_expected_repayment_derived: principalOriginal + interestCharged,
-    total_repayment_derived: principalPaid + interestPaid,
+    total_expected_repayment_derived: disbursedPrincipal + interestRepaidDerived + (closed ? 0 : openInterest),
+    total_repayment_derived: principalRepaidDerived + interestRepaidDerived,
     total_outstanding_derived: closed ? 0 : principalOutstanding + openInterest,
     // Migrated loans can't be recalculated correctly (pre-2021 payment history is
     // missing, so Fineract would recompute principal too high and break the 1:1) —
     // the reconciled schedule is authoritative, so interest recalc stays OFF per loan.
     is_interest_recalculation_enabled: false,
-    total_expected_costofloan_derived: interestCharged,
-    total_costofloan_derived: interestPaid,
+    total_expected_costofloan_derived: interestRepaidDerived + (closed ? 0 : openInterest),
+    total_costofloan_derived: interestRepaidDerived,
     loan_status_id: closed ? LOAN_STATUS_CLOSED_OBLIGATIONS_MET : LOAN_STATUS_ACTIVE,
     closedon_date: closed ? (closedDate ?? lastPayment ?? reconciliation) : null
   };
@@ -2923,7 +2983,7 @@ async function syncLoanState(
   // with "amount.exceeds.threshold" (HTTP 403), regardless of the amount entered.
   // Give the origination tranche its real principal so disbursed >= repaid, leaving
   // any additional (e.g. charge) disbursement rows untouched.
-  if (principalOriginal > 0 && (await tableExists(client, 'm_loan_disbursement_detail'))) {
+  if (disbursedPrincipal > 0 && (await tableExists(client, 'm_loan_disbursement_detail'))) {
     const multi = await client.query(
       `SELECT pl.allow_multiple_disbursals AS m
          FROM m_loan l JOIN m_product_loan pl ON pl.id = l.product_id
@@ -2941,7 +3001,7 @@ async function syncLoanState(
       const disbursed = dd.rows
         .filter((r) => r.disbursedon_date != null)
         .reduce((sum, r) => sum + Number(r.principal), 0);
-      if (disbursed < principalOriginal) {
+      if (disbursed < disbursedPrincipal) {
         // The origination tranche: the row dated at origination, else the earliest.
         const originationRow =
           dd.rows.find((r) => toIso(r.disbursedon_date) === origination) ||
@@ -2951,7 +3011,7 @@ async function syncLoanState(
         const otherDisbursed = dd.rows
           .filter((r) => r.disbursedon_date != null && r.id !== originationRow?.id)
           .reduce((sum, r) => sum + Number(r.principal), 0);
-        const originationPrincipal = Math.max(principalOriginal - otherDisbursed, 0);
+        const originationPrincipal = Math.max(disbursedPrincipal - otherDisbursed, 0);
         if (originationRow) {
           await client.query(
             `UPDATE m_loan_disbursement_detail
@@ -2960,7 +3020,7 @@ async function syncLoanState(
                     disbursedon_date = $2,
                     expected_disburse_date = COALESCE(expected_disburse_date, $2)
               WHERE id = $3`,
-            [originationPrincipal, origination, originationRow.id]
+            [originationPrincipal, disbursementDate, originationRow.id]
           );
           actions.push(
             `disbursement detail #${originationRow.id}: principal set to ${originationPrincipal} ` +
@@ -2971,7 +3031,7 @@ async function syncLoanState(
             `INSERT INTO m_loan_disbursement_detail
                (loan_id, expected_disburse_date, disbursedon_date, principal, net_disbursal_amount, is_reversed)
              VALUES ($1, $2, $2, $3, $3, false)`,
-            [loanId, origination, principalOriginal]
+            [loanId, disbursementDate, disbursedPrincipal]
           );
           actions.push(
             `inserted origination disbursement detail: principal ${principalOriginal} (disbursed ${origination})`
@@ -3118,16 +3178,29 @@ async function syncLoanState(
     actions.push(`schedule: no disbursed installments — wrote ${installment}-row summary (fallback)`);
   }
 
-  // --- disbursement transactions re-dated to the true origination -----------
+  // --- disbursement transaction: re-dated to history start AND given the real amount -
+  // A single $0 origination-marker disbursement is what breaks servicing (see the
+  // self-reconciling disbursement block above). Re-date it to the history-start date (so it
+  // precedes the repayments with no long empty gap for recalc to churn over) and set its
+  // amount to the reconciling disbursed principal so the ledger and the disbursement-detail
+  // agree and the transaction history reads correctly. Only the lone $0 marker is
+  // amount-corrected; any genuine non-zero disbursement is left as-is.
   const disb = await client.query(
-    `UPDATE m_loan_transaction SET transaction_date = $1, submitted_on_date = $1
-     WHERE loan_id = $2 AND transaction_type_enum = 1`,
+    `UPDATE m_loan_transaction
+        SET transaction_date = $1, submitted_on_date = $1,
+            amount = CASE WHEN COALESCE(amount, 0) = 0 THEN $3::numeric ELSE amount END,
+            outstanding_loan_balance_derived =
+              CASE WHEN COALESCE(amount, 0) = 0 THEN $3::numeric ELSE outstanding_loan_balance_derived END
+      WHERE loan_id = $2 AND transaction_type_enum = 1 AND COALESCE(is_reversed, false) = false`,
     [
-      origination,
-      loanId
+      disbursementDate,
+      loanId,
+      disbursedPrincipal
     ]
   );
-  if (disb.rowCount) actions.push(`disbursement txn(s) re-dated to ${origination} (${disb.rowCount})`);
+  if (disb.rowCount) {
+    actions.push(`disbursement txn(s) re-dated to ${disbursementDate}, amount set to ${disbursedPrincipal} (${disb.rowCount})`);
+  }
 
   // --- m_loan_arrears_aging: source-truth arrears, or none ------------------
   await client.query(`DELETE FROM m_loan_arrears_aging WHERE loan_id = $1`, [loanId]);
